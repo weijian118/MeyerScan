@@ -1,0 +1,111 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "MSBuild: Build (Debug)",
+            "type": "shell",
+            "command": "C:\\Program Files (x86)\\MSBuild\\14.0\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\MeyerScan_Logger.sln",
+                "/p:Configuration=Debug",
+                "/p:Platform=x64",
+                "/m",
+                "/v:minimal"
+            ],
+            "group": {
+                "kind": "build"
+            },
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "MSBuild: Build (Release)",
+            "type": "shell",
+            "command": "C:\\Program Files (x86)\\MSBuild\\14.0\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\MeyerScan_Logger.sln",
+                "/p:Configuration=Release",
+                "/p:Platform=x64",
+                "/m",
+                "/v:minimal"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "MSBuild: Clean",
+            "type": "shell",
+            "command": "C:\\Program Files (x86)\\MSBuild\\14.0\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\MeyerScan_Logger.sln",
+                "/t:Clean",
+                "/p:Configuration=Debug",
+                "/p:Platform=x64"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "MSBuild: Rebuild (Debug)",
+            "type": "shell",
+            "command": "C:\\Program Files (x86)\\MSBuild\\14.0\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\MeyerScan_Logger.sln",
+                "/t:Rebuild",
+                "/p:Configuration=Debug",
+                "/p:Platform=x64",
+                "/m",
+                "/v:minimal"
+            ],
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "Run Test (Debug)",
+            "type": "shell",
+            "command": "${workspaceFolder}\\bin\\Debug\\LoggerTest.exe",
+            "problemMatcher": [],
+            "dependsOn": ["MSBuild: Build (Debug)"],
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake Configure (VS2015)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-G", "Visual Studio 14 2015 Win64",
+                "-B", "build_vs2015",
+                "-S", "."
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake Build (VS2015)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build", "build_vs2015",
+                "--config", "Debug"
+            ],
+            "problemMatcher": [],
+            "dependsOn": ["CMake Configure (VS2015)"]
+        },
+        {
+            "label": "Run Test (VS2015 CMake)",
+            "type": "shell",
+            "command": "${workspaceFolder}/build_vs2015/bin/Debug/LoggerTest.exe",
+            "problemMatcher": [],
+            "dependsOn": ["CMake Build (VS2015)"]
+        }
+    ]
+}
