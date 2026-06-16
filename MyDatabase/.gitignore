@@ -1,0 +1,31 @@
+# 编译输出目录
+bin/
+obj/
+
+# 备份文件目录
+backup/
+
+# Visual Studio 用户文件
+*.user
+*.suo
+*.sln.docstates
+
+# 编译生成的临时文件
+*.ilk
+*.pdb
+*.exp
+*.idb
+*.ipch
+*.tlog
+*.lastbuildstate
+*.unsuccessfulbuild
+*.cache
+
+# 日志文件
+*.log
+
+# Windows 缩略图缓存
+Thumbs.db
+
+# IDE 配置文件（可选保留）
+# .vscode/
