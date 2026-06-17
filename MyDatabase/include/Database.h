@@ -1,18 +1,34 @@
-// =============================================================================
-// 文件名:    Database.h
-// 模块名:    MeyerScan_Database.dll
-// 版本号:    v1.0.0
+﻿// =============================================================================
+// 文件:    Database.h
+// 模块:    MeyerScan_Database.dll
+// 版本号:  v1.1.0
 //
-// 用途说明:
+// 用途:
 //   数据库基础设施模块的公共接口头文件。提供统一的数据库访问接口，
-//   支持 MySQL 和 SQLite 双数据库，实现连接管理、SQL执行、事务管理、
+//   支持 MySQL 和 SQLite 双数据库，实现连接管理、SQL 执行、事务管理、
 //   数据库备份等核心功能。
+//
+// 架构角色:
+//   本模块属于架构分层中的"数据/设备层"（第二层），作为通用数据库基础设施，
+//   供上层所有模块（CaseService、OrderService、Permission、Statistics 等）执行 SQL 操作。
+//   本模块允许使用 Qt SQL 作为实现依赖，但不承载任何业务逻辑。
+//   业务逻辑统一在各模块的 Service 层处理。
+//
+// 接口规范:
+//   所有方法均返回 Result<T> 或 VoidResult，调用方必须检查 IsSuccess()。
+//   ErrorCode 和 Result/T/VoidResult 当前在此头文件中临时定义，
+//   待 Core.lib 搭建完成后统一从 Core.h 引入。
+//
+// 日志规范:
+//   本模块内部使用 MeyerScan_Logger.dll 输出结构化日志。
+//   通过动态加载 Logger.dll 的方式引入，无需编译时链接 Logger.lib。
 //
 // 设计原则:
 //   1. 接口与实现分离：通过纯虚类 IDatabase 定义接口，具体实现封装在 DLL 内部
 //   2. 单一入口：通过 GetDatabase() 工厂函数获取唯一实例（单例模式）
 //   3. 线程安全：所有操作均受互斥锁保护，支持多模块并发访问
 //   4. 配置驱动：数据库连接参数通过 JSON 配置文件管理，便于部署和维护
+//   5. 边界优先：允许 Qt SQL 作为实现手段，但禁止把 UI 或业务逻辑放入本模块
 //
 // 使用方法:
 //   1. 包含此头文件并链接 MeyerScan_Database.lib
@@ -23,15 +39,15 @@
 //   6. 使用完毕后调用 Disconnect() 和 Shutdown()
 //
 // 注意事项:
-//   - 数据库账号密码已硬编码在 DLL 内部（admin/123456），外部不可修改
+//   - MySQL 账号密码当前硬编码在 DLL 内部，后续会改为通过 ConfigCenter 加密存储
 //   - 配置文件必须为有效的 JSON 格式
-//   - 多线程环境下，每个线程应使用独立的数据库连接（当前版本使用单连接+锁）
+//   - 多线程环境下线程安全（通过 QMutex 保护）
 //   - 备份功能会复制整个数据库目录/文件，确保有足够的磁盘空间
 //
 // 依赖项:
 //   - Qt5Core: 基础类型支持
 //   - Qt5Sql: 数据库访问支持
-//   - MeyerScan_Logger.dll: 日志记录（可选）
+//   - MeyerScan_Logger.dll: 结构化日志记录（可选依赖，通过动态加载引入）
 //
 // 作者:      MeyerScan Team
 // 创建日期:  2026-06-16
@@ -41,7 +57,8 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
+#include <cstring>
+#include <utility>
 
 // =============================================================================
 // DLL 导出/导入宏定义
@@ -50,7 +67,6 @@
 //   用于控制类和函数的导出/导入行为。
 //   - 编译 DLL 时定义 MEYERSCAN_DATABASE_EXPORTS，符号被导出
 //   - 使用 DLL 时不定义该宏，符号被导入
-// =============================================================================
 #ifdef MEYERSCAN_DATABASE_EXPORTS
 #  define MEYERSCAN_DATABASE_API __declspec(dllexport)
 #else
@@ -64,12 +80,7 @@
 //   定义支持的数据库类型。当前支持 MySQL 和 SQLite 两种数据库。
 //
 // 设计原因:
-//   使用枚举类（enum class）而非普通枚举，避免命名冲突，
-//   同时提供类型安全，防止意外的类型转换。
-//
-// 使用示例:
-//   DatabaseType type = db->GetDatabaseType();
-//   if (type == DatabaseType::MySQL) { ... }
+//   使用枚举类（enum class）避免命名冲突，同时提供类型安全。
 // =============================================================================
 enum class DatabaseType : int32_t {
     MySQL   = 0,    // MySQL 数据库（需要 MySQL 服务器）
@@ -82,20 +93,10 @@ enum class DatabaseType : int32_t {
 // 说明:
 //   存储数据库连接所需的所有配置参数。
 //
-// 字段说明:
-//   - version: 配置版本号，用于未来版本兼容性检查
-//   - dbType: 数据库类型，对应 DatabaseType 枚举值
-//   - mysqlHost: MySQL 服务器地址（IP 或主机名）
-//   - mysqlPort: MySQL 服务器端口号
-//   - mysqlService: MySQL 服务名称（用于日志和调试）
-//   - mysqlDatabase: MySQL 数据库名称
-//   - sqlitePath: SQLite 数据库文件完整路径
-//   - reserved: 保留字段，用于未来扩展
-//
 // 注意事项:
 //   - 所有字符串字段使用固定长度字符数组，避免动态内存分配
 //   - 字符串以 UTF-8 编码存储
-//   - 保留字段应初始化为 0
+//   - 预留字段应初始化为 0
 //
 // 设计原因:
 //   使用 POD（Plain Old Data）结构体，确保：
@@ -109,53 +110,155 @@ struct DbConfig {
     int32_t  dbType;            // 数据库类型（0=MySQL, 1=SQLite）
 
     // MySQL 数据库配置
-    // 说明: 仅当 dbType == 0 时有效
     char     mysqlHost[128];    // MySQL 服务器地址，如 "127.0.0.1"
     int32_t  mysqlPort;         // MySQL 服务器端口，默认 3308
     char     mysqlService[64];  // MySQL 服务名称（标识用），如 "MSCANDB"
     char     mysqlDatabase[64]; // 数据库名称，如 "mscan"
 
     // SQLite 数据库配置
-    // 说明: 仅当 dbType == 1 时有效
     char     sqlitePath[256];   // SQLite 数据库文件完整路径
 
     // 保留字段
-    // 说明: 用于未来功能扩展，当前未使用
     int32_t  reserved[8];
 };
 
 // =============================================================================
-// DbResult - SQL 执行结果结构体
+// DbResult - SQL 执行结果数据
 // =============================================================================
 // 说明:
-//   存储 SQL 语句执行后的返回信息，包括执行状态、影响行数、错误信息等。
-//
-// 字段说明:
-//   - version: 结果版本号，用于结构体版本控制
-//   - success: 执行是否成功（1=成功，0=失败）
-//   - affectedRows: 受影响的行数（用于 UPDATE/INSERT/DELETE）
-//   - errorMessage: 错误信息（仅当 success == 0 时有效）
-//   - reserved: 保留字段
-//
-// 使用示例:
-//   DbResult result = db->ExecuteUpdate("DELETE FROM table WHERE id=1");
-//   if (result.success) {
-//       qDebug() << "Deleted" << result.affectedRows << "rows";
-//   } else {
-//       qDebug() << "Error:" << result.errorMessage;
-//   }
-//
-// 注意事项:
-//   - errorMessage 长度限制为 255 字符（不含结束符）
-//   - 对于 SELECT 语句，affectedRows 通常为 0
+//   存储 SQL 语句执行后的返回数据。
+//   注意：此结构仅携带执行产生的数据（如影响行数），
+//   错误码和错误信息由 Result<DbResult> 包装器提供。
 // =============================================================================
 struct DbResult {
-    uint32_t version;           // 结果版本号，当前为 1
-    int32_t  success;           // 执行状态（1=成功，0=失败）
-    int64_t  affectedRows;      // 受影响的行数
-    char     errorMessage[256]; // 错误信息（UTF-8 编码）
+    uint32_t version;           // 结构体版本号，当前为 1
+    int64_t  affectedRows;      // 受影响的行数（用于 UPDATE/INSERT/DELETE）
     int32_t  reserved[8];       // 保留字段
 };
+
+// =============================================================================
+// @todo 以下类型将迁移至 Core.lib
+// =============================================================================
+// ErrorCode、Result<T>、VoidResult 当前在此处临时定义，
+// 待 Core.lib 搭建完成后，Database.h 改为 #include "Core.h"，
+// 并删除以下本地定义。
+// =============================================================================
+
+// =============================================================================
+// ErrorCode - 统一错误码枚举
+// =============================================================================
+// 说明:
+//   统一错误码定义，所有接口使用此枚举返回操作结果。
+//   错误码分类（来自架构规范）：
+//     0xxxx: 通用错误
+//     1xxxx: 数据库相关
+//
+// @todo 迁移至 Core.lib/ErrorCode.h
+// =============================================================================
+enum class ErrorCode : int32_t {
+    // ========== 通用错误 0xxxx ==========
+    Success             = 0,      // 操作成功
+    UnknownError        = 1,      // 未知错误
+    InvalidParameter    = 2,      // 参数无效
+    NullPointer         = 3,      // 空指针
+    OutOfMemory         = 4,      // 内存不足
+    NotInitialized      = 5,      // 未初始化
+    AlreadyInitialized  = 6,      // 已初始化
+    Timeout             = 7,      // 超时
+    NotImplemented      = 9,      // 功能未实现
+
+    // ========== 数据库错误 1xxxx ==========
+    DbConnectionFailed  = 10001,  // 数据库连接失败
+    DbQueryFailed       = 10002,  // SQL 查询失败
+    DbInsertFailed      = 10003,  // 插入失败
+    DbUpdateFailed      = 10004,  // 更新失败
+    DbDeleteFailed      = 10005,  // 删除失败
+    DbRecordNotFound    = 10006,  // 记录不存在
+    DbTransactionFailed = 10008,  // 事务失败
+};
+
+// =============================================================================
+// Result<T> - 泛型结果包装
+// =============================================================================
+// 说明:
+//   用于所有 Service/基础设施层接口的返回类型，包含错误码和可选数据。
+//   调用方必须检查 IsSuccess() 确认操作是否成功。
+//
+// 使用示例:
+//   Result<DbResult> result = db->ExecuteQuery("SELECT ...");
+//   if (result.IsSuccess()) {
+//       int64_t rows = result.data.affectedRows;
+//   } else {
+//       printf("Error: %s", result.message);
+//   }
+//
+// @todo 迁移至 Core.lib/Result.h
+// =============================================================================
+template<typename T>
+struct Result {
+    ErrorCode   error;       // 错误码（Success 表示成功）
+    T           data;        // 返回数据（成功时有效）
+    const char* message;     // 错误描述（失败时有效，成功时可为 nullptr）
+
+    Result() : error(ErrorCode::UnknownError), message(nullptr) {}
+
+    Result(ErrorCode err, const char* msg = nullptr)
+        : error(err), message(msg) {}
+
+    Result(T value)
+        : error(ErrorCode::Success), data(std::move(value)), message(nullptr) {}
+
+    bool IsSuccess() const { return error == ErrorCode::Success; }
+    bool IsError()   const { return error != ErrorCode::Success; }
+
+    static Result<T> Ok(T value) {
+        return Result<T>(std::move(value));
+    }
+
+    static Result<T> Fail(ErrorCode err, const char* msg = nullptr) {
+        return Result<T>(err, msg);
+    }
+};
+
+// =============================================================================
+// VoidResult - 无数据返回的简单结果
+// =============================================================================
+// 说明:
+//   用于不需要返回数据的操作，如 Init、Connect、Disconnect 等。
+//
+// @todo 迁移至 Core.lib/Result.h
+// =============================================================================
+struct VoidResult {
+    ErrorCode   error;
+    const char* message;
+
+    VoidResult() : error(ErrorCode::UnknownError), message(nullptr) {}
+
+    VoidResult(ErrorCode err, const char* msg = nullptr)
+        : error(err), message(msg) {}
+
+    bool IsSuccess() const { return error == ErrorCode::Success; }
+    bool IsError()   const { return error != ErrorCode::Success; }
+
+    static VoidResult Ok() {
+        return VoidResult(ErrorCode::Success);
+    }
+
+    static VoidResult Fail(ErrorCode err, const char* msg = nullptr) {
+        return VoidResult(err, msg);
+    }
+};
+
+// =============================================================================
+// 错误码辅助函数
+// =============================================================================
+inline bool IsSuccess(ErrorCode code) {
+    return code == ErrorCode::Success;
+}
+
+inline bool IsError(ErrorCode code) {
+    return code != ErrorCode::Success;
+}
 
 // =============================================================================
 // IDatabase - 数据库接口抽象类
@@ -171,10 +274,14 @@ struct DbResult {
 //
 // 线程安全:
 //   所有方法均受内部互斥锁保护，可在多线程环境下安全调用。
-//   但注意：长时间持有的操作（如大文件备份）可能阻塞其他线程。
+//
+// 返回值规范:
+//   所有可能失败的方法均返回 VoidResult 或 Result<T>，
+//   调用方必须检查 IsSuccess()。纯状态查询方法（如 IsConnected）
+//   直接返回 bool/enum 以简化使用。
 //
 // 使用流程:
-//   1. Init()      - 加载配置文件
+//   1. Init()      - 加载配置文件（过渡方案，后续从 ConfigCenter 获取配置）
 //   2. Connect()   - 建立数据库连接
 //   3. ExecuteXxx() - 执行 SQL 操作
 //   4. Backup()    - 备份数据库（可选）
@@ -200,26 +307,20 @@ public:
     // 参数:
     //   configPath - 配置文件的完整路径（UTF-8 编码）
     //
-    // 返回值:
-    //   true  - 初始化成功
-    //   false - 初始化失败（配置文件不存在或格式错误）
+    // 返回值: VoidResult
+    //   Success        - 初始化成功
+    //   InvalidParameter - configPath 为空
+    //   DbQueryFailed  - 配置文件不存在或格式错误
     //
     // 功能说明:
     //   读取 JSON 配置文件，解析数据库连接参数。
     //   必须在调用其他方法之前调用此方法。
     //
-    // 注意事项:
-    //   - 配置文件必须是有效的 JSON 格式
-    //   - 配置文件编码建议使用 UTF-8
-    //   - 可以多次调用 Init() 重新加载配置
-    //
-    // 使用示例:
-    //   if (!db->Init("F:/MeyerScan/config/db_config.json")) {
-    //       qDebug() << "初始化失败";
-    //       return;
-    //   }
+    // @todo 当前是过渡方案，后续将从 ConfigCenter 读取配置参数，
+    //       不需要再传入 configPath，届时 Init() 签名将简化为无参数。
+    //       过渡期间仍保留此签名以保证向后兼容。
     // -------------------------------------------------------------------------
-    virtual bool Init(const char* configPath) = 0;
+    virtual VoidResult Init(const char* configPath) = 0;
 
     // =========================================================================
     // 连接管理方法
@@ -228,84 +329,43 @@ public:
     // -------------------------------------------------------------------------
     // Connect - 建立数据库连接
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 连接成功
-    //   false - 连接失败（数据库不可用或配置错误）
+    // 返回值: VoidResult
+    //   Success            - 连接成功
+    //   DbConnectionFailed - 数据库不可用或配置错误
     //
     // 功能说明:
     //   根据配置的数据库类型（MySQL/SQLite）建立相应的数据库连接。
-    //   MySQL 连接使用硬编码的账号密码（admin/123456）。
-    //   SQLite 连接会打开或创建指定的数据库文件。
-    //
-    // 注意事项:
-    //   - MySQL 服务器必须运行并监听配置的端口
-    //   - SQLite 文件目录必须存在且有写权限
-    //   - 已连接状态下再次调用 Connect() 会直接返回 true
-    //   - 连接失败时应检查配置和数据库服务状态
-    //
-    // 使用示例:
-    //   if (!db->Connect()) {
-    //       qDebug() << "数据库连接失败，请检查服务是否启动";
-    //       return;
-    //   }
+    //   已连接状态下再次调用 Connect() 会直接返回 Success。
     // -------------------------------------------------------------------------
-    virtual bool Connect() = 0;
+    virtual VoidResult Connect() = 0;
 
     // -------------------------------------------------------------------------
     // Disconnect - 断开数据库连接
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值: 无
+    // 返回值: VoidResult
+    //   Success - 断开成功（未连接时也返回 Success）
     //
     // 功能说明:
     //   关闭当前数据库连接，释放相关资源。
     //   断开后可以重新调用 Connect() 建立新连接。
-    //
-    // 注意事项:
-    //   - 未连接状态下调用此方法是安全的（无操作）
-    //   - 建议在程序退出前调用，确保资源正确释放
-    //   - 如果有未提交的事务，会自动回滚
-    //
-    // 使用示例:
-    //   db->Disconnect();
     // -------------------------------------------------------------------------
-    virtual void Disconnect() = 0;
+    virtual VoidResult Disconnect() = 0;
 
     // -------------------------------------------------------------------------
     // IsConnected - 检查连接状态
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
     // 返回值:
     //   true  - 已连接
     //   false - 未连接
     //
-    // 功能说明:
-    //   检查当前是否处于数据库连接状态。
-    //
-    // 使用示例:
-    //   if (db->IsConnected()) {
-    //       db->ExecuteQuery("SELECT * FROM table");
-    //   }
+    // 说明: 纯状态查询，直接返回 bool，不使用 Result 包装。
     // -------------------------------------------------------------------------
     virtual bool IsConnected() const = 0;
 
     // -------------------------------------------------------------------------
     // GetDatabaseType - 获取当前数据库类型
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
     // 返回值: DatabaseType 枚举值（MySQL 或 SQLite）
-    //
-    // 功能说明:
-    //   返回当前配置的数据库类型。
-    //
-    // 使用示例:
-    //   DatabaseType type = db->GetDatabaseType();
-    //   qDebug() << (type == DatabaseType::MySQL ? "MySQL" : "SQLite");
     // -------------------------------------------------------------------------
     virtual DatabaseType GetDatabaseType() const = 0;
 
@@ -319,44 +379,23 @@ public:
     // 参数:
     //   backupPath - 备份目标目录的完整路径
     //
-    // 返回值:
-    //   true  - 备份成功
-    //   false - 备份失败（目录无法创建或源数据不存在）
+    // 返回值: VoidResult
+    //   Success    - 备份成功
+    //   UnknownError - 备份失败（目录无法创建或源数据不存在）
     //
     // 功能说明:
     //   根据数据库类型执行备份操作：
     //   - MySQL: 复制 MySQL 数据目录到指定位置
     //   - SQLite: 复制数据库文件到指定位置
     //   备份文件名包含时间戳，格式为 yyyyMMddHHmmss。
-    //
-    // 注意事项:
-    //   - MySQL 备份复制的是数据文件，不是 SQL 导出
-    //   - 大数据库备份可能耗时较长，期间会阻塞其他操作
-    //   - 确保目标目录有足够的磁盘空间
-    //   - 建议在数据库空闲时执行备份
-    //
-    // 使用示例:
-    //   if (db->Backup("F:/MeyerScan/backup")) {
-    //       qDebug() << "备份成功，时间：" << db->GetLastBackupTime();
-    //   }
     // -------------------------------------------------------------------------
-    virtual bool Backup(const char* backupPath) = 0;
+    virtual VoidResult Backup(const char* backupPath) = 0;
 
     // -------------------------------------------------------------------------
     // GetLastBackupTime - 获取上次备份时间
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   上次成功备份的时间戳字符串（格式：yyyyMMddHHmmss）
-    //   从未备份则返回空字符串
-    //
-    // 功能说明:
-    //   返回最近一次成功备份的时间戳。
-    //
-    // 使用示例:
-    //   const char* time = db->GetLastBackupTime();
-    //   qDebug() << "上次备份时间：" << time;
+    // 返回值: 上次成功备份的时间戳字符串（格式：yyyyMMddHHmmss）
+    //         从未备份则返回空字符串
     // -------------------------------------------------------------------------
     virtual const char* GetLastBackupTime() const = 0;
 
@@ -370,24 +409,15 @@ public:
     // 参数:
     //   sql - SQL 查询语句（UTF-8 编码）
     //
-    // 返回值: DbResult 结构体，包含执行结果和状态
-    //
-    // 功能说明:
-    //   执行 SELECT 类型的 SQL 查询语句。
-    //   当前版本仅返回执行状态，不返回结果集。
+    // 返回值: Result<DbResult>
+    //   成功时 data.affectedRows 表示返回的行数
+    //   失败时 error 包含错误码，message 包含错误描述
     //
     // 注意事项:
-    //   - 必须先连接数据库（IsConnected() == true）
+    //   - 必须先连接数据库
     //   - SQL 语句必须是有效的查询语句
-    //   - 如需获取查询结果，需要扩展 DbResult 结构体
-    //
-    // 使用示例:
-    //   DbResult result = db->ExecuteQuery("SELECT * FROM user_tbl");
-    //   if (!result.success) {
-    //       qDebug() << "查询失败：" << result.errorMessage;
-    //   }
     // -------------------------------------------------------------------------
-    virtual DbResult ExecuteQuery(const char* sql) = 0;
+    virtual Result<DbResult> ExecuteQuery(const char* sql) = 0;
 
     // -------------------------------------------------------------------------
     // ExecuteUpdate - 执行更新语句（INSERT/UPDATE/DELETE）
@@ -395,26 +425,15 @@ public:
     // 参数:
     //   sql - SQL 更新语句（UTF-8 编码）
     //
-    // 返回值: DbResult 结构体，包含执行结果、影响行数和状态
-    //
-    // 功能说明:
-    //   执行 INSERT、UPDATE、DELETE 等修改数据的 SQL 语句。
-    //   返回结果中包含受影响的行数。
+    // 返回值: Result<DbResult>
+    //   成功时 data.affectedRows 表示受影响的行数
+    //   失败时 error 包含错误码，message 包含错误描述
     //
     // 注意事项:
     //   - 必须先连接数据库
-    //   - affectedRows 字段表示受影响的行数
     //   - 建议在事务中执行多条更新语句
-    //
-    // 使用示例:
-    //   DbResult result = db->ExecuteUpdate(
-    //       "UPDATE user_tbl SET name='张三' WHERE id=1"
-    //   );
-    //   if (result.success) {
-    //       qDebug() << "更新了" << result.affectedRows << "行";
-    //   }
     // -------------------------------------------------------------------------
-    virtual DbResult ExecuteUpdate(const char* sql) = 0;
+    virtual Result<DbResult> ExecuteUpdate(const char* sql) = 0;
 
     // -------------------------------------------------------------------------
     // ExecuteScript - 批量执行 SQL 脚本
@@ -423,24 +442,16 @@ public:
     //   sqlScripts - SQL 语句数组指针
     //   count      - SQL 语句数量
     //
-    // 返回值: 成功执行的 SQL 语句数量
+    // 返回值: int32_t — 成功执行的 SQL 语句数量
     //
     // 功能说明:
-    //   批量执行多条 SQL 语句，适用于初始化脚本、批量导入等场景。
+    //   批量执行多条 SQL 语句，某条语句失败不会中断后续语句的执行。
+    //   返回值可能小于 count，表示部分语句失败。
+    //   如需原子性，请使用事务（BeginTransaction/Commit）。
     //
     // 注意事项:
-    //   - 某条语句失败不会中断后续语句的执行
-    //   - 返回值可能小于 count，表示部分语句失败
-    //   - 如需原子性，请使用事务（BeginTransaction/Commit）
-    //
-    // 使用示例:
-    //   const char* scripts[] = {
-    //       "INSERT INTO table1 VALUES (1, 'a')",
-    //       "INSERT INTO table1 VALUES (2, 'b')",
-    //       "INSERT INTO table1 VALUES (3, 'c')"
-    //   };
-    //   int success = db->ExecuteScript(scripts, 3);
-    //   qDebug() << "成功执行" << success << "条语句";
+    //   - 返回值是成功数量而非错误码，因此不使用 Result 包装
+    //   - 如需获取每条语句的执行结果，请逐条调用 ExecuteUpdate
     // -------------------------------------------------------------------------
     virtual int32_t ExecuteScript(const char** sqlScripts, int32_t count) = 0;
 
@@ -451,67 +462,33 @@ public:
     // -------------------------------------------------------------------------
     // BeginTransaction - 开始事务
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 事务开始成功
-    //   false - 事务开始失败（数据库不支持或已处于事务中）
-    //
-    // 功能说明:
-    //   开始一个数据库事务。在事务中的所有操作要么全部成功，
-    //   要么全部回滚，保证数据一致性。
+    // 返回值: VoidResult
+    //   Success    - 事务开始成功
+    //   DbTransactionFailed - 事务开始失败
     //
     // 注意事项:
     //   - 必须先连接数据库
     //   - 事务必须配对使用 Begin/Commit 或 Begin/Rollback
-    //   - 长时间未提交的事务可能锁表，影响其他操作
-    //   - SQLite 默认不支持嵌套事务
-    //
-    // 使用示例:
-    //   if (db->BeginTransaction()) {
-    //       db->ExecuteUpdate("INSERT ...");
-    //       db->ExecuteUpdate("UPDATE ...");
-    //       db->Commit();  // 或 db->Rollback();
-    //   }
     // -------------------------------------------------------------------------
-    virtual bool BeginTransaction() = 0;
+    virtual VoidResult BeginTransaction() = 0;
 
     // -------------------------------------------------------------------------
     // Commit - 提交事务
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 提交成功
-    //   false - 提交失败（未开启事务或数据库错误）
-    //
-    // 功能说明:
-    //   提交当前事务，将所有修改永久保存到数据库。
-    //
-    // 注意事项:
-    //   - 必须先调用 BeginTransaction()
-    //   - 提交后事务自动结束
+    // 返回值: VoidResult
+    //   Success    - 提交成功
+    //   DbTransactionFailed - 提交失败
     // -------------------------------------------------------------------------
-    virtual bool Commit() = 0;
+    virtual VoidResult Commit() = 0;
 
     // -------------------------------------------------------------------------
     // Rollback - 回滚事务
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 回滚成功
-    //   false - 回滚失败（未开启事务）
-    //
-    // 功能说明:
-    //   回滚当前事务，撤销事务中的所有修改。
-    //
-    // 注意事项:
-    //   - 必须先调用 BeginTransaction()
-    //   - 回滚后事务自动结束
-    //   - 发生错误时应主动回滚，释放锁定的资源
+    // 返回值: VoidResult
+    //   Success    - 回滚成功
+    //   DbTransactionFailed - 回滚失败
     // -------------------------------------------------------------------------
-    virtual bool Rollback() = 0;
+    virtual VoidResult Rollback() = 0;
 
     // =========================================================================
     // 配置管理方法
@@ -520,46 +497,24 @@ public:
     // -------------------------------------------------------------------------
     // GetConfig - 获取当前配置
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值: DbConfig 结构体，包含当前所有配置参数
-    //
-    // 功能说明:
-    //   返回当前加载的数据库配置信息。
-    //
-    // 使用示例:
-    //   DbConfig config = db->GetConfig();
-    //   qDebug() << "数据库类型：" << config.dbType;
-    //   qDebug() << "MySQL 地址：" << config.mysqlHost;
+    // 返回值: const DbConfig& — 当前配置的常引用
     // -------------------------------------------------------------------------
-    virtual DbConfig GetConfig() const = 0;
+    virtual const DbConfig& GetConfig() const = 0;
 
     // -------------------------------------------------------------------------
     // SetDatabaseType - 切换数据库类型
+    // 说明:
+    //   数据库类型切换属于基础设施能力，不是业务逻辑。
+    //   上层 Service 决定何时切换，Database 只负责安全执行。
     // -------------------------------------------------------------------------
     // 参数:
     //   dbType - 目标数据库类型
     //
-    // 返回值:
-    //   true  - 切换成功
-    //   false - 切换失败（连接新数据库失败）
-    //
-    // 功能说明:
-    //   在运行时切换数据库类型。会先断开当前连接，
-    //   然后连接到新类型的数据库。
-    //
-    // 注意事项:
-    //   - 切换会断开当前连接
-    //   - 确保配置文件中包含目标类型的配置
-    //   - 切换失败时需要重新调用 Connect()
-    //
-    // 使用示例:
-    //   // 从 MySQL 切换到 SQLite
-    //   if (db->SetDatabaseType(DatabaseType::SQLite)) {
-    //       qDebug() << "已切换到 SQLite";
-    //   }
+    // 返回值: VoidResult
+    //   Success            - 切换成功
+    //   DbConnectionFailed - 连接新数据库失败
     // -------------------------------------------------------------------------
-    virtual bool SetDatabaseType(DatabaseType dbType) = 0;
+    virtual VoidResult SetDatabaseType(DatabaseType dbType) = 0;
 
     // =========================================================================
     // 版本信息方法
@@ -568,15 +523,14 @@ public:
     // -------------------------------------------------------------------------
     // GetModuleVersion - 获取模块版本号
     // -------------------------------------------------------------------------
-    // 参数: 无
+    // 返回值: 版本字符串指针，格式如 "MeyerScan_Database v1.1.0 (2026-06-17)"
     //
-    // 返回值: 版本字符串指针，格式如 "MeyerScan_Database v1.0.0"
-    //
-    // 功能说明:
-    //   返回数据库模块的版本信息。
-    //
-    // 使用示例:
-    //   qDebug() << "数据库模块版本：" << db->GetModuleVersion();
+    // 设计说明:
+    //   返回简单字符串而非 ModuleVersion 结构体，原因：
+    //   1. 字符串在调试器中一目了然
+    //   2. 不依赖尚未建好的 Core.lib
+    //   3. 简单字符串在 DLL 边界上更安全
+    //   后续如需要程序化比较版本号，再增加 GetModuleInfo(ModuleVersion&) 接口。
     // -------------------------------------------------------------------------
     virtual const char* GetModuleVersion() const = 0;
 
@@ -587,23 +541,14 @@ public:
     // -------------------------------------------------------------------------
     // Shutdown - 关闭数据库模块
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值: 无
+    // 返回值: VoidResult
+    //   Success - 关闭成功
     //
     // 功能说明:
     //   关闭数据库模块，释放所有资源。
-    //   包括断开连接、清理内部状态等。
-    //
-    // 注意事项:
-    //   - 程序退出前必须调用此方法
-    //   - 调用后可以重新 Init() 和 Connect()
-    //   - 等效于调用 Disconnect()
-    //
-    // 使用示例:
-    //   db->Shutdown();
+    //   调用后可以重新 Init() 和 Connect()。
     // -------------------------------------------------------------------------
-    virtual void Shutdown() = 0;
+    virtual VoidResult Shutdown() = 0;
 };
 
 // =============================================================================
@@ -618,12 +563,6 @@ public:
 //   获取数据库模块的唯一实例（单例模式）。
 //   这是访问数据库功能的唯一入口。
 //
-// 设计原因:
-//   使用工厂函数而非全局变量，可以：
-//   1. 控制实例的创建时机
-//   2. 隐藏实现类的细节
-//   3. 保证跨 DLL 边界的正确行为
-//
 // 注意事项:
 //   - 返回的指针不需要删除（由 DLL 内部管理）
 //   - 首次调用会创建实例，后续调用返回同一实例
@@ -634,15 +573,16 @@ public:
 //
 //   int main() {
 //       IDatabase* db = GetDatabase();
-//       if (!db) {
-//           return -1;  // 理论上不会发生
-//       }
+//       if (!db) return -1;
 //
-//       db->Init("config/db_config.json");
-//       db->Connect();
+//       if (db->Init("config/db_config.json").IsError()) {
+//           return -1;
+//       }
+//       if (db->Connect().IsError()) {
+//           return -1;
+//       }
 //       // ... 使用数据库 ...
 //       db->Shutdown();
-//
 //       return 0;
 //   }
 // =============================================================================

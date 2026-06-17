@@ -100,6 +100,9 @@
     <ClCompile Include="src\LoggerImpl.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="src\Version.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="include\Logger.h" />
     <ClInclude Include="src\LogFormat.h" />
     <ClInclude Include="src\LogBuffer.h" />

@@ -65,6 +65,7 @@ add_library(${MODULE_NAME} SHARED
     src/LogRotation.cpp     # 步骤 3: 基于日期/大小的文件轮转逻辑
     src/LogWriter.cpp       # 步骤 4: 文件 I/O + 跨进程命名互斥量
     src/LoggerImpl.cpp      # 步骤 5: 单例 + 流水线编排
+    src/Version.rc          # Windows 版本资源
 )
 
 # ---- 包含路径 ---------------------------------------------------------------
@@ -109,9 +110,10 @@ set_target_properties(${MODULE_NAME} PROPERTIES
 #      被设置之前依赖 msvcr140.dll 可被发现。
 #   b) Logger.dll 很小（/MT 约 200 KB vs /MD 约 100 KB）—
 #      额外的大小微不足道。
-#   c) 所有其他模块也使用 /MT，因此没有 CRT 交叉干扰。
+#   c) Logger 的公开 ABI 只使用 const char* / enum / 纯虚接口，
+#      可被 /MD 的 Qt 模块通过导入库或运行时动态加载安全调用。
 #
-# 如果你的项目标准化为 /MD，请移除此设置或设为 "MultiThreadedDLL"。
+# 项目规则: 无 Qt 依赖的基础模块可使用 /MT；有 Qt 依赖的模块使用 /MD。
 if(MSVC)
     set_property(TARGET ${MODULE_NAME} PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

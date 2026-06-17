@@ -60,6 +60,7 @@ public:
     LogLevel GetLogLevel() const override;
     void     Flush() override;
     void     Shutdown() override;
+    const char* GetModuleVersion() const override;
 
 private:
     // 只有单例可以构造和析构。

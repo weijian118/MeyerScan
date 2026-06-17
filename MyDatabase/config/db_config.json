@@ -6,5 +6,5 @@
         "service": "MSCANDB",
         "database": "mscan"
     },
-    "sqlitePath": "F:/MeyerScan/MyCaseManager/MeyerScanSQLite.db"
+    "sqlitePath": "F:/MeyerScan/MyDatabase/data/MeyerScanSQLite.db"
 }

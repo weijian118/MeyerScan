@@ -1,0 +1,43 @@
+// =============================================================================
+// 文件:    Version.rc
+// 模块:    MeyerScan_Logger.dll
+// 用途:    Windows 文件版本资源
+//
+// 说明:
+//   编译后可在文件属性 -> 详细信息中查看模块名称、版本号、公司名等。
+//   版本号必须与 ILogger::GetModuleVersion() 返回值保持一致。
+// =============================================================================
+
+#include <windows.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION     1,0,0,0
+ PRODUCTVERSION  1,0,0,0
+ FILEFLAGSMASK   0x3fL
+#ifdef _DEBUG
+ FILEFLAGS       VS_FF_DEBUG
+#else
+ FILEFLAGS       0x0L
+#endif
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_DLL
+ FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "FileDescription",  "MeyerScan Logger Module"
+            VALUE "FileVersion",      "1, 0, 0, 0"
+            VALUE "InternalName",     "MeyerScan_Logger"
+            VALUE "OriginalFilename", "MeyerScan_Logger.dll"
+            VALUE "ProductName",      "MeyerScan Digital Dental Scanner"
+            VALUE "ProductVersion",   "1, 0, 0, 0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -137,7 +137,7 @@ public:
     // 对不适用的字段使用 ""（空字符串）；绝不要传递 nullptr。
     //
     // 参数语义:
-    //   module:    调用方 DLL/EXE 的名称，例如 "CaseManager"。
+    //   module:    调用方 DLL/EXE 的名称，例如 "CaseService"。
     //              由 MEYER_LOG_* 宏通过 MEYER_MODULE_NAME 编译期定义
     //              自动填充。
     //   operation: 模块正在执行的操作，例如 "CreateCase"、
@@ -185,6 +185,11 @@ public:
     // 直到再次调用 Init()。
     virtual void     Shutdown() = 0;
 
+    // 返回模块版本字符串，格式如:
+    // "MeyerScan_Logger v1.0.0 (2026-06-17)"。
+    // 使用 const char*，避免跨 DLL 边界传递 C++ 对象。
+    virtual const char* GetModuleVersion() const = 0;
+
     // =================================================================
     // 便捷重载 — 内联，编译到调用方的翻译单元中。
     // 这些永远不会在 DLL 边界上传递复杂类型。
@@ -221,7 +226,7 @@ public:
     bool Init(const QString& logDir, LogLevel level) {
         // toUtf8() 返回 QByteArray；constData() 提供一个
         // 在临时对象生命周期内有效的以 null 结尾的指针。
-        return Init(logDir.toUtf8().constData());
+        return Init(logDir.toUtf8().constData(), level);
     }
 
     void Write(LogLevel level,

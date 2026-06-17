@@ -1,0 +1,53 @@
+// =============================================================================
+// 文件:    Version.rc
+// 模块:    MeyerScan_Database.dll
+// 版本号:  v1.1.0
+//
+// 用途:
+//   Windows 版本资源文件。编译为 .res 并链接到 DLL 中，
+//   使文件属性对话框（右键→属性→详细信息）显示正确的版本信息。
+//
+// 规范:
+//   每个 EXE/DLL 模块必须包含此文件。
+//   版本号必须与 GetModuleVersion() 返回值中的版本号一致。
+//
+// 更新方法:
+//   版本升级时同步修改以下两处：
+//     1. Version.rc 中的 FILEVERSION / PRODUCTVERSION
+//     2. 对应的 GetModuleVersion() 字符串返回值
+// =============================================================================
+
+#include <windows.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION     1,1,0,0
+ PRODUCTVERSION  1,1,0,0
+ FILEFLAGSMASK   0x3fL
+#ifdef _DEBUG
+ FILEFLAGS       VS_FF_DEBUG
+#else
+ FILEFLAGS       0x0L
+#endif
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_DLL
+ FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",        "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "FileDescription",    "MeyerScan Database Module"
+            VALUE "FileVersion",        "1, 1, 0, 0"
+            VALUE "InternalName",       "MeyerScan_Database"
+            VALUE "LegalCopyright",     "Copyright (C) 2022-2032 Meyer Optoelectronic"
+            VALUE "OriginalFilename",   "MeyerScan_Database.dll"
+            VALUE "ProductName",        "MeyerScan Digital Dental Scanner"
+            VALUE "ProductVersion",     "1, 1, 0, 0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

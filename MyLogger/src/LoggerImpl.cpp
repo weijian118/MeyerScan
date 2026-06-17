@@ -238,6 +238,10 @@ void LoggerImpl::Shutdown() {
     m_initialized.store(false);
 }
 
+const char* LoggerImpl::GetModuleVersion() const {
+    return "MeyerScan_Logger v1.0.0 (2026-06-17)";
+}
+
 // =========================================================================
 // 后台线程
 // =========================================================================

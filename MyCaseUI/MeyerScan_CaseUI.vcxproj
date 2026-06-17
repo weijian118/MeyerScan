@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{E4F5A6B7-C8D9-0123-EF12-345678901235}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>MeyerScan_CaseUI</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>MeyerScan_CaseUI</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>MEYERSCAN_CASEUI_EXPORTS;MEYER_MODULE_NAME="MeyerScan_CaseUI";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyLogger\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtSql;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Sql.lib;MeyerScan_Database.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(ProjectDir)..\MyDatabase\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y /D &quot;$(ProjectDir)..\MyDatabase\bin\$(Configuration)\MeyerScan_Database.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;$(ProjectDir)..\MyDatabase\bin\$(Configuration)\libmysql.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll&quot; &quot;$(OutDir)platforms\&quot;
+xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll&quot; &quot;$(OutDir)sqldrivers\&quot;
+xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll&quot; &quot;$(OutDir)sqldrivers\&quot;</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="src\CaseUIImpl.cpp" /></ItemGroup>
+  <ItemGroup><ResourceCompile Include="src\Version.rc" /></ItemGroup>
+  <ItemGroup><ClInclude Include="include\CaseUI.h" /><ClInclude Include="src\CaseUIImpl.h" /></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

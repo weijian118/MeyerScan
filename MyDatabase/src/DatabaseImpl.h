@@ -1,17 +1,29 @@
-// =============================================================================
-// 文件名:    DatabaseImpl.h
-// 模块名:    MeyerScan_Database.dll
-// 版本号:    v1.0.0
+﻿// =============================================================================
+// 文件:    DatabaseImpl.h
+// 模块:    MeyerScan_Database.dll
+// 版本号:  v1.1.0
 //
 // 用途说明:
 //   数据库接口的具体实现类头文件。继承 IDatabase 接口，
-//   提供完整的数据库操作功能实现，包括连接管理、SQL执行、
+//   提供完整的数据库操作功能实现，包括连接管理、SQL 执行、
 //   事务控制、备份功能等。
 //
 // 设计原则:
 //   1. 单例模式：整个进程只存在一个 DatabaseImpl 实例
 //   2. 线程安全：使用 QMutex 保护所有公共方法
 //   3. RAII 资源管理：利用 C++ 构造/析构函数管理资源生命周期
+//   4. Logger 动态加载：通过 LoadLibrary/GetProcAddress 在运行时
+//      获取 Logger 实例，无需编译时链接 Logger.lib，避免 CRT 冲突
+//
+// Logger 集成说明:
+//   MeyerScan_Logger.dll 使用 /MT（静态 CRT）编译，
+//   MeyerScan_Database.dll 使用 /MD（动态 CRT）编译。
+//   两者 CRT 不同，不能直接链接 Logger.lib。
+//   因此采用运行时动态加载方式：
+//   1. 在首次需要写日志时调用 LoadLibrary("MeyerScan_Logger.dll")
+//   2. 通过 GetProcAddress 获取 GetLogger() 函数指针
+//   3. 缓存 ILogger* 实例，后续直接使用
+//   4. 如果 Logger.dll 不存在或加载失败，日志操作静默跳过
 //
 // 内部结构:
 //   - m_config: 存储数据库配置信息
@@ -22,7 +34,7 @@
 //
 // 注意事项:
 //   - 此类为内部实现类，用户代码不应直接使用
-//   - 所有公共接���方法都加锁，确保线程安全
+//   - 所有公共接口方法都加锁，确保线程安全
 //   - 内部方法不加锁，由调用者负责加锁
 // =============================================================================
 
@@ -34,7 +46,54 @@
 #include <QSqlError>            // Qt SQL 错误类
 #include <QMutex>               // Qt 互斥锁类
 #include <QDateTime>            // Qt 日期时间类
+#include <QString>              // Qt 字符串类
 #include <memory>               // C++ 智能指针
+
+// =============================================================================
+// Logger 相关前向声明和类型定义
+// =============================================================================
+// 说明:
+//   不使用 Logger.h 中的 extern "C" ILogger* GetLogger() 声明
+//   （该声明使用 __declspec(dllimport) 需要链接 Logger.lib），
+//   而是通过 LoadLibrary/GetProcAddress 在运行时动态加载。
+//   因此这里手动声明 ILogger 的完整接口，以及定义函数指针类型。
+// =============================================================================
+
+// LogLevel 枚举定义（与 Logger.h 保持一致）
+// 注意: Logger.h 中 LogLevel 定义在 enum class 中，
+// 此处重复定义以确保 DatabaseImpl 中可用。
+// @todo 待 Core.lib 建好后，改为 #include "Core.h"
+enum class LogLevel : int {
+    Debug   = 0,
+    Info    = 1,
+    Warning = 2,
+    Error   = 3,
+    Fatal   = 4
+};
+
+// ILogger 接口前向声明（完整接口在 Logger.h 中定义）
+// 这里只声明我们需要用到的 Write 方法。
+// 实际调用时通过函数指针，不需要完整的类定义。
+class ILogger {
+public:
+    virtual ~ILogger() = default;
+    virtual bool Init(const char* logDir, LogLevel level) = 0;
+    virtual void Write(LogLevel level,
+                       const char* module,
+                       const char* operation,
+                       const char* deviceId,
+                       const char* caseId,
+                       const char* operator_,
+                       const char* content) = 0;
+    virtual void SetLogLevel(LogLevel level) = 0;
+    virtual LogLevel GetLogLevel() const = 0;
+    virtual void Flush() = 0;
+    virtual void Shutdown() = 0;
+    virtual const char* GetModuleVersion() const = 0;
+};
+
+// GetLogger 函数指针类型
+using GetLoggerFunc = ILogger* (*)();
 
 // =============================================================================
 // DatabaseImpl 类声明
@@ -51,14 +110,10 @@ public:
     // =========================================================================
     // 说明:
     //   获取 DatabaseImpl 的唯一实例。使用局部静态变量实现线程安全的单例。
-    //   C++11 标准保证局部静态变量的线程安全性。
+    //   C++11 标准保证局部静态变量初始化的线程安全性。
     //
     // 返回值:
     //   DatabaseImpl 引用，指向唯一实例
-    //
-    // 使用示例:
-    //   DatabaseImpl& db = DatabaseImpl::Instance();
-    //   db.Init("config.json");
     // =========================================================================
     static DatabaseImpl& Instance();
 
@@ -71,39 +126,37 @@ public:
     // =========================================================================
 
     // 初始化：加载配置文件
-    // 参数: configPath - JSON 配置文件路径
-    // 返回: 是否初始化成功
-    bool Init(const char* configPath) override;
+    VoidResult Init(const char* configPath) override;
 
     // 连接管理：建立数据库连接
-    bool Connect() override;
-    void Disconnect() override;
+    VoidResult Connect() override;
+    VoidResult Disconnect() override;
     bool IsConnected() const override;
     DatabaseType GetDatabaseType() const override;
 
     // 数据库备份
-    bool Backup(const char* backupPath) override;
+    VoidResult Backup(const char* backupPath) override;
     const char* GetLastBackupTime() const override;
 
     // SQL 执行
-    DbResult ExecuteQuery(const char* sql) override;
-    DbResult ExecuteUpdate(const char* sql) override;
+    Result<DbResult> ExecuteQuery(const char* sql) override;
+    Result<DbResult> ExecuteUpdate(const char* sql) override;
     int32_t ExecuteScript(const char** sqlScripts, int32_t count) override;
 
     // 事务管理
-    bool BeginTransaction() override;
-    bool Commit() override;
-    bool Rollback() override;
+    VoidResult BeginTransaction() override;
+    VoidResult Commit() override;
+    VoidResult Rollback() override;
 
     // 配置管理
-    DbConfig GetConfig() const override;
-    bool SetDatabaseType(DatabaseType dbType) override;
+    const DbConfig& GetConfig() const override;
+    VoidResult SetDatabaseType(DatabaseType dbType) override;
 
     // 版本信息
     const char* GetModuleVersion() const override;
 
     // 关闭
-    void Shutdown() override;
+    VoidResult Shutdown() override;
 
 private:
     // =========================================================================
@@ -127,12 +180,45 @@ private:
     // =========================================================================
     // 禁止拷贝和赋值
     // =========================================================================
-    // 说明:
-    //   将拷贝构造函数和赋值运算符声明为 delete，
-    //   防止意外创建副本，破坏单例模式。
-    // =========================================================================
     DatabaseImpl(const DatabaseImpl&) = delete;
     DatabaseImpl& operator=(const DatabaseImpl&) = delete;
+
+    // =========================================================================
+    // Logger 动态加载
+    // =========================================================================
+    // 说明:
+    //   运行时动态加载 Logger.dll 并缓存 ILogger* 指针。
+    //   通过 LoadLibrary/GetProcAddress 方式加载，避免编译时
+    //   链接 Logger.lib 带来的 CRT 冲突问题。
+    //
+    // 线程安全:
+    //   首次调用时执行 LoadLibrary（仅一次），后续直接返回缓存指针。
+    //   不需要额外加锁，因为 LoadLibrary 是线程安全的。
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // GetLogger - 获取 Logger 实例
+    // -------------------------------------------------------------------------
+    // 返回值:
+    //   ILogger* 指针（如果 Logger.dll 加载成功）
+    //   nullptr  （如果 Logger.dll 不存在或加载失败）
+    //
+    // 功能说明:
+    //   1. 检查 s_logger 是否已缓存，有则直接返回
+    //   2. 调用 LoadLibrary 加载 MeyerScan_Logger.dll
+    //   3. 通过 GetProcAddress 获取 GetLogger 函数指针
+    //   4. 调用 GetLogger() 获取 ILogger 实例并缓存
+    //   5. 后续调用直接返回缓存的指针
+    //
+    // 注意事项:
+    //   - 此方法可被多次调用，实际加载只执行一次
+    //   - 返回 nullptr 时调用方应静默跳过日志写入
+    // -------------------------------------------------------------------------
+    static ILogger* GetLogger();
+
+    // 缓存 Logger 实例指针和模块句柄
+    static ILogger* s_logger;
+    static void*    s_loggerModule;
 
     // =========================================================================
     // 内部方法（线程安全由调用者保证）
@@ -141,160 +227,74 @@ private:
     // -------------------------------------------------------------------------
     // LoadConfig - 加载配置文件
     // -------------------------------------------------------------------------
-    // 参数:
-    //   configPath - 配置文件路径（UTF-8 编码）
-    //
-    // 返回值:
-    //   true  - 加载成功
-    //   false - 加载失败（文件不存在、格式错误等）
-    //
-    // 功能说明:
-    //   读取 JSON 配置文件，���析数据库类型和连接参数。
-    //   支持的配置项：
-    //   - databaseType: 数据库类型 ("mysql" 或 "sqlite")
-    //   - mysql: MySQL 连接配置（host, port, service, database）
-    //   - sqlitePath: SQLite 数据库文件路径
-    //
-    // 注意事项:
-    //   - 此方法不加锁，由调用者（Init）负责加锁
-    //   - 解析失败会记录错误日志
-    // -------------------------------------------------------------------------
     bool LoadConfig(const char* configPath);
 
     // -------------------------------------------------------------------------
     // ConnectMySQL - 连接 MySQL 数据库
-    // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 连接成功
-    //   false - 连接失败
-    //
-    // 功能说明:
-    //   使用 QMYSQL 驱动连接 MySQL 数据库。
-    //   连接参数从 m_config 中获取，用户名密码硬编码。
-    //
-    // 注意事项:
-    //   - 不加锁，由 Connect() 调用时加锁
-    //   - 连接使用唯一连接名，避免与 Qt 内置连接冲突
-    //   - 失败时会记录详细错误信息
     // -------------------------------------------------------------------------
     bool ConnectMySQL();
 
     // -------------------------------------------------------------------------
     // ConnectSQLite - 连接 SQLite 数据库
     // -------------------------------------------------------------------------
-    // 参数: 无
-    //
-    // 返回值:
-    //   true  - 连接成功
-    //   false - 连接失败
-    //
-    // 功能说明:
-    //   使用 QSQLITE 驱动连接 SQLite 数据库。
-    //   如果数据库文件不存在，会自动创建。
-    //
-    // 注意事项:
-    //   - SQLite 为文件型数据库，无需服务器
-    //   - 确保目标目录存在且有写权限
-    // -------------------------------------------------------------------------
     bool ConnectSQLite();
 
     // -------------------------------------------------------------------------
     // BackupMySQL - 备份 MySQL 数据库
-    // -------------------------------------------------------------------------
-    // 参数:
-    //   backupPath - 备份目标目录
-    //
-    // 返回值:
-    //   true  - 备份成功
-    //   false - 备份失败
-    //
-    // 功能说明:
-    //   使用 robocopy 命令复制 MySQL 数据目录到备份位置。
-    //   备份目录名称包含时间戳（格式：yyyyMMddHHmmss-数据库名）。
-    //
-    // 注意事项:
-    //   - 备份前会清空目标目录（如果存在）
-    //   - 备份期间会阻塞数据库写入操作
-    //   - 大型数据库备份可能耗时较长
-    //   - 需要确保有足够的磁盘空间
     // -------------------------------------------------------------------------
     bool BackupMySQL(const char* backupPath);
 
     // -------------------------------------------------------------------------
     // BackupSQLite - 备份 SQLite 数据库
     // -------------------------------------------------------------------------
-    // 参数:
-    //   backupPath - 备份目标目录
-    //
-    // 返回值:
-    //   true  - 备份成功
-    //   false - 备份失败
-    //
-    // 功能说明:
-    //   复制 SQLite 数据库文件到备份位置。
-    //   备份文件名包含时间戳。
-    //
-    // 注意事项:
-    //   - 备份前建议先关闭数据库连接（Disconnect）
-    //   - 如果文件正在被写入，复制可能失败
-    // -------------------------------------------------------------------------
     bool BackupSQLite(const char* backupPath);
+
+    // =========================================================================
+    // 日志辅助方法
+    // =========================================================================
+    // 说明:
+    //   统一通过 GetLogger() 动态加载的 Logger 实例输出日志。
+    //   如果 Logger.dll 不可用，日志操作静默跳过，不影响功能。
+    // =========================================================================
 
     // -------------------------------------------------------------------------
     // LogError - 输出错误日志
     // -------------------------------------------------------------------------
-    // 参数:
-    //   operation - 操作名称（用于标识日志来源）
-    //   message   - 日志消息内容
-    //
     // 功能说明:
-    //   统一的日志输出函数，格式化为 "[Database] 操作名: 消息内容"。
-    //   使用 qDebug() 输出到调试控制台。
-    //
-    // 设计原因:
-    //   统一日志格式，便于日志收集和过滤。
-    //   后续可以替换为 MeyerScan_Logger 的日志接口。
+    //   输出 Error 级别日志，包含模块名 "MeyerScan_Database"、
+    //   操作名和内容。
     // -------------------------------------------------------------------------
     void LogError(const char* operation, const char* message);
+
+    // -------------------------------------------------------------------------
+    // LogInfo - 输出信息日志
+    // -------------------------------------------------------------------------
+    // 功能说明:
+    //   输出 Info 级别日志。
+    // -------------------------------------------------------------------------
+    void LogInfo(const char* operation, const char* message);
 
     // =========================================================================
     // 成员变量
     // =========================================================================
 
     // 数据库配置信息
-    // 说明: 存储从配置文件加载的连接参数
     DbConfig m_config;
 
     // Qt SQL 数据库对象
-    // 说明: Qt 封装的数据库连接，封装了底层的数据库连接
-    // 设计: 使用单个连接，通过 QUuid 生成唯一连接名避免冲突
     QSqlDatabase m_db;
 
     // 线程互斥锁
-    // 说明: 保护所有公共方法，实现线程安全访问
-    // 设计: 使用递归锁可能会导致死锁���这里使用普通锁
-    // 注意: 锁定顺序要一致，避免死锁
     mutable QMutex m_mutex;
 
     // 连接状态标志
-    // 说明: 标记当前是否已建立数据库连接
-    // 注意: 不直接依赖 m_db.isOpen()，使用独立标志便于管理
     bool m_connected;
 
     // 上次备份时间
-    // 说明: 存储最近一次成功备份的时间戳
-    // 格式: yyyyMMddHHmmss（如 "20260616120000"）
-    // 设计: 使用固定长度字符数组，避免动态内存
     char m_lastBackupTime[32];
 };
 
 // =============================================================================
-// 友元声明
+// DLL 导出函数声明
 // =============================================================================
-// 说明:
-//   将 GetDatabase 声明为友元，使其可以访问私有构造函数
-//   这样可以在不修改构造函数可见性的情况下实现工厂函数
-// =============================================================================
-// extern "C" MEYERSCAN_DATABASE_API IDatabase* GetDatabase();
+extern "C" MEYERSCAN_DATABASE_API IDatabase* GetDatabase();
