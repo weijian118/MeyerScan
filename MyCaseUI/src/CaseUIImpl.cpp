@@ -82,7 +82,7 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     layout->setContentsMargins(18, 18, 18, 18);
     layout->setSpacing(12);
 
-    auto* header = new QLabel("Case Management", root);
+    auto* header = new QLabel(QApplication::translate("CaseUI", "Case Management"), root);
     QFont headerFont = header->font();
     headerFont.setPointSize(20);
     headerFont.setBold(true);
@@ -90,11 +90,11 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     layout->addWidget(header);
 
     auto* tabs = new QTabWidget(root);
-    tabs->addTab(CreatePatientTab(tabs), "Patients");
-    tabs->addTab(CreateOrderTab(tabs), "Orders");
+    tabs->addTab(CreatePatientTab(tabs), QApplication::translate("CaseUI", "Patients"));
+    tabs->addTab(CreateOrderTab(tabs), QApplication::translate("CaseUI", "Orders"));
     layout->addWidget(tabs, 1);
 
-    auto* status = new QLabel(QString("Status: %1").arg(m_lastStatus), root);
+    auto* status = new QLabel(QString("%1: %2").arg(QApplication::translate("CaseUI", "Status")).arg(m_lastStatus), root);
     status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
     layout->addWidget(status);
 
@@ -108,17 +108,29 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
 
     auto* toolbar = new QHBoxLayout();
     auto* search = new QLineEdit(page);
-    search->setPlaceholderText("Search patient name, phone or case id");
+    search->setPlaceholderText(QApplication::translate("CaseUI", "Search patient name, phone or case id"));
     toolbar->addWidget(search, 1);
 
-    const QStringList buttons = {"Import", "Export", "Delete", "New Patient"};
+    const QStringList buttons = {
+        QApplication::translate("CaseUI", "Import"),
+        QApplication::translate("CaseUI", "Export"),
+        QApplication::translate("CaseUI", "Delete"),
+        QApplication::translate("CaseUI", "New Patient")
+    };
     for (const QString& text : buttons) {
         toolbar->addWidget(new QPushButton(text, page));
     }
     layout->addLayout(toolbar);
 
     auto* table = new QTableWidget(0, 6, page);
-    table->setHorizontalHeaderLabels({"Patient", "Gender", "Age", "Case ID", "Orders", "Updated"});
+    table->setHorizontalHeaderLabels({
+        QApplication::translate("CaseUI", "Patient"),
+        QApplication::translate("CaseUI", "Gender"),
+        QApplication::translate("CaseUI", "Age"),
+        QApplication::translate("CaseUI", "Case ID"),
+        QApplication::translate("CaseUI", "Orders"),
+        QApplication::translate("CaseUI", "Updated")
+    });
     table->horizontalHeader()->setStretchLastSection(true);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -132,17 +144,30 @@ QWidget* CaseUIImpl::CreateOrderTab(QWidget* parent) {
 
     auto* toolbar = new QHBoxLayout();
     auto* search = new QLineEdit(page);
-    search->setPlaceholderText("Search order id, patient, doctor or type");
+    search->setPlaceholderText(QApplication::translate("CaseUI", "Search order id, patient, doctor or type"));
     toolbar->addWidget(search, 1);
 
-    const QStringList buttons = {"Import Order", "Export Order", "Open", "Delete"};
+    const QStringList buttons = {
+        QApplication::translate("CaseUI", "Import Order"),
+        QApplication::translate("CaseUI", "Export Order"),
+        QApplication::translate("CaseUI", "Open"),
+        QApplication::translate("CaseUI", "Delete")
+    };
     for (const QString& text : buttons) {
         toolbar->addWidget(new QPushButton(text, page));
     }
     layout->addLayout(toolbar);
 
     auto* table = new QTableWidget(0, 7, page);
-    table->setHorizontalHeaderLabels({"Order ID", "Patient", "Type", "Doctor", "Status", "Created", "Data"});
+    table->setHorizontalHeaderLabels({
+        QApplication::translate("CaseUI", "Order ID"),
+        QApplication::translate("CaseUI", "Patient"),
+        QApplication::translate("CaseUI", "Type"),
+        QApplication::translate("CaseUI", "Doctor"),
+        QApplication::translate("CaseUI", "Status"),
+        QApplication::translate("CaseUI", "Created"),
+        QApplication::translate("CaseUI", "Data")
+    });
     table->horizontalHeader()->setStretchLastSection(true);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);

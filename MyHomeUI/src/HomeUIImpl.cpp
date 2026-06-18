@@ -79,26 +79,31 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     layout->setContentsMargins(28, 24, 28, 24);
     layout->setSpacing(18);
 
-    auto* title = new QLabel("MeyerScan", root);
+    auto* title = new QLabel(QApplication::translate("HomeUI", "MeyerScan"), root);
     QFont titleFont = title->font();
     titleFont.setPointSize(24);
     titleFont.setBold(true);
     title->setFont(titleFont);
     layout->addWidget(title);
 
-    auto* subtitle = new QLabel("Create, browse, practice, and settings entry shell", root);
+    auto* subtitle = new QLabel(QApplication::translate("HomeUI", "Create, browse, practice, and settings entry shell"), root);
     subtitle->setStyleSheet("color:#555;");
     layout->addWidget(subtitle);
 
     auto* grid = new QGridLayout();
     grid->setSpacing(14);
 
-    const QStringList names = {"Create", "Browse", "Practice", "Settings"};
+    const QStringList names = {
+        QApplication::translate("HomeUI", "Create"),
+        QApplication::translate("HomeUI", "Browse"),
+        QApplication::translate("HomeUI", "Practice"),
+        QApplication::translate("HomeUI", "Settings")
+    };
     const QStringList descs = {
-        "Create patient and order information",
-        "Manage patients, orders, import/export and delete operations",
-        "Open scan practice without formal case data",
-        "Account, scan, calibration and common settings"
+        QApplication::translate("HomeUI", "Create patient and order information"),
+        QApplication::translate("HomeUI", "Manage patients, orders, import/export and delete operations"),
+        QApplication::translate("HomeUI", "Open scan practice without formal case data"),
+        QApplication::translate("HomeUI", "Account, scan, calibration and common settings")
     };
 
     for (int i = 0; i < names.size(); ++i) {
@@ -111,7 +116,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     layout->addLayout(grid);
     layout->addStretch();
 
-    auto* status = new QLabel(QString("Status: %1").arg(m_lastStatus), root);
+    auto* status = new QLabel(QString("%1: %2").arg(QApplication::translate("HomeUI", "Status")).arg(m_lastStatus), root);
     status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
     layout->addWidget(status);
 
