@@ -345,6 +345,7 @@ bool DatabaseImpl::ConnectMySQL() {
 
     // 创建 QMYSQL 数据库连接
     m_db = QSqlDatabase::addDatabase("QMYSQL", connectionName);
+    m_connectionName = connectionName;
 
     // 设置连接参数
     m_db.setHostName(QString::fromUtf8(m_config.mysqlHost));
@@ -357,6 +358,9 @@ bool DatabaseImpl::ConnectMySQL() {
     if (!m_db.open()) {
         LogError("ConnectMySQL",
                  m_db.lastError().text().toUtf8().constData());
+        m_db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(m_connectionName);
+        m_connectionName.clear();
         return false;
     }
 
@@ -379,6 +383,7 @@ bool DatabaseImpl::ConnectSQLite() {
 
     // 创建 QSQLITE 数据库连接
     m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+    m_connectionName = connectionName;
 
     // 设置数据库文件路径
     m_db.setDatabaseName(QString::fromUtf8(m_config.sqlitePath));
@@ -387,6 +392,9 @@ bool DatabaseImpl::ConnectSQLite() {
     if (!m_db.open()) {
         LogError("ConnectSQLite",
                  m_db.lastError().text().toUtf8().constData());
+        m_db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(m_connectionName);
+        m_connectionName.clear();
         return false;
     }
 
@@ -405,12 +413,20 @@ VoidResult DatabaseImpl::Disconnect() {
     QMutexLocker locker(&m_mutex);
 
     // 检查连接状态
-    if (m_connected && m_db.isOpen()) {
+    if (m_db.isValid() && m_db.isOpen()) {
         m_db.close();
-        m_db = QSqlDatabase();
-        m_connected = false;
+    }
+    m_db = QSqlDatabase();
+
+    if (!m_connectionName.isEmpty()) {
+        QSqlDatabase::removeDatabase(m_connectionName);
+        m_connectionName.clear();
+    }
+
+    if (m_connected) {
         LogInfo("Disconnect", "Database disconnected");
     }
+    m_connected = false;
 
     return VoidResult::Ok();
 }
@@ -750,6 +766,10 @@ VoidResult DatabaseImpl::SetDatabaseType(DatabaseType dbType) {
         if (m_connected && m_db.isOpen()) {
             m_db.close();
             m_db = QSqlDatabase();
+            if (!m_connectionName.isEmpty()) {
+                QSqlDatabase::removeDatabase(m_connectionName);
+                m_connectionName.clear();
+            }
             m_connected = false;
         }
 

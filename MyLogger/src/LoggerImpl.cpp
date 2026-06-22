@@ -143,6 +143,9 @@ void LoggerImpl::Write(LogLevel level,
                        const char* caseId,
                        const char* operator_,
                        const char* content) {
+    if (!m_initialized.load()) {
+        return;
+    }
 
     // ---- 1. 级别过滤（原子读取，无锁） ---------------------------------------
     // 这是整个日志器中最关键性能的一行。

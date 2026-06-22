@@ -40,6 +40,8 @@ int main(int argc, char* argv[]) {
         QTimer::singleShot(300, &app, SLOT(quit()));
     }
     int result = app.exec();
+    widget->close();
+    delete widget;
     home->Shutdown();
     return result;
 }

@@ -34,6 +34,7 @@ private:
 private:
     QLibrary m_loggerLibrary;
     ILogger* m_logger = nullptr;
+    bool m_loggerOwned = false;
     IDatabase* m_database = nullptr;
     bool m_databaseConnected = false;
     QString m_lastStatus = "Not initialized";

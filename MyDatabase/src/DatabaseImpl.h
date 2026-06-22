@@ -284,6 +284,9 @@ private:
     // Qt SQL 数据库对象
     QSqlDatabase m_db;
 
+    // 当前 Qt SQL 连接名，用于 Disconnect 时从 Qt 全局连接池移除。
+    QString m_connectionName;
+
     // 线程互斥锁
     mutable QMutex m_mutex;
 

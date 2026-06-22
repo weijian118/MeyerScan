@@ -31,7 +31,12 @@ void CaseUIImpl::LoadLogger(const char* logDir) {
     if (m_logger) {
         return;
     }
+    if (!logDir || !logDir[0]) {
+        m_lastStatus = "Logger log directory not configured; continuing without log output";
+        return;
+    }
 
+    m_loggerLibrary.setLoadHints(QLibrary::PreventUnloadHint);
     m_loggerLibrary.setFileName("MeyerScan_Logger");
     if (!m_loggerLibrary.load()) {
         m_lastStatus = "Logger unavailable; continuing without log output";
@@ -45,9 +50,12 @@ void CaseUIImpl::LoadLogger(const char* logDir) {
     }
 
     m_logger = getLogger();
-    if (m_logger && logDir && logDir[0] != '\0') {
-        m_logger->Init(logDir, LogLevel::Info);
+    if (!m_logger->Init(logDir, LogLevel::Info)) {
+        m_logger = nullptr;
+        m_lastStatus = "Logger init failed; continuing without log output";
+        return;
     }
+    m_loggerOwned = true;
 }
 
 void CaseUIImpl::InitDatabase(const char* databaseConfigPath) {
@@ -181,12 +189,22 @@ const char* CaseUIImpl::GetModuleVersion() const {
 
 void CaseUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "CaseUI shutdown");
+    if (m_databaseConnected && m_database) {
+        m_database->Disconnect();
+        m_database->Shutdown();
+    }
+    if (m_logger) {
+        if (m_loggerOwned) {
+            m_logger->Shutdown();
+        } else {
+            m_logger->Flush();
+        }
+    }
     m_database = nullptr;
     m_databaseConnected = false;
     m_logger = nullptr;
-    if (m_loggerLibrary.isLoaded()) {
-        m_loggerLibrary.unload();
-    }
+    m_loggerOwned = false;
+    // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
 }
 
 void CaseUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) {
