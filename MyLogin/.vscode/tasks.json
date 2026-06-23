@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build MyLogin Release x64",
+      "type": "shell",
+      "command": "\"C:\\Program Files (x86)\\MSBuild\\14.0\\Bin\\MSBuild.exe\"",
+      "args": [
+        "${workspaceFolder}\\MeyerScan_MyLogin.sln",
+        "/p:Configuration=Release",
+        "/p:Platform=x64"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

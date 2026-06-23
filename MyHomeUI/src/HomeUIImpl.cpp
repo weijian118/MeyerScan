@@ -1,5 +1,4 @@
 ﻿#include "HomeUIImpl.h"
-#include <QApplication>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -22,6 +21,17 @@ bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     InitDatabase(databaseConfigPath);
     WriteLog(LogLevel::Info, "Init", m_lastStatus);
     return true;
+}
+
+void HomeUIImpl::SetEntryCallback(void (*callback)(void* context, int entryId), void* context) {
+    m_entryCallback = callback;
+    m_entryCallbackContext = context;
+}
+
+void HomeUIImpl::SetEntryVisible(int entryId, bool visible) {
+    if (entryId > 0 && entryId < 5) {
+        m_entryVisible[entryId] = visible;
+    }
 }
 
 void HomeUIImpl::LoadLogger(const char* logDir) {
@@ -52,13 +62,18 @@ void HomeUIImpl::LoadLogger(const char* logDir) {
         m_lastStatus = "Logger init failed; continuing without log output";
         return;
     }
-    m_loggerOwned = true;
 }
 
 void HomeUIImpl::InitDatabase(const char* databaseConfigPath) {
     m_database = GetDatabase();
     if (!m_database) {
         m_lastStatus = "Database instance unavailable";
+        return;
+    }
+
+    if (m_database->IsConnected()) {
+        m_databaseConnected = true;
+        m_lastStatus = QString("Database already connected, %1").arg(m_database->GetModuleVersion());
         return;
     }
 
@@ -87,14 +102,14 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     layout->setContentsMargins(28, 24, 28, 24);
     layout->setSpacing(18);
 
-    auto* title = new QLabel(QApplication::translate("HomeUI", "MeyerScan"), root);
+    auto* title = new QLabel(tr("MeyerScan"), root);
     QFont titleFont = title->font();
     titleFont.setPointSize(24);
     titleFont.setBold(true);
     title->setFont(titleFont);
     layout->addWidget(title);
 
-    auto* subtitle = new QLabel(QApplication::translate("HomeUI", "Create, browse, practice, and settings entry shell"), root);
+    auto* subtitle = new QLabel(tr("Create, browse, practice, and settings entry shell"), root);
     subtitle->setStyleSheet("color:#555;");
     layout->addWidget(subtitle);
 
@@ -102,29 +117,39 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     grid->setSpacing(14);
 
     const QStringList names = {
-        QApplication::translate("HomeUI", "Create"),
-        QApplication::translate("HomeUI", "Browse"),
-        QApplication::translate("HomeUI", "Practice"),
-        QApplication::translate("HomeUI", "Settings")
+        tr("Create"),
+        tr("Browse"),
+        tr("Practice"),
+        tr("Settings")
     };
     const QStringList descs = {
-        QApplication::translate("HomeUI", "Create patient and order information"),
-        QApplication::translate("HomeUI", "Manage patients, orders, import/export and delete operations"),
-        QApplication::translate("HomeUI", "Open scan practice without formal case data"),
-        QApplication::translate("HomeUI", "Account, scan, calibration and common settings")
+        tr("Create patient and order information"),
+        tr("Manage patients, orders, import/export and delete operations"),
+        tr("Open scan practice without formal case data"),
+        tr("Account, scan, calibration and common settings")
+    };
+
+    const int entryIds[] = {
+        HomeEntryCreate,
+        HomeEntryBrowse,
+        HomeEntryPractice,
+        HomeEntrySettings,
     };
 
     for (int i = 0; i < names.size(); ++i) {
         auto* button = new QPushButton(names[i] + "\n" + descs[i], root);
         button->setMinimumSize(220, 110);
         button->setStyleSheet("QPushButton{text-align:left;padding:14px;font-size:15px;} QPushButton:hover{background:#eef5ff;}");
+        const int entryId = entryIds[i];
+        QObject::connect(button, &QPushButton::clicked, [this, entryId]() { NotifyEntryClicked(entryId); });
+        button->setVisible(IsEntryVisible(entryId));
         grid->addWidget(button, i / 2, i % 2);
     }
 
     layout->addLayout(grid);
     layout->addStretch();
 
-    auto* status = new QLabel(QString("%1: %2").arg(QApplication::translate("HomeUI", "Status")).arg(m_lastStatus), root);
+    auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
     status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
     layout->addWidget(status);
 
@@ -138,21 +163,12 @@ const char* HomeUIImpl::GetModuleVersion() const {
 
 void HomeUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "HomeUI shutdown");
-    if (m_databaseConnected && m_database) {
-        m_database->Disconnect();
-        m_database->Shutdown();
-    }
     if (m_logger) {
-        if (m_loggerOwned) {
-            m_logger->Shutdown();
-        } else {
-            m_logger->Flush();
-        }
+        m_logger->Flush();
     }
     m_database = nullptr;
     m_databaseConnected = false;
     m_logger = nullptr;
-    m_loggerOwned = false;
     // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
 }
 
@@ -162,6 +178,17 @@ void HomeUIImpl::WriteLog(LogLevel level, const char* operation, const QString& 
     }
     QByteArray bytes = content.toUtf8();
     m_logger->Write(level, kModuleName, operation, "", "", "System", bytes.constData());
+}
+
+void HomeUIImpl::NotifyEntryClicked(int entryId) {
+    WriteLog(LogLevel::Info, "EntryClicked", QString("Home entry clicked: %1").arg(entryId));
+    if (m_entryCallback) {
+        m_entryCallback(m_entryCallbackContext, entryId);
+    }
+}
+
+bool HomeUIImpl::IsEntryVisible(int entryId) const {
+    return entryId > 0 && entryId < 5 ? m_entryVisible[entryId] : true;
 }
 
 extern "C" MEYERSCAN_HOMEUI_API IHomeUI* GetHomeUI() {

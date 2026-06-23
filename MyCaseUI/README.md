@@ -1,14 +1,20 @@
 # MeyerScan_CaseUI
 
-CaseUI is the first Qt Widgets shell for patient and order management.
+CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 
-- Provides Patients and Orders tabs based on the help-center Browse module.
-- Temporarily calls `MeyerScan_Database.dll` only to verify database initialization and connection during framework smoke testing.
-- Resolves `MeyerScan_Logger.dll` at runtime with `QLibrary`; when a log directory is provided by the smoke host, CaseUI opens and closes that local logger session explicitly.
-- Test host enables Qt High DPI attributes before `QApplication` and centers the window within the current screen's available geometry.
-- UI strings use `QApplication::translate("CaseUI", "...")` so this module can later ship its own `.qm` files.
-- Keeps CRUD and workflow rules outside the UI. Formal patient/order operations will move into CaseService, OrderService, DataExport, and OrderWorkflowService; CaseUI must not execute business SQL. Its direct Database call is a temporary framework health check only.
-- Module change notes are recorded in `CHANGELOG.md`.
+- 提供患者管理和订单管理页签框架，对应帮助文档中的浏览模块。
+- 提供“返回首页”按钮，通过 `SetActionCallback()` 向 MainExe 上报 `CaseActionBackHome`；CaseUI 不直接切换首页。
+- 通过 `SetActionVisible()` 接收 MainExe/Permission 计算后的操作显隐规则；CaseUI 不直接读取权限文件。
+- 点击返回、导入、导出、删除、新建、打开、搜索、页签切换等客户操作时写入结构化日志。
+- 临时调用 `MeyerScan_Database.dll` 只用于框架 smoke 健康检查，不代表正式业务调用方式。
+- 如果进程级 Database 已由 MainExe 初始化并连接，CaseUI 只借用现有连接，不重复 Init/Connect。
+- 运行时用 `QLibrary` 加载 `MeyerScan_Logger.dll`；CaseUI 只借用进程级 Logger，`Shutdown()` 只 Flush，不关闭全局日志会话。
+- 测试宿主在创建 `QApplication` 前启用 High DPI 属性，并按当前屏幕可用区域居中显示。
+- 界面可见文字统一使用 `tr("English source text")` 包装；即使需求写中文按钮名，源码 source text 也写英文，中文显示由 `.qm` 翻译文件提供。
+- CRUD、导入导出和加载订单规则后续进入 CaseService、OrderService、DataExport、OrderWorkflowService；CaseUI 不执行业务 SQL。
+- CaseUI 必须可被 MainExe 随时释放并重建；后续从案例管理进入扫描重建前，MainExe 必须销毁 CaseUI widget，CaseUI 不保留必须跨页面存活的大缓存。
+- 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
+- 模块变更记录维护在 `CHANGELOG.md`。
 
 Build:
 

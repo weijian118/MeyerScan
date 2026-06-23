@@ -1,5 +1,4 @@
 ﻿#include "CaseUIImpl.h"
-#include <QApplication>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -25,6 +24,17 @@ bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     InitDatabase(databaseConfigPath);
     WriteLog(LogLevel::Info, "Init", m_lastStatus);
     return true;
+}
+
+void CaseUIImpl::SetActionCallback(void (*callback)(void* context, int actionId), void* context) {
+    m_actionCallback = callback;
+    m_actionCallbackContext = context;
+}
+
+void CaseUIImpl::SetActionVisible(int actionId, bool visible) {
+    if (actionId == CaseActionBackHome) {
+        m_backHomeVisible = visible;
+    }
 }
 
 void CaseUIImpl::LoadLogger(const char* logDir) {
@@ -55,13 +65,18 @@ void CaseUIImpl::LoadLogger(const char* logDir) {
         m_lastStatus = "Logger init failed; continuing without log output";
         return;
     }
-    m_loggerOwned = true;
 }
 
 void CaseUIImpl::InitDatabase(const char* databaseConfigPath) {
     m_database = GetDatabase();
     if (!m_database) {
         m_lastStatus = "Database instance unavailable";
+        return;
+    }
+
+    if (m_database->IsConnected()) {
+        m_databaseConnected = true;
+        m_lastStatus = QString("Database already connected, %1").arg(m_database->GetModuleVersion());
         return;
     }
 
@@ -90,19 +105,32 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     layout->setContentsMargins(18, 18, 18, 18);
     layout->setSpacing(12);
 
-    auto* header = new QLabel(QApplication::translate("CaseUI", "Case Management"), root);
+    auto* headerLayout = new QHBoxLayout();
+    auto* backButton = new QPushButton(tr("Back Home"), root);
+    backButton->setMinimumWidth(120);
+    backButton->setVisible(IsActionVisible(CaseActionBackHome));
+    QObject::connect(backButton, &QPushButton::clicked, [this]() {
+        NotifyAction(CaseActionBackHome, "BackHome");
+    });
+
+    auto* header = new QLabel(tr("Case Management"), root);
     QFont headerFont = header->font();
     headerFont.setPointSize(20);
     headerFont.setBold(true);
     header->setFont(headerFont);
-    layout->addWidget(header);
+    headerLayout->addWidget(header, 1);
+    headerLayout->addWidget(backButton);
+    layout->addLayout(headerLayout);
 
     auto* tabs = new QTabWidget(root);
-    tabs->addTab(CreatePatientTab(tabs), QApplication::translate("CaseUI", "Patients"));
-    tabs->addTab(CreateOrderTab(tabs), QApplication::translate("CaseUI", "Orders"));
+    tabs->addTab(CreatePatientTab(tabs), tr("Patients"));
+    tabs->addTab(CreateOrderTab(tabs), tr("Orders"));
+    QObject::connect(tabs, &QTabWidget::currentChanged, [this, tabs](int index) {
+        NotifyAction(CaseActionSwitchTab, QString("SwitchTab:%1").arg(tabs->tabText(index)));
+    });
     layout->addWidget(tabs, 1);
 
-    auto* status = new QLabel(QString("%1: %2").arg(QApplication::translate("CaseUI", "Status")).arg(m_lastStatus), root);
+    auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
     status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
     layout->addWidget(status);
 
@@ -116,28 +144,43 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
 
     auto* toolbar = new QHBoxLayout();
     auto* search = new QLineEdit(page);
-    search->setPlaceholderText(QApplication::translate("CaseUI", "Search patient name, phone or case id"));
+    search->setPlaceholderText(tr("Search patient name, phone or case id"));
     toolbar->addWidget(search, 1);
 
     const QStringList buttons = {
-        QApplication::translate("CaseUI", "Import"),
-        QApplication::translate("CaseUI", "Export"),
-        QApplication::translate("CaseUI", "Delete"),
-        QApplication::translate("CaseUI", "New Patient")
+        tr("Import"),
+        tr("Export"),
+        tr("Delete"),
+        tr("New Patient")
     };
-    for (const QString& text : buttons) {
-        toolbar->addWidget(new QPushButton(text, page));
+    const int actionIds[] = {
+        CaseActionImportPatient,
+        CaseActionExportPatient,
+        CaseActionDeletePatient,
+        CaseActionNewPatient,
+    };
+    for (int i = 0; i < buttons.size(); ++i) {
+        auto* button = new QPushButton(buttons[i], page);
+        const int actionId = actionIds[i];
+        const QString actionName = buttons[i];
+        QObject::connect(button, &QPushButton::clicked, [this, actionId, actionName]() {
+            NotifyAction(actionId, actionName);
+        });
+        toolbar->addWidget(button);
     }
+    QObject::connect(search, &QLineEdit::returnPressed, [this]() {
+        NotifyAction(CaseActionSearchPatient, "SearchPatient");
+    });
     layout->addLayout(toolbar);
 
     auto* table = new QTableWidget(0, 6, page);
     table->setHorizontalHeaderLabels({
-        QApplication::translate("CaseUI", "Patient"),
-        QApplication::translate("CaseUI", "Gender"),
-        QApplication::translate("CaseUI", "Age"),
-        QApplication::translate("CaseUI", "Case ID"),
-        QApplication::translate("CaseUI", "Orders"),
-        QApplication::translate("CaseUI", "Updated")
+        tr("Patient"),
+        tr("Gender"),
+        tr("Age"),
+        tr("Case ID"),
+        tr("Orders"),
+        tr("Updated")
     });
     table->horizontalHeader()->setStretchLastSection(true);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -152,29 +195,44 @@ QWidget* CaseUIImpl::CreateOrderTab(QWidget* parent) {
 
     auto* toolbar = new QHBoxLayout();
     auto* search = new QLineEdit(page);
-    search->setPlaceholderText(QApplication::translate("CaseUI", "Search order id, patient, doctor or type"));
+    search->setPlaceholderText(tr("Search order id, patient, doctor or type"));
     toolbar->addWidget(search, 1);
 
     const QStringList buttons = {
-        QApplication::translate("CaseUI", "Import Order"),
-        QApplication::translate("CaseUI", "Export Order"),
-        QApplication::translate("CaseUI", "Open"),
-        QApplication::translate("CaseUI", "Delete")
+        tr("Import Order"),
+        tr("Export Order"),
+        tr("Open"),
+        tr("Delete")
     };
-    for (const QString& text : buttons) {
-        toolbar->addWidget(new QPushButton(text, page));
+    const int actionIds[] = {
+        CaseActionImportOrder,
+        CaseActionExportOrder,
+        CaseActionOpenOrder,
+        CaseActionDeleteOrder,
+    };
+    for (int i = 0; i < buttons.size(); ++i) {
+        auto* button = new QPushButton(buttons[i], page);
+        const int actionId = actionIds[i];
+        const QString actionName = buttons[i];
+        QObject::connect(button, &QPushButton::clicked, [this, actionId, actionName]() {
+            NotifyAction(actionId, actionName);
+        });
+        toolbar->addWidget(button);
     }
+    QObject::connect(search, &QLineEdit::returnPressed, [this]() {
+        NotifyAction(CaseActionSearchOrder, "SearchOrder");
+    });
     layout->addLayout(toolbar);
 
     auto* table = new QTableWidget(0, 7, page);
     table->setHorizontalHeaderLabels({
-        QApplication::translate("CaseUI", "Order ID"),
-        QApplication::translate("CaseUI", "Patient"),
-        QApplication::translate("CaseUI", "Type"),
-        QApplication::translate("CaseUI", "Doctor"),
-        QApplication::translate("CaseUI", "Status"),
-        QApplication::translate("CaseUI", "Created"),
-        QApplication::translate("CaseUI", "Data")
+        tr("Order ID"),
+        tr("Patient"),
+        tr("Type"),
+        tr("Doctor"),
+        tr("Status"),
+        tr("Created"),
+        tr("Data")
     });
     table->horizontalHeader()->setStretchLastSection(true);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -189,21 +247,12 @@ const char* CaseUIImpl::GetModuleVersion() const {
 
 void CaseUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "CaseUI shutdown");
-    if (m_databaseConnected && m_database) {
-        m_database->Disconnect();
-        m_database->Shutdown();
-    }
     if (m_logger) {
-        if (m_loggerOwned) {
-            m_logger->Shutdown();
-        } else {
-            m_logger->Flush();
-        }
+        m_logger->Flush();
     }
     m_database = nullptr;
     m_databaseConnected = false;
     m_logger = nullptr;
-    m_loggerOwned = false;
     // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
 }
 
@@ -213,6 +262,20 @@ void CaseUIImpl::WriteLog(LogLevel level, const char* operation, const QString& 
     }
     QByteArray bytes = content.toUtf8();
     m_logger->Write(level, kModuleName, operation, "", "", "System", bytes.constData());
+}
+
+void CaseUIImpl::NotifyAction(int actionId, const QString& actionName) {
+    WriteLog(LogLevel::Info, "UserAction", QString("%1 (%2)").arg(actionName).arg(actionId));
+    if (m_actionCallback) {
+        m_actionCallback(m_actionCallbackContext, actionId);
+    }
+}
+
+bool CaseUIImpl::IsActionVisible(int actionId) const {
+    if (actionId == CaseActionBackHome) {
+        return m_backHomeVisible;
+    }
+    return true;
 }
 
 extern "C" MEYERSCAN_CASEUI_API ICaseUI* GetCaseUI() {

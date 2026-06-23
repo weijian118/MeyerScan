@@ -230,6 +230,15 @@ private:
     bool LoadConfig(const char* configPath);
 
     // -------------------------------------------------------------------------
+    // ResolvePathFromConfig - 将配置中的相对路径解析为绝对路径
+    // -------------------------------------------------------------------------
+    // 说明:
+    //   配置文件中允许使用相对于 config/db_config.json 所在目录的路径。
+    //   运行时禁止回退到开发机绝对路径，也不依赖当前工作目录。
+    // -------------------------------------------------------------------------
+    QString ResolvePathFromConfig(const QString& configuredPath) const;
+
+    // -------------------------------------------------------------------------
     // ConnectMySQL - 连接 MySQL 数据库
     // -------------------------------------------------------------------------
     bool ConnectMySQL();
@@ -286,6 +295,9 @@ private:
 
     // 当前 Qt SQL 连接名，用于 Disconnect 时从 Qt 全局连接池移除。
     QString m_connectionName;
+
+    // 当前配置文件所在目录，用于解析相对路径。
+    QString m_configDir;
 
     // 线程互斥锁
     mutable QMutex m_mutex;

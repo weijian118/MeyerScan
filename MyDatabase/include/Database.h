@@ -114,6 +114,7 @@ struct DbConfig {
     int32_t  mysqlPort;         // MySQL 服务器端口，默认 3308
     char     mysqlService[64];  // MySQL 服务名称（标识用），如 "MSCANDB"
     char     mysqlDatabase[64]; // 数据库名称，如 "mscan"
+    char     mysqlDataDir[256]; // MySQL 数据目录，用于备份
 
     // SQLite 数据库配置
     char     sqlitePath[256];   // SQLite 数据库文件完整路径

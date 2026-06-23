@@ -1,6 +1,9 @@
-﻿#include "HomeUI.h"
+#include "HomeUI.h"
+
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDesktopWidget>
+#include <QDir>
 #include <QRect>
 #include <QSize>
 #include <QTimer>
@@ -20,6 +23,13 @@ void ShowOnCurrentScreen(QWidget* widget) {
     widget->move(x, y);
     widget->show();
 }
+
+QString ResolveModuleRoot() {
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
+    dir.cdUp();
+    return dir.absolutePath();
+}
 }
 
 int main(int argc, char* argv[]) {
@@ -32,7 +42,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    home->Init("F:/MeyerScan/MyDatabase/config/db_config.json", "F:/MeyerScan/MyHomeUI/logs");
+    const QString moduleRoot = ResolveModuleRoot();
+    QDir repoDir(moduleRoot);
+    repoDir.cdUp();
+    const QString databaseConfigPath = repoDir.filePath("MyDatabase/config/db_config.json");
+    const QString logDir = QDir(moduleRoot).filePath("logs");
+
+    const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
+    const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
+    home->Init(databaseConfigBytes.constData(), logDirBytes.constData());
+
     QWidget* widget = home->CreateWidget();
     widget->setWindowTitle(home->GetModuleVersion());
     ShowOnCurrentScreen(widget);

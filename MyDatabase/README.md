@@ -105,11 +105,14 @@ MSBuild MeyerScan_Database.sln /p:Configuration=Release /p:Platform=x64
         "host": "127.0.0.1",
         "port": 3308,
         "service": "MSCANDB",
-        "database": "mscan"
+        "database": "mscan",
+        "dataDir": "../MySQL/data/mscan"
     },
-    "sqlitePath": "F:/MeyerScan/MyDatabase/data/MeyerScanSQLite.db"
+    "sqlitePath": "../Data/MeyerScanSQLite.db"
 }
 ```
+
+运行时相对路径以 `db_config.json` 所在目录为基准解析。正式发布时配置文件位于 `MeyerScan.exe` 同级 `config/` 目录，因此示例中的 `../MySQL/...` 和 `../Data/...` 指向安装根目录下的对应文件夹。测试宿主会生成自己的 `bin/Release/config/db_config_test.json`，避免复用正式发布配置时出现路径语义混淆。
 
 ### 3. 构建项目
 
@@ -275,19 +278,20 @@ Test 9: 线程安全测试
         "host": "127.0.0.1",      // MySQL 服务器地址
         "port": 3308,              // MySQL 端口
         "service": "MSCANDB",      // 服务名称（标识用）
-        "database": "mscan"        // 数据库名称
+        "database": "mscan",       // 数据库名称
+        "dataDir": "../MySQL/data/mscan" // 相对 config 目录的 MySQL 数据目录，用于备份
     }
 }
 ```
 
-**注意**：MySQL 连接使用硬编码账号密码（admin/123456），后续会改为通过 ConfigCenter 加密存储。
+**注意**：MySQL 连接使用硬编码账号密码（admin/123456），后续会改为通过 ConfigCenter 加密存储。MySQL 备份源目录当前从 `mysql.dataDir` 读取，支持相对 `db_config.json` 所在目录解析；后续迁入 ConfigCenter，并结合安装目录生成默认值。
 
 ### SQLite 配置
 
 ```json
 {
     "databaseType": "sqlite",
-    "sqlitePath": "F:/path/to/database.db"
+    "sqlitePath": "../Data/MeyerScanSQLite.db"
 }
 ```
 
@@ -339,7 +343,7 @@ Database 使用 Qt 是当前设计的一部分，不需要去 Qt 化。后续如
 
 ### 备份策略
 
-- **MySQL**：使用 `robocopy` 复制数据目录
+- **MySQL**：使用 `robocopy` 复制 `mysql.dataDir` 指向的数据目录
 - **SQLite**：使用 `QFile::copy` 复制文件
 - 备份文件名包含时间戳（yyyyMMddHHmmss）
 
@@ -365,7 +369,7 @@ Database 使用 Qt 是当前设计的一部分，不需要去 Qt 化。后续如
 
 **技术改进**
 - ✅ MySQL 密码硬编码添加 @todo 迁移注释
-- ✅ 备份路径硬编码添加 @todo 迁移注释
+- ✅ MySQL 备份源目录改为从 `mysql.dataDir` 读取，后续迁移到 ConfigCenter
 - ✅ 所有日志输出改用 Logger 模块（替代 qDebug）
 - ✅ DatabaseTest 的 CRT 改为 `/MD` 匹配 Database.dll
 - ✅ 预处理器定义添加 `MEYER_MODULE_NAME`

@@ -31,8 +31,8 @@
 //   届时删除此处的硬编码凭据。
 //
 // @todo 备份路径:
-//   MySQL 备份路径当前硬编码为 "F:/MeyerScan/MyDatabase/MySQL/data/mscan"，
-//   后续需要改为从配置文件中读取 MySQL 数据目录。
+//   MySQL 数据目录当前从 JSON 配置读取，支持相对配置文件目录解析；
+//   后续需要迁入 ConfigCenter。
 //
 // 依赖项:
 //   - Qt5Core: 核心功能（文件、JSON、进程等）
@@ -42,15 +42,29 @@
 // =============================================================================
 
 #include "DatabaseImpl.h"
+#include <QByteArray>          // Qt 字节数组
 #include <QFile>              // Qt 文件操作
 #include <QJsonDocument>      // Qt JSON 文档解析
 #include <QJsonObject>        // Qt JSON 对象
 #include <QDir>               // Qt 目录操作
+#include <QFileInfo>          // Qt 文件信息和路径判断
 #include <QProcess>           // Qt 进程执行（用于 robocopy）
 #include <QUuid>              // Qt UUID 生成（用于唯一连接名）
 #include <QDebug>             // Qt 调试输出（保留，仅在极端情况下使用）
 
 #include <Windows.h>          // LoadLibrary / GetProcAddress
+#include <cstring>            // std::memset / std::strncpy
+
+namespace {
+void CopyUtf8(char* target, size_t targetSize, const QString& value) {
+    if (!target || targetSize == 0) {
+        return;
+    }
+    std::memset(target, 0, targetSize);
+    const QByteArray bytes = value.toUtf8();
+    std::strncpy(target, bytes.constData(), targetSize - 1);
+}
+}
 
 // =============================================================================
 // 硬编码的 MySQL 连接凭据
@@ -233,17 +247,25 @@ VoidResult DatabaseImpl::Init(const char* configPath) {
 // 功能说明:
 //   读取 JSON 配置文件，解析数据库连接参数。
 //
+// 路径规则:
+//   configPath 必须由主程序按 applicationDirPath()/ConfigCenter 传入。
+//   JSON 内的路径建议使用相对路径；Database 会以 db_config.json 所在目录为基准解析。
+//   禁止在 Database 内部回退到开发机绝对路径或当前工作目录。
+//
 // @todo 过渡方案
 //   当前 Database 自己读取 JSON 配置文件。
 //   等 ConfigCenter 就绪后，此方法将被替换为从 ConfigCenter 获取配置。
 // =============================================================================
 bool DatabaseImpl::LoadConfig(const char* configPath) {
     // 打开配置文件
-    QFile file(QString::fromUtf8(configPath));
+    const QString configFilePath = QDir::fromNativeSeparators(QString::fromUtf8(configPath));
+    QFile file(configFilePath);
     if (!file.open(QIODevice::ReadOnly)) {
         LogError("LoadConfig", "Failed to open config file");
         return false;
     }
+
+    m_configDir = QFileInfo(configFilePath).absoluteDir().absolutePath();
 
     // 读取文件内容
     QByteArray data = file.readAll();
@@ -270,27 +292,47 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
     // 解析 MySQL 配置
     QJsonObject mysql = root["mysql"].toObject();
 
-    strncpy(m_config.mysqlHost,
-            mysql["host"].toString("127.0.0.1").toUtf8().constData(),
-            sizeof(m_config.mysqlHost) - 1);
+    CopyUtf8(m_config.mysqlHost,
+             sizeof(m_config.mysqlHost),
+             mysql["host"].toString("127.0.0.1"));
 
     m_config.mysqlPort = mysql["port"].toInt(3308);
 
-    strncpy(m_config.mysqlService,
-            mysql["service"].toString("MSCANDB").toUtf8().constData(),
-            sizeof(m_config.mysqlService) - 1);
+    CopyUtf8(m_config.mysqlService,
+             sizeof(m_config.mysqlService),
+             mysql["service"].toString("MSCANDB"));
 
-    strncpy(m_config.mysqlDatabase,
-            mysql["database"].toString("mscan").toUtf8().constData(),
-            sizeof(m_config.mysqlDatabase) - 1);
+    CopyUtf8(m_config.mysqlDatabase,
+             sizeof(m_config.mysqlDatabase),
+             mysql["database"].toString("mscan"));
+
+    const QString mysqlDataDir = ResolvePathFromConfig(mysql["dataDir"].toString("../MySQL/data/mscan"));
+    CopyUtf8(m_config.mysqlDataDir, sizeof(m_config.mysqlDataDir), mysqlDataDir);
 
     // 解析 SQLite 配置
-    strncpy(m_config.sqlitePath,
-            root["sqlitePath"].toString("").toUtf8().constData(),
-            sizeof(m_config.sqlitePath) - 1);
+    const QString sqlitePath = ResolvePathFromConfig(root["sqlitePath"].toString("data/MeyerScanSQLite.db"));
+    CopyUtf8(m_config.sqlitePath, sizeof(m_config.sqlitePath), sqlitePath);
 
     LogInfo("LoadConfig", "Config loaded");
     return true;
+}
+
+// =============================================================================
+// ResolvePathFromConfig - 解析配置路径
+// =============================================================================
+QString DatabaseImpl::ResolvePathFromConfig(const QString& configuredPath) const {
+    QString normalized = QDir::fromNativeSeparators(configuredPath.trimmed());
+    if (normalized.isEmpty()) {
+        return QString();
+    }
+
+    QFileInfo fileInfo(normalized);
+    if (fileInfo.isAbsolute()) {
+        return QDir::cleanPath(normalized);
+    }
+
+    QDir baseDir(m_configDir);
+    return QDir::cleanPath(baseDir.filePath(normalized));
 }
 
 // =============================================================================
@@ -449,8 +491,7 @@ DatabaseType DatabaseImpl::GetDatabaseType() const {
 // Backup - 备份数据库
 // =============================================================================
 // @todo
-//   MySQL 备份路径当前硬编码为 "F:/MeyerScan/MyDatabase/MySQL/data/mscan"，
-//   后续需要改为从配置文件中读取 MySQL 数据目录。
+//   MySQL 备份路径当前来自 Database JSON 配置，后续需要改为从 ConfigCenter 读取。
 // =============================================================================
 VoidResult DatabaseImpl::Backup(const char* backupPath) {
     QMutexLocker locker(&m_mutex);
@@ -491,7 +532,7 @@ VoidResult DatabaseImpl::Backup(const char* backupPath) {
 //   备份目录名格式: yyyyMMddHHmmss-mscan
 //
 // @todo
-//   MySQL 数据目录路径当前硬编码，后续改为从配置读取。
+//   MySQL 数据目录后续改为从 ConfigCenter 读取。
 //
 // robocopy 参数:
 //   /E    - 复制子目录（包括空目录）
@@ -502,8 +543,11 @@ bool DatabaseImpl::BackupMySQL(const char* backupPath) {
     // 生成时间戳
     QString timestamp = QDateTime::currentDateTime().toString("yyyyMMddHHmmss");
 
-    // @todo 源目录路径应从配置读取
-    QString sourceDir = QString("F:/MeyerScan/MyDatabase/MySQL/data/mscan");
+    QString sourceDir = QString::fromUtf8(m_config.mysqlDataDir);
+    if (sourceDir.isEmpty()) {
+        LogError("BackupMySQL", "MySQL data directory is empty");
+        return false;
+    }
 
     // 构建目标目录路径
     QString targetDir = QString("%1/%2-mscan").arg(backupPath).arg(timestamp);

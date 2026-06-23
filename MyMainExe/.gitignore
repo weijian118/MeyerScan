@@ -1,0 +1,8 @@
+.vs/
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+obj/
+bin/
+*.user

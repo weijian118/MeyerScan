@@ -31,6 +31,9 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
+#include <string>
+#include <windows.h>
 #include "../include/Database.h"
 
 // =============================================================================
@@ -43,6 +46,7 @@ static FILE* s_logFile = nullptr;
 // 测试统计计数器
 static int s_testsPassed = 0;
 static int s_testsFailed = 0;
+static std::string s_moduleRoot;
 
 // =============================================================================
 // TEST_ASSERT - 测试断言宏
@@ -230,8 +234,25 @@ static void TestBackup(IDatabase* db) {
         return;
     }
 
-    const char* backupPath = "F:/MeyerScan/MyDatabase/backup";
-    VoidResult backupResult = db->Backup(backupPath);
+    const DbConfig& config = db->GetConfig();
+    if (config.dbType == static_cast<int32_t>(DatabaseType::MySQL)) {
+        const DWORD attributes = GetFileAttributesA(config.mysqlDataDir);
+        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            fprintf(s_logFile, "  跳过 - MySQL 数据目录不存在: %s\n", config.mysqlDataDir);
+            printf("  跳过 - MySQL 数据目录不存在: %s\n", config.mysqlDataDir);
+            return;
+        }
+    } else {
+        const DWORD attributes = GetFileAttributesA(config.sqlitePath);
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            fprintf(s_logFile, "  跳过 - SQLite 数据库文件不存在: %s\n", config.sqlitePath);
+            printf("  跳过 - SQLite 数据库文件不存在: %s\n", config.sqlitePath);
+            return;
+        }
+    }
+
+    const std::string backupPath = s_moduleRoot + "/backup";
+    VoidResult backupResult = db->Backup(backupPath.c_str());
 
     if (backupResult.IsSuccess()) {
         TEST_ASSERT(true, "Backup() 成功");
@@ -245,6 +266,69 @@ static void TestBackup(IDatabase* db) {
         fprintf(s_logFile, "  备份失败 - 源目录可能不存在\n");
         printf("  备份失败 - 源目录可能不存在\n");
     }
+}
+
+static std::string NormalizePath(std::string path) {
+    for (char& ch : path) {
+        if (ch == '\\') {
+            ch = '/';
+        }
+    }
+    return path;
+}
+
+static std::string ParentPath(const std::string& path) {
+    const size_t pos = path.find_last_of('/');
+    return pos == std::string::npos ? std::string() : path.substr(0, pos);
+}
+
+static std::string ResolveModuleRoot() {
+    char buffer[MAX_PATH] = {0};
+    const DWORD length = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return ".";
+    }
+
+    const std::string exePath = NormalizePath(buffer);
+    const std::string releaseDir = ParentPath(exePath);
+    const std::string binDir = ParentPath(releaseDir);
+    return ParentPath(binDir);
+}
+
+static std::string ResolveReleaseDir() {
+    char buffer[MAX_PATH] = {0};
+    const DWORD length = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return ".";
+    }
+
+    return ParentPath(NormalizePath(buffer));
+}
+
+static std::string WriteRuntimeTestConfig() {
+    const std::string releaseDir = ResolveReleaseDir();
+    const std::string configDir = releaseDir + "/config";
+    CreateDirectoryA(configDir.c_str(), nullptr);
+
+    const std::string configPath = configDir + "/db_config_test.json";
+    std::ofstream file(configPath.c_str(), std::ios::out | std::ios::trunc);
+    if (!file.is_open()) {
+        return s_moduleRoot + "/config/db_config.json";
+    }
+
+    file
+        << "{\n"
+        << "    \"databaseType\": \"mysql\",\n"
+        << "    \"mysql\": {\n"
+        << "        \"host\": \"127.0.0.1\",\n"
+        << "        \"port\": 3308,\n"
+        << "        \"service\": \"MSCANDB\",\n"
+        << "        \"database\": \"mscan\",\n"
+        << "        \"dataDir\": \"../../../../MySQL/data/mscan\"\n"
+        << "    },\n"
+        << "    \"sqlitePath\": \"../Data/MeyerScanSQLite.db\"\n"
+        << "}\n";
+    return configPath;
 }
 
 // =============================================================================
@@ -334,10 +418,13 @@ static void TestThreadSafety(IDatabase* db) {
 //   5. 返回测试结果状态码
 // =============================================================================
 int main() {
+    s_moduleRoot = ResolveModuleRoot();
+
     // -------------------------------------------------------------------------
     // 设置日志文件
     // -------------------------------------------------------------------------
-    s_logFile = fopen("F:/MeyerScan/MyDatabase/bin/Debug/test_output.log", "w");
+    const std::string testLogPath = s_moduleRoot + "/bin/Release/test_output.log";
+    s_logFile = fopen(testLogPath.c_str(), "w");
     if (!s_logFile) {
         s_logFile = stdout;
     }
@@ -363,13 +450,13 @@ int main() {
         return 1;
     }
 
-    const char* configPath = "F:/MeyerScan/MyDatabase/config/db_config.json";
+    const std::string configPath = WriteRuntimeTestConfig();
 
     // -------------------------------------------------------------------------
     // 执行所有测试
     // -------------------------------------------------------------------------
     TestModuleInit(db);           // Test 1: 模块初始化
-    TestConfig(db, configPath);   // Test 2: 配置加载
+    TestConfig(db, configPath.c_str());   // Test 2: 配置加载
     TestConnection(db);           // Test 3: 数据库连接
     TestQuery(db);                // Test 4: 查询执行
     TestTransaction(db);          // Test 5: 事务管理
