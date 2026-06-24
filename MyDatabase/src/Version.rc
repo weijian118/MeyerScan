@@ -1,7 +1,7 @@
 // =============================================================================
 // 文件:    Version.rc
 // 模块:    MeyerScan_Database.dll
-// 版本号:  v1.1.0
+// 版本号:  v1.2.0
 //
 // 用途:
 //   Windows 版本资源文件。编译为 .res 并链接到 DLL 中，
@@ -20,8 +20,8 @@
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION     1,1,0,0
- PRODUCTVERSION  1,1,0,0
+ FILEVERSION     1,2,0,0
+ PRODUCTVERSION  1,2,0,0
  FILEFLAGSMASK   0x3fL
 #ifdef _DEBUG
  FILEFLAGS       VS_FF_DEBUG
@@ -38,12 +38,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",        "Hefei Meyer Optoelectronic Technology Co., Ltd."
             VALUE "FileDescription",    "MeyerScan Database Module"
-            VALUE "FileVersion",        "1, 1, 0, 0"
+            VALUE "FileVersion",        "1, 2, 0, 0"
             VALUE "InternalName",       "MeyerScan_Database"
             VALUE "LegalCopyright",     "Copyright (C) 2022-2032 Meyer Optoelectronic"
             VALUE "OriginalFilename",   "MeyerScan_Database.dll"
             VALUE "ProductName",        "MeyerScan Digital Dental Scanner"
-            VALUE "ProductVersion",     "1, 1, 0, 0"
+            VALUE "ProductVersion",     "1, 2, 0, 0"
         END
     END
     BLOCK "VarFileInfo"

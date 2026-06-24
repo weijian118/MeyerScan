@@ -158,6 +158,11 @@ public:
     // 关闭
     VoidResult Shutdown() override;
 
+    // 追加接口：查询结果 JSON 化
+    Result<DbJsonResult> ExecuteQueryJson(const char* sql,
+                                          char* jsonBuffer,
+                                          int32_t jsonBufferSize) override;
+
 private:
     // =========================================================================
     // 私有构造函数
@@ -262,7 +267,8 @@ private:
     // 日志辅助方法
     // =========================================================================
     // 说明:
-    //   统一通过 GetLogger() 动态加载的 Logger 实例输出日志。
+    //   统一通过 GetLogger() 获取动态加载后缓存的 Logger 实例输出日志。
+    //   GetLogger() 内部只在首次调用时 LoadLibrary/GetProcAddress，后续直接返回缓存指针。
     //   如果 Logger.dll 不可用，日志操作静默跳过，不影响功能。
     // =========================================================================
 

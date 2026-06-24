@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Release|x64">
@@ -40,23 +40,23 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_MainExe";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyVersionManager\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
+      <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Network.lib;MeyerLoginWidget.lib;MeyerScan_HomeUI.lib;MeyerScan_CaseUI.lib;MeyerScan_ConfigCenter.lib;MeyerScan_Permission.lib;MeyerScan_UIComponents.lib;MeyerScan_VersionManager.lib;MeyerScan_Database.lib;MeyerScan_Logger.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;D:\wj\My-wj\MyLogin\lib;$(ProjectDir)..\MyHomeUI\bin\$(Configuration);$(ProjectDir)..\MyCaseUI\bin\$(Configuration);$(ProjectDir)..\MyConfigCenter\bin\$(Configuration);$(ProjectDir)..\MyPermission\bin\$(Configuration);$(ProjectDir)..\MyUIComponents\bin\$(Configuration);$(ProjectDir)..\MyVersionManager\bin\$(Configuration);$(ProjectDir)..\MyDatabase\bin\$(Configuration);$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Network.lib;Version.lib;MeyerLoginWidget.lib;MeyerScan_HomeUI.lib;MeyerScan_CaseUI.lib;MeyerScan_ConfigCenter.lib;MeyerScan_Permission.lib;MeyerScan_UIComponents.lib;MeyerScan_Database.lib;MeyerScan_Logger.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;D:\wj\My-wj\MyLogin\lib;$(ProjectDir)..\MyHomeUI\bin\$(Configuration);$(ProjectDir)..\MyCaseUI\bin\$(Configuration);$(ProjectDir)..\MyConfigCenter\bin\$(Configuration);$(ProjectDir)..\MyPermission\bin\$(Configuration);$(ProjectDir)..\MyUIComponents\bin\$(Configuration);$(ProjectDir)..\MyDatabase\bin\$(Configuration);$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /Y /D "D:\wj\My-wj\MyLogin\lib\MeyerLoginWidget.dll" "$(OutDir)"
 xcopy /Y /D "D:\wj\My-wj\MyLogin\*.qm" "$(OutDir)"
-xcopy /Y /D "D:\wj\My-wj\MyLogin\license.lic" "$(OutDir)"
+xcopy /Y /D /I "D:\wj\My-wj\MyLogin\license.lic" "$(OutDir)Resources\"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\deviceAuthAndCrypto.dll" "$(OutDir)"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\MeyerScanNetworkHelper.dll" "$(OutDir)"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\Qt5Core.dll" "$(OutDir)"
@@ -92,11 +92,20 @@ xcopy /Y /D "$(ProjectDir)..\MyCaseUI\bin\$(Configuration)\MeyerScan_CaseUI.dll"
 xcopy /Y /D "$(ProjectDir)..\MyConfigCenter\bin\$(Configuration)\MeyerScan_ConfigCenter.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyPermission\bin\$(Configuration)\MeyerScan_Permission.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll" "$(OutDir)"
-xcopy /Y /D "$(ProjectDir)..\MyVersionManager\bin\$(Configuration)\MeyerScan_VersionManager.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDatabase\bin\$(Configuration)\MeyerScan_Database.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyCaseOrderService\bin\$(Configuration)\MeyerScan_CaseOrderService.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyOrderScanWorkspaceShell\bin\$(Configuration)\MeyerScan_OrderScanWorkspaceShell.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyCalibration3DUI\bin\$(Configuration)\MeyerScan_Calibration3DUI.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyCalibrationColorUI\bin\$(Configuration)\MeyerScan_CalibrationColorUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDatabase\bin\$(Configuration)\libmysql.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
 xcopy /Y /D /I "$(ProjectDir)..\MyDatabase\config\*.json" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)config\*.json" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)config\*.md" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)..\MyConfigCenter\config\*.json" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)..\MyConfigCenter\config\*.md" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)..\MyPermission\config\*.json" "$(OutDir)config\"
+xcopy /Y /D /I "$(ProjectDir)..\MyPermission\config\*.md" "$(OutDir)config\"
 xcopy /Y /D /I "C:\Program Files (x86)\MeyerScan\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
 xcopy /Y /D /I "C:\Program Files (x86)\MeyerScan\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
 xcopy /Y /D /I "C:\Program Files (x86)\MeyerScan\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
@@ -108,6 +117,10 @@ xcopy /Y /D /I "C:\Program Files (x86)\MeyerScan\sqldrivers\qsqlite.dll" "$(OutD
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\MainWindow.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="config\version_modules.json" />
+    <None Include="config\version_modules.md" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\Version.rc" />

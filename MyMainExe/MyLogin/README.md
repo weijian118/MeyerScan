@@ -4,7 +4,7 @@
 
 - 登录 DLL 来源：`D:\wj\My-wj\MyLogin\lib\MeyerLoginWidget.dll`
 - 登录头文件来源：`D:\wj\My-wj\MyLogin\MeyerLoginWidget.h`
-- 离线许可测试文件：运行目录同级 `license.lic`，由 PostBuild 从既有登录模块目录复制
+- 离线许可测试文件：运行目录 `Resources/license.lic`，由 PostBuild 从既有登录模块目录复制
 - 默认登录地址：`https://myscan.meyerop.com/login`
 
 当前只做登录模块连接验证。正式 `MeyerScan.exe` 复用同样的参数构造逻辑，并在登录成功后进入 HomeUI。

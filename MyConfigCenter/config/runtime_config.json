@@ -1,0 +1,13 @@
+{
+    "database": {
+        "type": "mysql"
+    },
+    "feature": {
+        "home": {
+            "settingsVisible": true
+        },
+        "case": {
+            "backHomeVisible": true
+        }
+    }
+}

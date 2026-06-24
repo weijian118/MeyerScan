@@ -10,17 +10,17 @@
 //          但 UCRT 提供了符合标准的 snprintf）。
 //       b) 对日志路径来说足够快（通常每次调用 < 1 μs）。
 //       c) 容易审计缓冲区溢出（显式缓冲区大小）。
-//   - 输出缓冲区是 2048 字节的固定大小栈数组。这对任何合理的日志行来说
-//     都足够大（典型行 120–300 字节），同时防止无界的栈增长。
-//     如果行超过 2047 字节，会被静默截断。需要长消息的调用方
-//     应将其拆分为多次 Write() 调用。
-//   - 尾随换行符被有意省略。LogWriter::WriteLine()
-//     在获取跨进程互斥量后追加 '\n'，确保每次系统级写入
-//     恰好是一条完整的日志条目。
+//   - 输出采用“有值才显示”的紧凑格式。deviceId/caseId/operator 为空时
+//     不再输出 [Dev:-]、[Case:-]、[Op:-]，避免日志观感很差。
+//   - module/operation/content 都带明确分类标记，分别为 [Mod:]、[Op:]、
+//     [Content:]，方便后续脚本按字段读取和分析日志。
+//   - 尾随换行符被有意省略。LogWriter::WriteLineUnlocked()
+//     会追加 CRLF，确保每次系统级写入恰好是一条完整日志条目。
 // =============================================================================
 
 #include "LogFormat.h"
 #include <cstdio>    // snprintf
+#include <string>    // std::string
 #include <windows.h> // GetLocalTime, SYSTEMTIME
 
 namespace LogFormat {
@@ -28,18 +28,14 @@ namespace LogFormat {
 // ---------------------------------------------------------------------------
 // LevelName
 // ---------------------------------------------------------------------------
-// 将 LogLevel 枚举映射为 5 字符、左对齐的显示字符串。
-// 字符串用尾随空格填充，使所有级别名称在日志文件中恰好占据 5 列。
-// 这使得用固定宽度模式 grep 特定级别变得容易:
-//   grep "\[ERROR\]"  → 仅匹配 Error
-//   grep "\[INFO \]"  → 仅匹配 Info（包含空格）
-//
+// 将 LogLevel 枚举映射为显示字符串。
+// 不再补尾随空格，避免日志中出现 [INFO ] 这类视觉噪音。
 // 返回的指针指向静态字符串字面量；调用方不得释放它。
 const char* LevelName(LogLevel level) {
     switch (level) {
     case LogLevel::Debug:   return "DEBUG";
-    case LogLevel::Info:    return "INFO ";
-    case LogLevel::Warning: return "WARN ";
+    case LogLevel::Info:    return "INFO";
+    case LogLevel::Warning: return "WARN";
     case LogLevel::Error:   return "ERROR";
     case LogLevel::Fatal:   return "FATAL";
     }
@@ -75,61 +71,61 @@ std::string FormatLine(LogLevel level,
     //（即使发生截断）。
 
     // ---- 2. 清理空/null 字段 --------------------------------------------------
-    // 将 nullptr 和空字符串替换为单个短横线。这保持列在视觉上对齐，
-    // 并避免 "(null)" 或空白字段使解析变得更困难。
-    //
-    // lambda 不捕获任何内容，可被简单内联。
-    auto safe = [](const char* s, const char* fallback) -> const char* {
-        // s == nullptr   → 使用 fallback
-        // s[0] == '\0'   → 字符串为空 → 使用 fallback
-        return (s && s[0]) ? s : fallback;
+    // 空字段直接省略，只有 module/operation/content 作为日志基础字段保留。
+    auto safe = [](const char* s) -> const char* {
+        return (s && s[0]) ? s : "";
     };
 
-    const char* mod  = safe(module,    "-");
-    const char* op   = safe(operation, "-");
-    const char* dev  = safe(deviceId,  "-");
-    const char* cid  = safe(caseId,    "-");
-    const char* opn  = safe(operator_, "-");
-    const char* txt  = safe(content,   "");  // content 可以为空字符串
+    const char* mod  = safe(module);
+    const char* op   = safe(operation);
+    const char* dev  = safe(deviceId);
+    const char* cid  = safe(caseId);
+    const char* opn  = safe(operator_);
+    const char* txt  = safe(content);
 
     // ---- 3. 组装日志行 --------------------------------------------------------
-    // 格式说明符:
-    //   %-5s   → 级别名称，在 5 字符字段中左对齐
-    //   %-31s  → 模块/操作，在 31 字符字段中左对齐
-    //   %-8s   → deviceId，在 8 字符字段中左对齐
-    //   %-16s  → caseId/操作员，在 16 字符字段中左对齐
-    //
-    // content 之前的固定开销总计: ~108 字符。
-    // content 从约第 109 个字符位置开始，为消息留下约 1939 字节。
-    //
-    // 如果消息超过约 1939 字节，snprintf 会截断并返回
-    // ≥ sizeof(line) 的值。我们通过将 n 限制在 sizeof(line)-1 来处理。
-    char line[2048];
-    int n = snprintf(line, sizeof(line),
-                     "[%s] [%-5s] [%-31s] [%-31s] [Dev:%-8s] [Case:%-16s] [Op:%-16s] %s",
-                     ts,               // 23 字符: 时间戳
-                     LevelName(level), // 5 字符: 级别
-                     mod,              // ≤31 字符: 模块名称
-                     op,               // ≤31 字符: 操作名称
-                     dev,              // ≤8 字符: 设备序列号
-                     cid,              // ≤16 字符: 病例 ID
-                     opn,              // ≤16 字符: 操作员
-                     txt);             // 自由文本
-
-    // snprintf 返回在缓冲区足够大时本应写入的字符数
-    //（C99 行为）。如果 n < 0，发生了编码错误
-    //（对于 ASCII/UTF-8 不应发生）。
-    // 将 n 限制在可用范围内。
-    if (n < 0) {
-        n = 0;
+    // 基础格式:
+    //   [时间] [级别] [Mod:模块] [Op:操作] [Dev:xxx] [Case:xxx] [Opr:xxx] [Content:内容]
+    // 后三个字段只有非空时才出现。
+    std::string line;
+    line.reserve(256);
+    line += "[";
+    line += ts;
+    line += "] [";
+    line += LevelName(level);
+    line += "]";
+    if (mod[0]) {
+        line += " [Mod:";
+        line += mod;
+        line += "]";
     }
-    if (n >= static_cast<int>(sizeof(line))) {
-        n = static_cast<int>(sizeof(line)) - 1;
+    if (op[0]) {
+        line += " [Op:";
+        line += op;
+        line += "]";
+    }
+    if (dev[0]) {
+        line += " [Dev:";
+        line += dev;
+        line += "]";
+    }
+    if (cid[0]) {
+        line += " [Case:";
+        line += cid;
+        line += "]";
+    }
+    if (opn[0]) {
+        line += " [Opr:";
+        line += opn;
+        line += "]";
+    }
+    if (txt[0]) {
+        line += " [Content:";
+        line += txt;
+        line += "]";
     }
 
-    // 从缓冲区构造返回字符串。std::string(char*, size)
-    // 恰好复制 n 个字节 — 无需调用 strlen()。
-    return std::string(line, static_cast<size_t>(n));
+    return line;
 }
 
 } // namespace LogFormat

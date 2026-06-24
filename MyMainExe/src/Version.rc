@@ -5,24 +5,24 @@ VS_VERSION_INFO VERSIONINFO
  PRODUCTVERSION 0,1,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
- FILEFLAGS 0x1L
+ FILEFLAGS VS_FF_DEBUG
 #else
  FILEFLAGS 0x0L
 #endif
- FILEOS 0x40004L
- FILETYPE 0x1L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
  FILESUBTYPE 0x0L
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName", "Meyer"
-            VALUE "FileDescription", "MeyerScan main executable"
+            VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "FileDescription", "MeyerScan Main Executable"
             VALUE "FileVersion", "0.1.0.0"
             VALUE "InternalName", "MeyerScan"
             VALUE "OriginalFilename", "MeyerScan.exe"
-            VALUE "ProductName", "MeyerScan"
+            VALUE "ProductName", "MeyerScan Digital Dental Scanner"
             VALUE "ProductVersion", "0.1.0.0"
         END
     END

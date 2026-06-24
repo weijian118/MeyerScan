@@ -1,5 +1,23 @@
 # MeyerScan HomeUI 变更记录
 
+## 2026-06-25
+
+- 新增 `SetEntryEnabled()` 接口，接收 MainExe 下发的入口启用态；`enabled=false` 时按钮显示但禁用。
+- 首页入口按钮创建时同时应用 `visible` 和 `enabled`，后续配置/权限变化可继续沿用同一入口状态模型。
+- Qt 模块日志调用改为使用 `Logger.h` 的 `QString` 便捷接口，跨 DLL ABI 仍保持 UTF-8 `const char*`。
+- 日志 `module` 字段统一使用 `MeyerScan_HomeUI`，与 VS2015 工程 `MEYER_MODULE_NAME` 保持一致。
+- 根据 `glm52` 建议统一 `Version.rc`：公司名、产品名、Debug 标志、`FILEOS` 和 `FILETYPE` 与全项目版本资源规范保持一致。
+- 确认 `MEYER_MODULE_NAME="MeyerScan_HomeUI"` 已存在，日志宏可输出稳定首页模块名。
+- 为 `HomeUITest` 测试宿主补充独立 `MEYER_MODULE_NAME`，避免测试日志混入正式模块名。
+
+## 2026-06-24
+
+- 对齐新版 Logger 规则：HomeUI 当前没有真实登录人/操作员上下文，日志 `operator` 字段传空字符串，由 Logger 省略 `Op` 字段，避免输出无意义 `[Op:System]`。
+- 根据“初学者可读”要求补强函数体内部注释：初始化、日志加载、数据库借用、入口显隐、Qt 父子关系、按钮回调、Shutdown 和测试宿主路径推导均增加关键说明，不只保留函数头注释。
+- 补充 `IHomeUI` 公共接口和 `HomeUITest` 测试宿主的中文注释，明确入口回调、显隐控制、路径推导和冒烟测试流程。
+- 补充 HomeUI 头文件和实现文件的函数级中文注释，说明首页只负责入口展示和入口 ID 上报，不承载建单、订单加载、扫描启动或权限核心判断。
+- 补充 Logger/Database 生命周期注释：HomeUI 只缓存并借用接口，不关闭进程级 Logger / Database。
+
 ## 2026-06-22
 
 - 2026-06-23 补充：新增 `SetEntryVisible()`，用于接收 MainExe/Permission 下发的首页入口显隐规则；当前可控制“设置”入口显示状态。

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -58,9 +58,8 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;QT_CORE_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_MODULE_NAME="DatabaseTest";_DEBUG;QT_CORE_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)src;$(ProjectDir)..\MyLogger\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtSql;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -84,9 +83,8 @@ xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlited.dll"
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;QT_CORE_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_MODULE_NAME="DatabaseTest";NDEBUG;QT_CORE_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)src;$(ProjectDir)..\MyLogger\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtSql;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -100,7 +98,7 @@ xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlited.dll"
     <PostBuildEvent>
       <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
 xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll" "$(OutDir)"
-xcopy /Y /D "$(SolutionDir)..\MySQL\lib\libmysql.dll" "$(OutDir)"
+xcopy /Y /D "C:\Program Files (x86)\MeyerScan\libmysql.dll" "$(OutDir)"
 xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
 xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
     </PostBuildEvent>

@@ -1,0 +1,18 @@
+{
+    "description": "MeyerScan split modules recorded in startup versionList",
+    "modules": [
+        "MeyerScan.exe",
+        "MeyerLoginWidget.dll",
+        "MeyerScan_Logger.dll",
+        "MeyerScan_Database.dll",
+        "MeyerScan_ConfigCenter.dll",
+        "MeyerScan_Permission.dll",
+        "MeyerScan_UIComponents.dll",
+        "MeyerScan_HomeUI.dll",
+        "MeyerScan_CaseUI.dll",
+        "MeyerScan_CaseOrderService.dll",
+        "MeyerScan_OrderScanWorkspaceShell.dll",
+        "MeyerScan_Calibration3DUI.dll",
+        "MeyerScan_CalibrationColorUI.dll"
+    ]
+}

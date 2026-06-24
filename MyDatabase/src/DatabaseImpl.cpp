@@ -44,11 +44,15 @@
 #include "DatabaseImpl.h"
 #include <QByteArray>          // Qt 字节数组
 #include <QFile>              // Qt 文件操作
+#include <QJsonArray>         // Qt JSON 数组
 #include <QJsonDocument>      // Qt JSON 文档解析
 #include <QJsonObject>        // Qt JSON 对象
+#include <QJsonValue>         // Qt JSON 值
 #include <QDir>               // Qt 目录操作
 #include <QFileInfo>          // Qt 文件信息和路径判断
 #include <QProcess>           // Qt 进程执行（用于 robocopy）
+#include <QSqlRecord>         // Qt SQL 记录元数据
+#include <QVariant>           // Qt 通用值类型
 #include <QUuid>              // Qt UUID 生成（用于唯一连接名）
 #include <QDebug>             // Qt 调试输出（保留，仅在极端情况下使用）
 
@@ -56,12 +60,17 @@
 #include <cstring>            // std::memset / std::strncpy
 
 namespace {
+// 将 QString 按 UTF-8 复制到固定长度 char 缓冲区。
+// 数据库公共结构使用 POD 字符数组，不能把 QString 或 std::string 直接跨 DLL 返回。
 void CopyUtf8(char* target, size_t targetSize, const QString& value) {
     if (!target || targetSize == 0) {
+        // 调用方没有提供有效缓冲区，不能写入任何内容。
         return;
     }
+    // 先清零固定数组，避免上一次写入的长字符串尾部残留。
     std::memset(target, 0, targetSize);
     const QByteArray bytes = value.toUtf8();
+    // 固定数组最后一个字节留给 '\0'，方便 C ABI 调用方按字符串读取。
     std::strncpy(target, bytes.constData(), targetSize - 1);
 }
 }
@@ -83,14 +92,18 @@ static const char* MYSQL_USER = "admin";
 static const char* MYSQL_PASSWORD = "123456";
 
 // =============================================================================
-// 模块名称常量（用于日志输出）
+// 模块信息常量（用于日志输出和版本查询）
 // =============================================================================
 // 说明:
 //   因为 Database 不链接 Logger.lib，不能使用 MEYER_LOG_* 宏
 //   （宏内部调用了 GetLogger() 的 dllimport 声明），所以直接使用
-//   字符串常量 "MeyerScan_Database" 作为日志的模块名。
+//   ModuleInfo::Name 作为日志模块名。Name 必须与 vcxproj 中的
+//   MEYER_MODULE_NAME 保持一致；Version 必须与 Version.rc 同步。
 // =============================================================================
-static const char* MODULE_NAME = "MeyerScan_Database";
+namespace ModuleInfo {
+const char* Name = "MeyerScan_Database";
+const char* Version = "MeyerScan_Database v1.2.0 (2026-06-23)";
+}
 
 // =============================================================================
 // 静态成员初始化
@@ -183,7 +196,9 @@ DatabaseImpl& DatabaseImpl::Instance() {
 // =============================================================================
 DatabaseImpl::DatabaseImpl()
     : m_connected(false) {
+    // m_config 是跨 DLL 返回的 POD 结构，必须清零，避免保留随机栈/堆数据。
     memset(&m_config, 0, sizeof(m_config));
+    // m_lastBackupTime 也是固定 char 数组，清零后默认就是空字符串。
     memset(m_lastBackupTime, 0, sizeof(m_lastBackupTime));
 }
 
@@ -265,6 +280,8 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
         return false;
     }
 
+    // 保存配置文件所在目录。后续 JSON 内相对路径都以这个目录为基准解析，
+    // 而不是以进程 currentPath 为基准，避免第三方启动时路径错乱。
     m_configDir = QFileInfo(configFilePath).absoluteDir().absolutePath();
 
     // 读取文件内容
@@ -283,6 +300,7 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
     QJsonObject root = doc.object();
 
     // 解析数据库类型
+    // JSON 缺省使用 mysql，保持与当前已安装软件默认数据库一致。
     QString dbTypeValue = root["databaseType"].toString("mysql");
     m_config.dbType = (dbTypeValue.toLower() == "sqlite") ?
         static_cast<int32_t>(DatabaseType::SQLite) :
@@ -292,6 +310,8 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
     // 解析 MySQL 配置
     QJsonObject mysql = root["mysql"].toObject();
 
+    // 下面所有 CopyUtf8 都是把 QString 安全复制进 DbConfig 的固定 char 数组。
+    // 这样调用方可以跨 DLL 读取配置快照，不涉及 QString 内存所有权。
     CopyUtf8(m_config.mysqlHost,
              sizeof(m_config.mysqlHost),
              mysql["host"].toString("127.0.0.1"));
@@ -306,10 +326,12 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
              sizeof(m_config.mysqlDatabase),
              mysql["database"].toString("mscan"));
 
+    // dataDir 支持相对路径。ResolvePathFromConfig 会相对 db_config.json 所在目录解析。
     const QString mysqlDataDir = ResolvePathFromConfig(mysql["dataDir"].toString("../MySQL/data/mscan"));
     CopyUtf8(m_config.mysqlDataDir, sizeof(m_config.mysqlDataDir), mysqlDataDir);
 
     // 解析 SQLite 配置
+    // sqlitePath 同样允许相对路径，便于整个安装目录迁移。
     const QString sqlitePath = ResolvePathFromConfig(root["sqlitePath"].toString("data/MeyerScanSQLite.db"));
     CopyUtf8(m_config.sqlitePath, sizeof(m_config.sqlitePath), sqlitePath);
 
@@ -321,6 +343,7 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
 // ResolvePathFromConfig - 解析配置路径
 // =============================================================================
 QString DatabaseImpl::ResolvePathFromConfig(const QString& configuredPath) const {
+    // 统一把 Windows 反斜杠转成 Qt 风格斜杠，后续拼接/比较更稳定。
     QString normalized = QDir::fromNativeSeparators(configuredPath.trimmed());
     if (normalized.isEmpty()) {
         return QString();
@@ -328,9 +351,11 @@ QString DatabaseImpl::ResolvePathFromConfig(const QString& configuredPath) const
 
     QFileInfo fileInfo(normalized);
     if (fileInfo.isAbsolute()) {
+        // 已经是绝对路径时只做 cleanPath，不再套配置目录。
         return QDir::cleanPath(normalized);
     }
 
+    // 相对路径以配置文件目录为基准，而不是以进程工作目录为基准。
     QDir baseDir(m_configDir);
     return QDir::cleanPath(baseDir.filePath(normalized));
 }
@@ -386,6 +411,7 @@ bool DatabaseImpl::ConnectMySQL() {
     QString connectionName = QUuid::createUuid().toString();
 
     // 创建 QMYSQL 数据库连接
+    // Qt 按 connectionName 管理连接池，后续 removeDatabase 必须使用同一个名字。
     m_db = QSqlDatabase::addDatabase("QMYSQL", connectionName);
     m_connectionName = connectionName;
 
@@ -400,6 +426,8 @@ bool DatabaseImpl::ConnectMySQL() {
     if (!m_db.open()) {
         LogError("ConnectMySQL",
                  m_db.lastError().text().toUtf8().constData());
+        // 打开失败时必须先把 m_db 置空，再 removeDatabase。
+        // Qt 要求没有 QSqlDatabase 对象引用该连接时才能安全移除。
         m_db = QSqlDatabase();
         QSqlDatabase::removeDatabase(m_connectionName);
         m_connectionName.clear();
@@ -424,16 +452,19 @@ bool DatabaseImpl::ConnectSQLite() {
     QString connectionName = QUuid::createUuid().toString();
 
     // 创建 QSQLITE 数据库连接
+    // SQLite 驱动同样使用独立 connectionName，避免和其他模块的默认连接冲突。
     m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
     m_connectionName = connectionName;
 
     // 设置数据库文件路径
+    // SQLite 文件路径来自配置文件，允许相对安装目录迁移。
     m_db.setDatabaseName(QString::fromUtf8(m_config.sqlitePath));
 
     // 尝试打开连接
     if (!m_db.open()) {
         LogError("ConnectSQLite",
                  m_db.lastError().text().toUtf8().constData());
+        // 失败清理顺序同 MySQL：先释放 QSqlDatabase 引用，再移除连接名。
         m_db = QSqlDatabase();
         QSqlDatabase::removeDatabase(m_connectionName);
         m_connectionName.clear();
@@ -456,8 +487,10 @@ VoidResult DatabaseImpl::Disconnect() {
 
     // 检查连接状态
     if (m_db.isValid() && m_db.isOpen()) {
+        // close 只关闭当前连接，真正从 Qt 连接池移除还要 removeDatabase。
         m_db.close();
     }
+    // 必须先让 m_db 不再引用 connectionName，否则 Qt 会警告连接仍在使用。
     m_db = QSqlDatabase();
 
     if (!m_connectionName.isEmpty()) {
@@ -477,6 +510,8 @@ VoidResult DatabaseImpl::Disconnect() {
 // IsConnected - 检查连接状态
 // =============================================================================
 bool DatabaseImpl::IsConnected() const {
+    // m_connected 是模块自己的状态位，m_db.isOpen() 是 Qt 连接实际状态。
+    // 两者都满足时才认为数据库可用。
     return m_connected && m_db.isOpen();
 }
 
@@ -484,6 +519,8 @@ bool DatabaseImpl::IsConnected() const {
 // GetDatabaseType - 获取数据库类型
 // =============================================================================
 DatabaseType DatabaseImpl::GetDatabaseType() const {
+    // m_config 中保存 int32_t 是为了 POD 结构跨 DLL 稳定；
+    // 对外接口再转换回 DatabaseType 枚举。
     return static_cast<DatabaseType>(m_config.dbType);
 }
 
@@ -545,6 +582,7 @@ bool DatabaseImpl::BackupMySQL(const char* backupPath) {
 
     QString sourceDir = QString::fromUtf8(m_config.mysqlDataDir);
     if (sourceDir.isEmpty()) {
+        // MySQL 备份依赖 dataDir，如果配置为空，robocopy 没有可靠源目录。
         LogError("BackupMySQL", "MySQL data directory is empty");
         return false;
     }
@@ -566,11 +604,13 @@ bool DatabaseImpl::BackupMySQL(const char* backupPath) {
 
     int ret = QProcess::execute("robocopy", args);
     if (ret > 7) {
+        // robocopy 0~7 都可能表示成功或带警告成功，8 以上才是失败。
         LogError("BackupMySQL", "robocopy failed");
         return false;
     }
 
     // 记录备份时间
+    // m_lastBackupTime 是固定数组，保留最后一次成功备份时间供 UI 显示。
     strncpy(m_lastBackupTime, timestamp.toUtf8().constData(),
             sizeof(m_lastBackupTime) - 1);
     LogInfo("BackupMySQL", "MySQL backup completed");
@@ -589,6 +629,7 @@ bool DatabaseImpl::BackupSQLite(const char* backupPath) {
     QString timestamp = QDateTime::currentDateTime().toString("yyyyMMddHHmmss");
 
     // 源文件路径
+    // SQLite 是单文件数据库，备份逻辑比 MySQL 简单，直接复制数据库文件。
     QString sourceFile = QString::fromUtf8(m_config.sqlitePath);
 
     // 目标文件路径
@@ -597,6 +638,7 @@ bool DatabaseImpl::BackupSQLite(const char* backupPath) {
 
     // 复制文件
     if (!QFile::copy(sourceFile, targetFile)) {
+        // QFile::copy 不覆盖已存在文件；由于文件名含秒级时间戳，正常不会冲突。
         LogError("BackupSQLite", "Failed to copy SQLite database file");
         return false;
     }
@@ -647,6 +689,8 @@ Result<DbResult> DatabaseImpl::ExecuteQuery(const char* sql) {
     }
 
     // 执行查询
+    // ExecuteQuery 只返回影响行数，不返回结果集。
+    // 需要结果集时使用 ExecuteQueryJson，避免调用方直接依赖 QSqlQuery。
     QSqlQuery query(m_db);
     if (!query.exec(QString::fromUtf8(sql))) {
         LogError("ExecuteQuery", query.lastError().text().toUtf8().constData());
@@ -658,6 +702,95 @@ Result<DbResult> DatabaseImpl::ExecuteQuery(const char* sql) {
     // 记录影响行数
     result.affectedRows = query.numRowsAffected();
     return Result<DbResult>::Ok(result);
+}
+
+// =============================================================================
+// ExecuteQueryJson - 执行查询并返回 JSON 结果
+// =============================================================================
+// 说明:
+//   只做通用 SQL 结果集到 JSON 的转换，不理解业务字段语义。
+// =============================================================================
+Result<DbJsonResult> DatabaseImpl::ExecuteQueryJson(const char* sql,
+                                                    char* jsonBuffer,
+                                                    int32_t jsonBufferSize) {
+    QMutexLocker locker(&m_mutex);
+
+    // DbJsonResult 是 POD 返回结构，先填默认值，后续只写 rowCount/bytesWritten。
+    DbJsonResult result;
+    result.version = 1;
+    result.rowCount = 0;
+    result.bytesWritten = 0;
+    memset(result.reserved, 0, sizeof(result.reserved));
+
+    if (!sql || sql[0] == '\0') {
+        // SQL 为空时直接返回参数错误，不交给 Qt 驱动产生模糊错误。
+        LogError("ExecuteQueryJson", "SQL is empty");
+        return Result<DbJsonResult>::Fail(ErrorCode::InvalidParameter,
+                                          "SQL is empty");
+    }
+    if (!jsonBuffer || jsonBufferSize <= 0) {
+        // JSON 由调用方提供缓冲区接收，缓冲区无效时不能执行查询。
+        LogError("ExecuteQueryJson", "JSON output buffer is invalid");
+        return Result<DbJsonResult>::Fail(ErrorCode::InvalidParameter,
+                                          "JSON output buffer is invalid");
+    }
+    if (!IsConnected()) {
+        // 所有查询都要求已连接，避免 QSqlQuery 在无效连接上产生不可预测行为。
+        LogError("ExecuteQueryJson", "Database is not connected");
+        return Result<DbJsonResult>::Fail(ErrorCode::NotInitialized,
+                                          "Database is not connected");
+    }
+
+    // Database 模块只负责通用 SQL 执行，不判断业务字段含义。
+    QSqlQuery query(m_db);
+    if (!query.exec(QString::fromUtf8(sql))) {
+        LogError("ExecuteQueryJson", query.lastError().text().toUtf8().constData());
+        return Result<DbJsonResult>::Fail(ErrorCode::DbQueryFailed,
+                                          "SQL query failed");
+    }
+
+    // 先读取字段名，输出到 columns，方便调用方调试或做通用表格展示。
+    const QSqlRecord record = query.record();
+    QJsonArray columns;
+    for (int i = 0; i < record.count(); ++i) {
+        columns.append(record.fieldName(i));
+    }
+
+    // 将每一行转换成 JSON 对象。
+    // QVariant -> QJsonValue 会处理常见基础类型，复杂类型后续再按需要扩展。
+    QJsonArray rows;
+    while (query.next()) {
+        QJsonObject row;
+        for (int i = 0; i < record.count(); ++i) {
+            const QString fieldName = record.fieldName(i);
+            const QVariant value = query.value(i);
+            row.insert(fieldName, QJsonValue::fromVariant(value));
+        }
+        rows.append(row);
+    }
+
+    // 统一输出格式，服务层可以稳定解析 rows，不暴露 Qt 类型。
+    QJsonObject root;
+    root.insert("schemaVersion", 1);
+    root.insert("rowCount", rows.size());
+    root.insert("columns", columns);
+    root.insert("rows", rows);
+
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    if (bytes.size() + 1 > jsonBufferSize) {
+        // 缓冲区不足时不写半截 JSON，直接返回失败，防止调用方解析截断内容。
+        LogError("ExecuteQueryJson", "JSON output buffer is too small");
+        return Result<DbJsonResult>::Fail(ErrorCode::InvalidParameter,
+                                          "JSON output buffer is too small");
+    }
+
+    // 清零后再复制，保证 jsonBuffer 总是以 '\0' 结尾。
+    memset(jsonBuffer, 0, static_cast<size_t>(jsonBufferSize));
+    memcpy(jsonBuffer, bytes.constData(), static_cast<size_t>(bytes.size()));
+
+    result.rowCount = rows.size();
+    result.bytesWritten = bytes.size();
+    return Result<DbJsonResult>::Ok(result);
 }
 
 // =============================================================================
@@ -692,6 +825,7 @@ Result<DbResult> DatabaseImpl::ExecuteUpdate(const char* sql) {
     }
 
     // 执行更新
+    // INSERT/UPDATE/DELETE/DDL 都走这里，返回 numRowsAffected 供调用方参考。
     QSqlQuery query(m_db);
     if (!query.exec(QString::fromUtf8(sql))) {
         LogError("ExecuteUpdate", query.lastError().text().toUtf8().constData());
@@ -726,6 +860,7 @@ int32_t DatabaseImpl::ExecuteScript(const char** sqlScripts, int32_t count) {
     // 依次执行每条 SQL
     for (int32_t i = 0; i < count; ++i) {
         if (!sqlScripts[i]) {
+            // 空脚本跳过，不计入成功数量。
             continue;
         }
         Result<DbResult> result = ExecuteUpdate(sqlScripts[i]);
@@ -745,6 +880,8 @@ int32_t DatabaseImpl::ExecuteScript(const char** sqlScripts, int32_t count) {
 VoidResult DatabaseImpl::BeginTransaction() {
     QMutexLocker locker(&m_mutex);
 
+    // 事务直接委托 Qt 驱动。
+    // 如果数据库未连接或驱动不支持事务，Qt 会返回 false 并给出 lastError。
     bool success = m_db.transaction();
     if (!success) {
         LogError("BeginTransaction",
@@ -761,16 +898,20 @@ VoidResult DatabaseImpl::BeginTransaction() {
 // Commit - 提交事务
 // =============================================================================
 VoidResult DatabaseImpl::Commit() {
+    // 所有事务操作都用同一个互斥锁保护，避免多个线程交叉提交/回滚同一连接。
     QMutexLocker locker(&m_mutex);
 
+    // 提交失败时调用方应根据返回值决定是否告警或重试。
     bool success = m_db.commit();
     if (!success) {
+        // lastError 属于当前 QSqlDatabase/QSqlDriver 状态，必须在失败现场立即读取。
         LogError("Commit",
                  m_db.lastError().text().toUtf8().constData());
         return VoidResult::Fail(ErrorCode::DbTransactionFailed,
                                 "Failed to commit transaction");
     }
 
+    // 成功提交后记录 Info，便于和 BeginTransaction/Rollback 成对追踪。
     LogInfo("Commit", "Transaction committed");
     return VoidResult::Ok();
 }
@@ -779,16 +920,20 @@ VoidResult DatabaseImpl::Commit() {
 // Rollback - 回滚事务
 // =============================================================================
 VoidResult DatabaseImpl::Rollback() {
+    // 和 Commit 使用同一把锁，保证事务状态不会被其它线程同时修改。
     QMutexLocker locker(&m_mutex);
 
+    // 回滚用于上层服务发生错误时撤销已执行 SQL。
     bool success = m_db.rollback();
     if (!success) {
+        // 回滚失败通常表示连接异常或驱动状态异常，需要记录底层错误文本。
         LogError("Rollback",
                  m_db.lastError().text().toUtf8().constData());
         return VoidResult::Fail(ErrorCode::DbTransactionFailed,
                                 "Failed to roll back transaction");
     }
 
+    // 回滚成功也写 Info，方便确认异常路径是否完成清理。
     LogInfo("Rollback", "Transaction rolled back");
     return VoidResult::Ok();
 }
@@ -797,6 +942,7 @@ VoidResult DatabaseImpl::Rollback() {
 // GetConfig - 获取当前配置
 // =============================================================================
 const DbConfig& DatabaseImpl::GetConfig() const {
+    // 返回内部配置快照引用，调用方只读，不得保存后跨 Shutdown 使用。
     return m_config;
 }
 
@@ -807,19 +953,23 @@ VoidResult DatabaseImpl::SetDatabaseType(DatabaseType dbType) {
     {
         QMutexLocker locker(&m_mutex);
 
+        // 切换数据库类型前必须关闭现有连接，否则 Qt 连接仍指向旧驱动。
         if (m_connected && m_db.isOpen()) {
             m_db.close();
             m_db = QSqlDatabase();
             if (!m_connectionName.isEmpty()) {
+                // removeDatabase 必须在 m_db 置空后调用，避免 Qt 连接仍被引用。
                 QSqlDatabase::removeDatabase(m_connectionName);
                 m_connectionName.clear();
             }
             m_connected = false;
         }
 
+        // 只切换类型，不重新加载配置；host/path 等参数仍来自 Init 读取的配置文件。
         m_config.dbType = static_cast<int32_t>(dbType);
     }
 
+    // 释放锁后再 Connect，避免 Connect 内部再次加锁造成死锁。
     VoidResult result = Connect();
 
     if (result.IsSuccess()) {
@@ -839,13 +989,14 @@ VoidResult DatabaseImpl::SetDatabaseType(DatabaseType dbType) {
 //   后续如需要程序化比较版本号，可增加 GetModuleInfo() 接口。
 // =============================================================================
 const char* DatabaseImpl::GetModuleVersion() const {
-    return "MeyerScan_Database v1.1.0 (2026-06-17)";
+    return ModuleInfo::Version;
 }
 
 // =============================================================================
 // Shutdown - 关闭数据库模块
 // =============================================================================
 VoidResult DatabaseImpl::Shutdown() {
+    // Shutdown 可重复调用；Disconnect 内部会检查当前连接状态。
     Disconnect();
     LogInfo("Shutdown", "Database module shut down");
     return VoidResult::Ok();
@@ -859,10 +1010,14 @@ VoidResult DatabaseImpl::Shutdown() {
 //   如果 Logger.dll 不可用，日志静默跳过。
 // =============================================================================
 void DatabaseImpl::LogError(const char* operation, const char* message) {
+    // GetLogger 内部会缓存动态加载结果。
+    // 这里虽然调用函数名是 GetLogger，但不是每条日志都重新 LoadLibrary/GetProcAddress。
     ILogger* logger = GetLogger();
     if (logger) {
+        // Database 不直接链接 Logger.lib，所以只能通过动态获取到的 ILogger 写日志。
         logger->Write(LogLevel::Error,
-                      MODULE_NAME,
+                      ModuleInfo::Name,
+                      // operation/message 都做空指针保护，避免错误路径再次崩溃。
                       operation ? operation : "",
                       "",   // deviceId（当前无设备关联）
                       "",   // caseId（当前无病例关联）
@@ -879,10 +1034,13 @@ void DatabaseImpl::LogError(const char* operation, const char* message) {
 //   如果 Logger.dll 不可用，日志静默跳过。
 // =============================================================================
 void DatabaseImpl::LogInfo(const char* operation, const char* message) {
+    // Info 日志同样走动态 Logger 缓存；Logger 缺失时静默跳过。
     ILogger* logger = GetLogger();
     if (logger) {
+        // Info 日志用于记录连接、断开、备份等正常流程节点。
         logger->Write(LogLevel::Info,
-                      MODULE_NAME,
+                      ModuleInfo::Name,
+                      // 空 operation 统一写为空字符串，避免 Logger 收到 nullptr。
                       operation ? operation : "",
                       "",   // deviceId
                       "",   // caseId

@@ -1,5 +1,26 @@
 # MeyerScan Logger 变更记录
 
+## 2026-06-25
+
+- `LoggerTest` 启动前清理测试目录当天日志文件，避免旧版本历史日志中的 `[Txt:]`、`[INFO ]` 等格式影响本次紧凑格式断言。
+- Logger 写文件路径改为 UTF-8 转 UTF-16 后调用 `CreateFileW` / `SHCreateDirectoryExW`，支持 MeyerScan 安装在中文路径或 OEM 自定义路径下仍能创建日志。
+- 日志正文分类标记由 `[Txt:]` 调整为 `[Content:]`，与 module / operation 的分类标记规则保持直观一致，也便于后续工具按字段解析。
+- README 日志格式示例更新为当前 `[Mod:] [Op:] [Content:]` 分类标记，并明确 `operator` 字段使用 `[Opr:]`，避免与操作字段 `[Op:]` 混淆。
+- 明确 Qt 模块的 `QString` 重载是正式便捷接口，但跨 DLL ABI 仍为 UTF-8 `const char*`，不把 Qt 对象传入 Logger.dll。
+- 根据 `glm52` 建议在 VS2015 工程和 CMake 工程中补充 `MEYER_MODULE_NAME="MeyerScan_Logger"`，保证 Logger 自身如使用日志宏时也有稳定模块名。
+- Logger 导出宏仍保留 `MEYER_LOGGER_API` / `MEYER_LOGGER_EXPORTS`，后续如做主版本 ABI 收口，再统一评估是否迁移到 `MEYERSCAN_LOGGER_API`。
+
+## 2026-06-24
+
+- 根据日志实际测试反馈重构写入策略：每天默认生成 `MeyerScan_YYYYMMDD.log`，达到 10 MiB 后再生成 `MeyerScan_YYYYMMDD_001.log` 等尾部序号文件。
+- 日志格式改为紧凑输出，空 `deviceId` / `caseId` / `operator` 字段不再输出 `[Dev:-]`、`[Case:-]`、`[Op:-]` 占位，也不再输出 `[INFO ]` 这种固定宽度空格。
+- Logger 写入改为每条日志打开文件、追加一行、`FlushFileBuffers`、关闭句柄；后台可以移动、删除或打包日志文件。
+- 保留 `ILogger::Write(...)` 原 ABI；明确推荐每个模块在初始化阶段缓存一份 `ILogger* m_logger`，后续在该变量生命周期内持续通过 `m_logger->Write(...)` 输出日志；Qt 模块可直接输出 `QString`，但 Logger.dll 本体仍不依赖 Qt。
+- 新增 `README.md` 记录日志文件规则、写入策略、内容格式和推荐调用方式。
+- 根据“初学者可读”要求补强函数体内部注释：日志日期生成、日志文件路径生成、LogWriter 析构和关闭流程均增加关键说明，继续保持 Logger 低依赖基础设施边界。
+- 版本号更新为 `MeyerScan_Logger v1.1.0 (2026-06-24)`，删除旧 `LogBuffer.*`，并从 VS2015/CMake 工程中移除后台缓冲构建引用。
+- 记录调用约束：模块如果没有真实操作员上下文，应传空字符串，不应为了占位传 `"System"`，避免日志中出现无意义 `[Op:System]`。
+
 ## 2026-06-22
 
 - 新增模块级变更记录文件。

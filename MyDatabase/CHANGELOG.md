@@ -1,5 +1,28 @@
 # MeyerScan Database 变更记录
 
+## 2026-06-25
+
+- 修正 `DatabaseTest` PostBuild 中 `libmysql.dll` 的复制来源，改为从既有安装目录 `C:\Program Files (x86)\MeyerScan\libmysql.dll` 复制，避免构建时继续访问不存在的 `F:\MeyerScan\MySQL\lib`。
+- 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；Database 日志模块名和 `GetModuleVersion()` 均从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。
+- 根据 `glm52` 工程一致性方向，为 `DatabaseTest` Debug/Release 工程补充 `MEYER_MODULE_NAME="DatabaseTest"`，保证测试宿主日志可追溯。
+- 复核 `Version.rc` 已符合统一公司名、产品名、命名常量和 `FileDescription` 规范，无需额外修改数据库模块版本资源。
+
+## 2026-06-24
+
+- 根据“初学者可读”要求补强函数体内部注释：配置路径解析、Qt SQL 连接生命周期、查询 JSON 转换、备份、事务、数据库类型切换、日志动态加载和 DatabaseTest 路径/备份逻辑均增加关键说明。
+- 补充 `Result<T>`、`VoidResult`、错误码辅助函数和 `DatabaseTest` 路径辅助函数的中文注释，确保测试项目和公共结果结构同样满足函数级注释要求。
+- 复查自研源码注释覆盖，确认 Database 公共接口、实现函数和测试宿主均有函数级中文说明；第三方 MySQL 头文件不纳入自研注释修改范围。
+
+## 2026-06-23
+
+- 版本提升到 v1.2.0。
+- 新增 `DbJsonResult` 和 `IDatabase::ExecuteQueryJson()`，用于把通用 SELECT 查询结果转成调用方缓冲区中的 UTF-8 JSON。
+- 新增测试覆盖 `ExecuteQueryJson()` 的最小常量查询结果。
+- 明确该接口只做行列结果转换，不理解患者、订单、医生、诊所、技工所等业务语义；UI 仍不得绕过 CaseOrderService 等领域服务直接拼业务 SQL。
+- 新增虚函数按 ABI 规则追加在接口末尾，避免插入已有虚函数中间。
+- 明确 Database 使用 Qt SQL 是当前设计选择，职责边界要求是不承载业务语义，不是去 Qt 化。
+- 2026-06-24 复查验证：Release x64 构建通过，`DatabaseTest.exe` 23 passed / 0 failed。
+
 ## 2026-06-22
 
 - 新增模块级变更记录文件。

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -58,9 +58,8 @@
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>MEYER_LOGGER_EXPORTS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_LOGGER_EXPORTS;MEYER_MODULE_NAME="MeyerScan_Logger";_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
 
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
@@ -78,9 +77,8 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>MEYER_LOGGER_EXPORTS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_LOGGER_EXPORTS;MEYER_MODULE_NAME="MeyerScan_Logger";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
 
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
@@ -94,7 +92,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\LogFormat.cpp" />
-    <ClCompile Include="src\LogBuffer.cpp" />
     <ClCompile Include="src\LogRotation.cpp" />
     <ClCompile Include="src\LogWriter.cpp" />
     <ClCompile Include="src\LoggerImpl.cpp" />
@@ -105,7 +102,6 @@
   <ItemGroup>
     <ClInclude Include="include\Logger.h" />
     <ClInclude Include="src\LogFormat.h" />
-    <ClInclude Include="src\LogBuffer.h" />
     <ClInclude Include="src\LogRotation.h" />
     <ClInclude Include="src\LogWriter.h" />
     <ClInclude Include="src\LoggerImpl.h" />

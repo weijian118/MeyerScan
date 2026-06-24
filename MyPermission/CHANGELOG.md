@@ -1,5 +1,24 @@
 # MeyerScan Permission 变更记录
 
+## 2026-06-25
+
+- 新增 `config/permission_rules.json` 默认模板，并在 VS2015 PostBuild 中复制到 Release `config/`；字段说明继续放在同级 `permission_rules.md`，JSON 内部不写注释。
+- 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；`GetModuleVersion()` 从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。
+- 新增 `config/permission_rules.md`，集中说明 `permission_rules.json` 字段含义、featureId 写法、`visible` 和 `enabled` 的区别。
+- 明确权限 JSON 内部不写注释，人工说明写在同级 md 文件中。
+- `enabled` 不再只是预留：MainExe 已将其下发给 HomeUI/CaseUI 设置禁用态，并在入口/动作回调后做二次复核。
+- 根据 `glm52` 建议统一 `Version.rc`：公司名、产品名和 `FileDescription` 与全项目版本资源规范保持一致。
+- 在 VS2015 工程中补充 `MEYER_MODULE_NAME="MeyerScan_Permission"`，保证后续日志宏输出正确模块名。
+- 在 `IPermission::Init()` 注释中标明当前 `bool` 返回值只是骨架期过渡；Core.lib 落地后应迁移到 `ErrorCode` / `VoidResult`，并区分规则缺失、损坏、版本不兼容和验签失败等原因。
+
+## 2026-06-24
+
+- 根据“初学者可读”要求补强函数体内部注释：授权文件路径、默认全开放规则、visible/enabled 区别、JSON 逐级读取和已有授权不覆盖逻辑均增加关键说明。
+- README 补充 `permission_rules.json` 字段含义：`visible` 控制是否显示入口，`enabled` 控制是否允许执行动作。
+- README 补充 ConfigCenter 与 Permission 的关系：配置给默认策略，权限给授权结果，MainExe 合并后下发 UI，Workflow/Service/IPC 后续仍要复核。
+- 补充接口、实现和关键 JSON 读取流程注释，明确 `visible` 控制入口是否显示，`enabled` 控制功能是否可执行。
+- 重新说明 Permission 只负责授权结果，不替代 ConfigCenter 的产品默认配置，也不能只靠 UI 显隐作为安全边界。
+
 ## 2026-06-23
 
 - 新增权限模块骨架。

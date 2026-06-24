@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件:    Database.h
 // 模块:    MeyerScan_Database.dll
-// 版本号:  v1.1.0
+// 版本号:  v1.2.0
 //
 // 用途:
 //   数据库基础设施模块的公共接口头文件。提供统一的数据库访问接口，
@@ -10,7 +10,7 @@
 //
 // 架构角色:
 //   本模块属于架构分层中的"数据/设备层"（第二层），作为通用数据库基础设施，
-//   供上层所有模块（CaseService、OrderService、Permission、Statistics 等）执行 SQL 操作。
+//   供上层所有模块（CaseOrderService、ScanSchemaService、Permission、Statistics 等）执行 SQL 操作。
 //   本模块允许使用 Qt SQL 作为实现依赖，但不承载任何业务逻辑。
 //   业务逻辑统一在各模块的 Service 层处理。
 //
@@ -138,6 +138,33 @@ struct DbResult {
 };
 
 // =============================================================================
+// DbJsonResult - SQL 查询 JSON 结果
+// =============================================================================
+// 说明:
+//   用于把 SELECT 查询结果转成稳定 UTF-8 JSON 文本。
+//   Database 只负责通用行列转换，不理解患者、订单、医生、诊所等业务语义。
+//
+// JSON 格式:
+//   {
+//     "schemaVersion": 1,
+//     "rowCount": 1,
+//     "columns": ["id", "name"],
+//     "rows": [{"id": 1, "name": "demo"}]
+//   }
+//
+// 注意事项:
+//   - `json` 缓冲区由调用方传入，避免跨 DLL 分配/释放内存
+//   - 查询结果超过缓冲区时返回 InvalidParameter
+//   - 大数据导出不得使用本接口，必须走 DataExport/ScanDataIO 等专用模块
+// =============================================================================
+struct DbJsonResult {
+    uint32_t version;           // 结构体版本号，当前为 1
+    int32_t  rowCount;          // 查询返回行数
+    int32_t  bytesWritten;      // 写入 jsonBuffer 的 UTF-8 字节数，不含结尾 '\0'
+    int32_t  reserved[8];       // 保留字段
+};
+
+// =============================================================================
 // @todo 以下类型将迁移至 Core.lib
 // =============================================================================
 // ErrorCode、Result<T>、VoidResult 当前在此处临时定义，
@@ -201,21 +228,29 @@ struct Result {
     T           data;        // 返回数据（成功时有效）
     const char* message;     // 错误描述（失败时有效，成功时可为 nullptr）
 
+    // 默认构造为 UnknownError，避免调用方误把未赋值结果当作成功。
     Result() : error(ErrorCode::UnknownError), message(nullptr) {}
 
+    // 构造失败或特定错误结果。
     Result(ErrorCode err, const char* msg = nullptr)
         : error(err), message(msg) {}
 
+    // 构造成功结果，data 通过 move 保存，减少大结构体复制。
     Result(T value)
         : error(ErrorCode::Success), data(std::move(value)), message(nullptr) {}
 
+    // 判断结果是否成功。
     bool IsSuccess() const { return error == ErrorCode::Success; }
+
+    // 判断结果是否失败。
     bool IsError()   const { return error != ErrorCode::Success; }
 
+    // 构造成功结果的便捷函数。
     static Result<T> Ok(T value) {
         return Result<T>(std::move(value));
     }
 
+    // 构造失败结果的便捷函数。
     static Result<T> Fail(ErrorCode err, const char* msg = nullptr) {
         return Result<T>(err, msg);
     }
@@ -230,21 +265,28 @@ struct Result {
 // @todo 迁移至 Core.lib/Result.h
 // =============================================================================
 struct VoidResult {
-    ErrorCode   error;
-    const char* message;
+    ErrorCode   error;      // 错误码，Success 表示成功。
+    const char* message;    // 错误描述，成功时可为 nullptr。
 
+    // 默认构造为 UnknownError，防止未初始化结果被误判为成功。
     VoidResult() : error(ErrorCode::UnknownError), message(nullptr) {}
 
+    // 构造指定错误码和消息的结果。
     VoidResult(ErrorCode err, const char* msg = nullptr)
         : error(err), message(msg) {}
 
+    // 判断操作是否成功。
     bool IsSuccess() const { return error == ErrorCode::Success; }
+
+    // 判断操作是否失败。
     bool IsError()   const { return error != ErrorCode::Success; }
 
+    // 构造成功结果。
     static VoidResult Ok() {
         return VoidResult(ErrorCode::Success);
     }
 
+    // 构造失败结果。
     static VoidResult Fail(ErrorCode err, const char* msg = nullptr) {
         return VoidResult(err, msg);
     }
@@ -253,10 +295,12 @@ struct VoidResult {
 // =============================================================================
 // 错误码辅助函数
 // =============================================================================
+// 判断错误码是否为 Success。
 inline bool IsSuccess(ErrorCode code) {
     return code == ErrorCode::Success;
 }
 
+// 判断错误码是否表示失败。
 inline bool IsError(ErrorCode code) {
     return code != ErrorCode::Success;
 }
@@ -524,7 +568,7 @@ public:
     // -------------------------------------------------------------------------
     // GetModuleVersion - 获取模块版本号
     // -------------------------------------------------------------------------
-    // 返回值: 版本字符串指针，格式如 "MeyerScan_Database v1.1.0 (2026-06-17)"
+// 返回值: 版本字符串指针，格式如 "MeyerScan_Database v1.2.0 (2026-06-23)"
     //
     // 设计说明:
     //   返回简单字符串而非 ModuleVersion 结构体，原因：
@@ -550,6 +594,29 @@ public:
     //   调用后可以重新 Init() 和 Connect()。
     // -------------------------------------------------------------------------
     virtual VoidResult Shutdown() = 0;
+
+    // -------------------------------------------------------------------------
+    // ExecuteQueryJson - 执行查询并返回 JSON 结果
+    // -------------------------------------------------------------------------
+    // 参数:
+    //   sql            - SQL 查询语句（UTF-8 编码）
+    //   jsonBuffer     - 调用方提供的输出缓冲区
+    //   jsonBufferSize - 输出缓冲区大小
+    //
+    // 返回值: Result<DbJsonResult>
+    //   成功时 jsonBuffer 中写入紧凑 JSON
+    //   失败时 error 包含错误码，message 包含错误描述
+    //
+    // 边界:
+    //   Database 只做通用 SQL 查询结果 JSON 化，不承载病例/订单字段语义。
+    //   上层 CaseOrderService 等服务负责字段映射、schema 版本和业务校验。
+    //
+    // ABI 约束:
+    //   新接口只能追加在虚函数列表末尾，不能插入已有虚函数中间。
+    // -------------------------------------------------------------------------
+    virtual Result<DbJsonResult> ExecuteQueryJson(const char* sql,
+                                                  char* jsonBuffer,
+                                                  int32_t jsonBufferSize) = 0;
 };
 
 // =============================================================================

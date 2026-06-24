@@ -9,22 +9,25 @@
 //       b) 每个进程恰好一个实例（静态局部变量是每个 DLL 实例独立的，
 //          且每个进程加载自己的 DLL 副本）。
 //       c) 相对于同一翻译单元中其他静态对象的确定性析构顺序。
-//   - 后台线程在 Shutdown() 中被 join，Shutdown() 从 ~LoggerImpl() 调用。
-//     这意味着线程保证在 CRT 被拆除之前退出，避免了
-//     "main() 返回后线程仍在运行"的问题。
-//   - Write() 中的 condition_variable 通知是有意放在缓冲区锁外部的。
-//     最坏情况是在缓冲区为空时发生虚假唤醒，这由 DoFlush() 中的
-//     简单 "if empty, return" 检查处理。
-//   - Error 和 Fatal 日志级别触发立即刷新通知。这是尽力而为的保证 —
-//     如果进程在 Write() 调用和后台线程获取 CPU 之间崩溃，
-//     该行仍可能丢失。对于真正的崩溃安全日志记录，我们需要
-//     在每次 Error/Fatal 时同步写入并 fsync，这将是
-//     异常昂贵的（慢 10–100 倍）。
+//   - 当前实现不再使用后台缓冲线程。每条日志在 Write() 内完成
+//     选文件、追加、FlushFileBuffers 和 CloseHandle。
+//   - 这样做会牺牲一部分吞吐量，但日志量对当前口扫软件不是瓶颈；
+//     换来的是更强的落盘确定性，以及后台可以移动/删除日志文件。
 // =============================================================================
 
 #include "LoggerImpl.h"
 #include "LogFormat.h"
 #include <windows.h>   // OutputDebugStringA
+
+namespace {
+namespace ModuleInfo {
+// 模块名用于 Logger 自身初始化日志，必须与工程中的 MEYER_MODULE_NAME 保持一致。
+const char* Name = "MeyerScan_Logger";
+
+// 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
+const char* Version = "MeyerScan_Logger v1.1.0 (2026-06-24)";
+}
+}
 
 // =========================================================================
 // DLL 工厂函数
@@ -49,29 +52,19 @@ LoggerImpl& LoggerImpl::Instance() {
     return s_instance;
 }
 
-// ---------------------------------------------------------------------------
-// 构造函数
-// ---------------------------------------------------------------------------
-// Rotation 对象用空日志目录构造。真正的目录在 Init() 中
-// 通过移动赋值设置。这有点别扭，但是必要的，因为 LogRotation
-// 没有默认构造函数（它需要一个路径）。
-// 一个替代方案是 std::optional<LogRotation>，但那需要 C++17，
-// 而我们为了 VS2015 兼容性目标 C++14。
 LoggerImpl::LoggerImpl()
     : m_rotation("") {
     // 所有其他成员由其类内初始化器初始化:
     //   m_initialized = false
     //   m_level       = LogLevel::Info
-    //   m_running     = false
-    //   LogBuffer、LogWriter — 默认构造
+    //   LogWriter     — 默认构造，创建跨进程互斥量
 }
 
 // ---------------------------------------------------------------------------
 // 析构函数
 // ---------------------------------------------------------------------------
-// 调用 Shutdown() 以确保后台线程被 join 且文件在单例的成员被销毁之前
-// 关闭。Shutdown() 是幂等的（可安全多次调用），因此如果消费者
-// 已经显式调用了 Shutdown()，这里将是空操作。
+// 调用 Shutdown() 以清理初始化状态。当前 Logger 不长期持有文件句柄，
+// 因此析构阶段没有后台线程或文件句柄需要等待。
 LoggerImpl::~LoggerImpl() {
     Shutdown();
 }
@@ -97,38 +90,36 @@ bool LoggerImpl::Init(const char* logDir, LogLevel level) {
         return false;
     }
 
-    // ---- 设置轮转并打开第一个文件 -------------------------------------------
-    // 将正确构造的 LogRotation 移动赋值到位。
+    // ---- 设置轮转状态 --------------------------------------------------------
+    // 将正确构造的 LogRotation 移动赋值到位。文件不会在 Init 中长期打开，
+    // 每条日志写入时才打开并立即关闭。
     m_rotation = LogRotation(std::string(logDir));
-
-    std::string firstPath = m_rotation.CurrentPath();
-    if (!m_writer.Open(firstPath)) {
-        OutputDebugStringA("[Logger] Init failed: cannot open first log file\n");
-        return false;
-    }
-
-    // ---- 启动后台刷新线程 ---------------------------------------------------
-    m_running.store(true);
-    try {
-        m_thread = std::thread(&LoggerImpl::BackgroundThread, this);
-    } catch (const std::system_error&) {
-        // std::thread 构造函数在操作系统资源耗尽时可能抛出异常
-        //（极罕见）。回退到同步刷新: 每次 Write() 将直接调用 DoFlush()。
-        // 日志记录仍然工作，只是在调用线程上有更高的延迟。
-        OutputDebugStringA("[Logger] Failed to create background thread — "
-                           "falling back to synchronous flush\n");
-        m_running.store(false);
-        m_writer.Close();
-        return false;
-    }
-
-    m_initialized.store(true);
 
     // ---- 写入第一条日志条目 -------------------------------------------------
     // 这确认了日志器正在运行，并在日志文件中提供清晰的
     // 本次会话开始标记。
-    Write(LogLevel::Info, "Logger", "Init", "-", "-", "-",
-          std::string("Logger initialised. Log directory: ").append(logDir).c_str());
+    const std::string initContent = std::string("Logger initialized. Log directory: ").append(logDir);
+    const std::string initLine = LogFormat::FormatLine(LogLevel::Info,
+                                                       ModuleInfo::Name,
+                                                       "Init",
+                                                       "",
+                                                       "",
+                                                       "",
+                                                       initContent.c_str());
+    if (!m_writer.Lock()) {
+        OutputDebugStringA("[Logger] Init failed: cannot lock log writer\n");
+        return false;
+    }
+    const std::string initPath = m_rotation.PathForNextWrite(
+        static_cast<uint64_t>(initLine.size() + 2));
+    const bool initWritten = m_writer.WriteLineUnlocked(initPath, initLine);
+    m_writer.Unlock();
+    if (!initWritten) {
+        OutputDebugStringA("[Logger] Init failed: cannot write first log line\n");
+        return false;
+    }
+
+    m_initialized.store(true);
 
     return true;
 }
@@ -156,41 +147,31 @@ void LoggerImpl::Write(LogLevel level,
     }
 
     // ---- 2. 格式化日志行（纯计算，无锁） ------------------------------------
-    // FormatLine 分配一个 std::string。对于常见情况（约 200 字节的行），
-    // 这是一个大多数 malloc 实现都能快速处理的小分配
-    //（tcmalloc / mimalloc: < 50 ns；MSVC debug heap: 较慢但
-    // 对于日志路径仍可接受）。
+    // FormatLine 会省略空 deviceId/caseId/operator 字段，降低日志视觉噪音。
     std::string line = LogFormat::FormatLine(level, module, operation,
                                              deviceId, caseId, operator_,
                                              content);
 
-    // ---- 3. 追加到缓冲区（短暂持锁） ----------------------------------------
-    m_buffer.Add(line);
-
-    // ---- 4. 决定是否唤醒刷新线程 --------------------------------------------
-    // 唤醒条件:
-    //   a) Error 或 Fatal 级别  →  尝试尽快将此消息刷到磁盘。
-    //   b) 缓冲区大小 ≥ kFlushThreshold (100 行) → 避免无界内存增长。
-    //
-    // 我们在添加行之后检查缓冲区大小，因此阈值比较是"≥"而非">"。
-    // 此处的假阳性最多导致一次额外的 condition_variable 通知，
-    // 这是廉价的。
-    bool shouldNotify = (level >= LogLevel::Error ||
-                         m_buffer.Size() >= LogBuffer::kFlushThreshold);
-
-    // ---- 5. 通知后台线程（在任何锁之外） -----------------------------------
-    // notify_one() 在没有等待者时是廉价的（几次原子操作）。
-    // 我们有意不在此处持有 m_buffer 的互斥锁 — 通知是提示性的，
-    // 刷新线程将在其自己的锁下重新检查缓冲区状态。
-    if (shouldNotify) {
-        m_cv.notify_one();
+    // ---- 3. 跨进程临界区：选文件 + 写入 --------------------------------------
+    // 轮转判断必须和写入处于同一把跨进程锁里，否则两个进程可能同时判断
+    // 当前文件未超限并一起写穿大小上限。
+    if (!m_writer.Lock()) {
+        return;
     }
+
+    // line.size() + 2 包含 CRLF。日志文件大小以实际落盘字节数判断。
+    const std::string path = m_rotation.PathForNextWrite(
+        static_cast<uint64_t>(line.size() + 2));
+    m_writer.WriteLineUnlocked(path, line);
+    m_writer.Unlock();
 }
 
 // =========================================================================
 // 运行时控制
 // =========================================================================
 
+// 修改日志级别过滤器。
+// 这是热路径相关配置，使用原子变量避免给所有 Write() 调用增加锁开销。
 void LoggerImpl::SetLogLevel(LogLevel level) {
     // 使用顺序一致性内存序的原子存储（std::atomic 的默认值）。
     // 这确保在此存储之后执行的任何 Write() 调用都能看到新级别。
@@ -198,121 +179,36 @@ void LoggerImpl::SetLogLevel(LogLevel level) {
     m_level.store(level);
 }
 
+// 获取当前日志级别过滤器。
+// 原子读取无锁，适合调试面板或测试代码随时查询。
 LogLevel LoggerImpl::GetLogLevel() const {
     return m_level.load();
 }
 
+// 请求尽快刷新日志。
+// 当前 Logger 每条日志都同步写入、刷盘并关闭句柄，因此 Flush 是幂等空操作。
 void LoggerImpl::Flush() {
-    // 立即唤醒后台线程。如果它当前处于 5 秒等待中，
-    // 它将唤醒、排空，然后回到睡眠状态。如果它已经在刷新中，
-    // 此通知将在下一次循环迭代中被接收。
-    m_cv.notify_one();
+    // 保留接口是为了兼容现有模块；调用 Flush 不再触发额外磁盘动作。
 }
 
 // =========================================================================
 // Shutdown
 // =========================================================================
+// 关闭日志模块。
+// 该函数是幂等的：重复调用不会重复 join 线程或关闭文件，适合模块退出阶段防御性调用。
 void LoggerImpl::Shutdown() {
     // 防护双重 Shutdown（幂等）。
     if (!m_initialized.load()) {
         return;
     }
 
-    // ---- 1. 通知后台线程退出 -------------------------------------------------
-    m_running.store(false);
-    m_cv.notify_one();  // 如果它在休眠中则唤醒它。
-
-    // ---- 2. 等待线程完成 -----------------------------------------------------
-    if (m_thread.joinable()) {
-        m_thread.join();
-        // join() 之后，线程对象处于"非线程"状态。
-        // 析构函数不会调用 std::terminate。
-    }
-
-    // ---- 3. 最终排空 — 写入仍缓冲的任何行 ---------------------------------
-    // 后台线程在退出前排空，但存在竞争:
-    // Write() 可能在最后一次排空和 m_running 检查之间添加了一行。
-    // 此处的 DoFlush() 捕获这些遗漏的行。
-    DoFlush();
-
-    // ---- 4. 关闭文件 ---------------------------------------------------------
-    m_writer.Close();
-
+    // 当前实现没有后台线程和长期文件句柄，Shutdown 只关闭可写状态。
+    // 之后 Write() 会变成空操作，直到下一次 Init()。
     m_initialized.store(false);
 }
 
+// 返回日志模块版本字符串。
+// 使用字符串字面量，避免跨 DLL 边界返回 std::string。
 const char* LoggerImpl::GetModuleVersion() const {
-    return "MeyerScan_Logger v1.0.0 (2026-06-17)";
-}
-
-// =========================================================================
-// 后台线程
-// =========================================================================
-void LoggerImpl::BackgroundThread() {
-    // 线程运行直到 m_running 变为 false。每次迭代执行:
-    //   1. 以 5 秒超时等待 m_cv。
-    //   2. 如果被唤醒（通过通知或超时），调用 DoFlush()。
-    //
-    // 5 秒超时保证日志行在写入后的最多 5 秒内落到磁盘上，
-    // 即使应用程序日志记录非常缓慢（低于 100 行阈值）。
-    //
-    // 在关闭时，m_running 被设置为 false 且 m_cv 被通知。
-    // 线程唤醒，看到 m_running == false，跳出循环，
-    // 析构函数 join 它。
-    while (m_running.load()) {
-        {
-            // 获取保护条件变量的互斥锁。
-            std::unique_lock<std::mutex> lock(m_cvMutex);
-
-            // wait_for 原子地释放互斥锁并休眠直到:
-            //   - notify_one() / notify_all() 被调用，或
-            //   - 5 秒过去（以先到者为准）。
-            // 当它返回时，互斥锁被重新获取。
-            m_cv.wait_for(lock, std::chrono::seconds(5));
-        }
-        // 互斥锁在此处释放 — DoFlush() 不需要它。
-
-        // 唤醒后重新检查 m_running。如果我们是被关闭通知唤醒的，
-        // 立即退出而不刷新（Shutdown() 将在 join 后进行最终刷新）。
-        if (!m_running.load()) {
-            break;
-        }
-
-        DoFlush();
-    }
-}
-
-// =========================================================================
-// DoFlush
-// =========================================================================
-void LoggerImpl::DoFlush() {
-    // ---- 1. 排空缓冲区（廉价；在互斥锁下 swap） -----------------------------
-    std::vector<std::string> lines = m_buffer.Drain();
-    if (lines.empty()) {
-        return;  // 没有事情可做。常见情况: 后台线程因 5 秒超时而唤醒，
-                 // 但没有人写入任何内容。
-    }
-
-    // ---- 2. 检查轮转（可能关闭旧文件并打开新文件） -------------------------
-    std::string newPath = m_rotation.CheckRotation();
-    if (!newPath.empty()) {
-        // 发生了轮转。关闭旧文件并打开新路径。
-        // 在此点之前被排空的任何行都将写入新文件 —
-        // 这是有意为之。我们希望轮转边界是干净的:
-        // 00:00 之后的所有行都进入新日期的文件。
-        m_writer.Close();
-        m_writer.Open(newPath);
-    }
-
-    // ---- 3. 将所有行写入磁盘 -------------------------------------------------
-    // 每次 WriteLine 调用都获取跨进程互斥量，因此如果
-    // ScanReconstructStudio.exe 同时正在刷新其缓冲区，
-    // 行将以行级干净地交错，而不会出现来自两个进程
-    // 的半写入垃圾。
-    for (const auto& line : lines) {
-        m_writer.WriteLine(line);
-    }
-
-    // ---- 4. 将 CRT 缓冲区刷新到操作系统 -------------------------------------
-    m_writer.Flush();
+    return ModuleInfo::Version;
 }

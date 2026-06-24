@@ -167,7 +167,8 @@ static void TestConnection(IDatabase* db) {
 // =============================================================================
 // 测试内容:
 //   1. 验证 ExecuteQuery() 执行有效查询成功
-//   2. 验证 ExecuteQuery() 执行无效查询失败（但不崩溃）
+//   2. 验证 ExecuteQueryJson() 可返回通用 JSON 行列结果
+//   3. 验证 ExecuteQuery() 执行无效查询失败（但不崩溃）
 // =============================================================================
 static void TestQuery(IDatabase* db) {
     fprintf(s_logFile, "\n=== Test 4: 查询执行测试 ===\n");
@@ -183,6 +184,16 @@ static void TestQuery(IDatabase* db) {
     // 执行有效查询
     Result<DbResult> result = db->ExecuteQuery("SHOW TABLES");
     TEST_ASSERT(result.IsSuccess(), "ExecuteQuery(SHOW TABLES) 成功");
+
+    // 执行通用 JSON 查询。该能力只做行列转换，不承载业务语义。
+    char jsonBuffer[4096] = {0};
+    Result<DbJsonResult> jsonResult = db->ExecuteQueryJson(
+        "SELECT 1 AS id, 'database_json_smoke' AS name",
+        jsonBuffer,
+        sizeof(jsonBuffer));
+    TEST_ASSERT(jsonResult.IsSuccess(), "ExecuteQueryJson(SELECT 常量) 成功");
+    TEST_ASSERT(strstr(jsonBuffer, "database_json_smoke") != nullptr,
+                "ExecuteQueryJson() 返回 JSON 内容");
 
     // 执行无效查询（测试错误处理）
     Result<DbResult> badResult = db->ExecuteQuery(
@@ -229,32 +240,41 @@ static void TestBackup(IDatabase* db) {
     printf("\n=== Test 6: 备份功能测试 ===\n");
 
     if (!db->IsConnected()) {
+        // 备份必须依赖有效数据库连接；未连接时跳过，不把环境缺失记为失败。
         fprintf(s_logFile, "  跳过 - 未连接数据库\n");
         printf("  跳过 - 未连接数据库\n");
         return;
     }
 
+    // 根据当前数据库类型检查备份源是否存在。
+    // MySQL 备份复制数据目录，SQLite 备份复制单个数据库文件。
     const DbConfig& config = db->GetConfig();
     if (config.dbType == static_cast<int32_t>(DatabaseType::MySQL)) {
+        // GetFileAttributesA 返回目录属性，INVALID 表示路径不存在或无权限访问。
         const DWORD attributes = GetFileAttributesA(config.mysqlDataDir);
         if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            // 本机没有安装/启动测试 MySQL 数据目录时，备份测试可以跳过。
             fprintf(s_logFile, "  跳过 - MySQL 数据目录不存在: %s\n", config.mysqlDataDir);
             printf("  跳过 - MySQL 数据目录不存在: %s\n", config.mysqlDataDir);
             return;
         }
     } else {
+        // SQLite 备份要求源路径是文件，不能是目录。
         const DWORD attributes = GetFileAttributesA(config.sqlitePath);
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            // 测试环境没有 SQLite 文件时跳过，避免误报模块逻辑失败。
             fprintf(s_logFile, "  跳过 - SQLite 数据库文件不存在: %s\n", config.sqlitePath);
             printf("  跳过 - SQLite 数据库文件不存在: %s\n", config.sqlitePath);
             return;
         }
     }
 
+    // 备份输出到模块根目录下 backup，便于人工检查，也避免写到系统目录。
     const std::string backupPath = s_moduleRoot + "/backup";
     VoidResult backupResult = db->Backup(backupPath.c_str());
 
     if (backupResult.IsSuccess()) {
+        // Backup 成功后应更新模块内部的最后备份时间。
         TEST_ASSERT(true, "Backup() 成功");
 
         const char* backupTime = db->GetLastBackupTime();
@@ -268,54 +288,80 @@ static void TestBackup(IDatabase* db) {
     }
 }
 
+// 统一路径分隔符。
+// Windows API 返回的路径通常包含反斜杠，这里转成正斜杠，方便后续字符串拼接。
 static std::string NormalizePath(std::string path) {
     for (char& ch : path) {
         if (ch == '\\') {
+            // 统一转为正斜杠，后续 ParentPath 只查找一种分隔符即可。
             ch = '/';
         }
     }
     return path;
 }
 
+// 返回指定路径的父目录。
+// 这里不使用 std::filesystem，因为 VS2015/v140 环境不支持 C++17 filesystem。
 static std::string ParentPath(const std::string& path) {
     const size_t pos = path.find_last_of('/');
     return pos == std::string::npos ? std::string() : path.substr(0, pos);
 }
 
+// 根据 DatabaseTest.exe 所在位置推导 MyDatabase 模块根目录。
+// 不能依赖当前工作目录，因为 VS 调试、脚本启动或第三方启动都可能改变 currentPath。
 static std::string ResolveModuleRoot() {
     char buffer[MAX_PATH] = {0};
+    // nullptr 表示获取当前 EXE 的完整路径。
     const DWORD length = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) {
+        // 获取失败时返回当前目录兜底，测试会继续运行并暴露后续路径问题。
         return ".";
     }
 
     const std::string exePath = NormalizePath(buffer);
+    // exePath:     F:/MeyerScan/MyDatabase/bin/Release/DatabaseTest.exe
+    // releaseDir: F:/MeyerScan/MyDatabase/bin/Release
     const std::string releaseDir = ParentPath(exePath);
+    // binDir:     F:/MeyerScan/MyDatabase/bin
     const std::string binDir = ParentPath(releaseDir);
+    // moduleRoot: F:/MeyerScan/MyDatabase
     return ParentPath(binDir);
 }
 
+// 返回测试 EXE 的 Release 目录。
+// 运行时配置和测试日志放在 Release 目录附近，便于人工查看和清理。
 static std::string ResolveReleaseDir() {
     char buffer[MAX_PATH] = {0};
+    // 当前测试程序的 EXE 路径是定位运行时 config/log 的基准。
     const DWORD length = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) {
         return ".";
     }
 
+    // ParentPath 去掉 DatabaseTest.exe，只保留 bin/Release 目录。
     return ParentPath(NormalizePath(buffer));
 }
 
+// 写入运行时测试配置文件。
+// 目的:
+//   - 测试相对路径解析能力。
+//   - 避免直接修改仓库中的正式 db_config.json。
+//   - 让测试宿主在 Release 目录下即可独立运行。
 static std::string WriteRuntimeTestConfig() {
+    // 测试配置写到 Release/config 下，模拟真实发布目录结构。
     const std::string releaseDir = ResolveReleaseDir();
     const std::string configDir = releaseDir + "/config";
+    // CreateDirectoryA 只能创建最后一级目录；Release 目录已存在，所以这里足够。
     CreateDirectoryA(configDir.c_str(), nullptr);
 
     const std::string configPath = configDir + "/db_config_test.json";
     std::ofstream file(configPath.c_str(), std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
+        // 如果 Release/config 不可写，回退到仓库自带配置，保证测试仍可继续。
         return s_moduleRoot + "/config/db_config.json";
     }
 
+    // 这里故意写相对路径，验证 Database::ResolvePathFromConfig 是否按配置文件目录解析。
     file
         << "{\n"
         << "    \"databaseType\": \"mysql\",\n"

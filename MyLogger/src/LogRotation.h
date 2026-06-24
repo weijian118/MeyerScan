@@ -4,27 +4,28 @@
 //
 // 用途:
 //   基于两个独立的触发器管理日志文件轮转:
-//     1. 日历日边界（当地时间 00:00）—— 创建新文件，NNN 重置为 001。
-//     2. 文件大小 ≥ 10 MiB（可配置）—— 在同一天内递增 NNN
-//        (001 → 002 → ... → 999)。
+//     1. 日历日边界（当地时间 00:00）—— 创建当天主日志文件。
+//     2. 文件大小 ≥ 10 MiB（可配置）—— 在同一天内增加尾部序号
+//        (_001 → _002 → ... → _999)。
 //
 // 文件命名规则:
-//   {logDir}\MeyerScan_{YYYYMMDD}_{NNN}.log
-//   示例: C:\ProgramData\MeyerScan\logs\MeyerScan_20260612_001.log
+//   当天主文件: {logDir}\MeyerScan_{YYYYMMDD}.log
+//   超限分卷:   {logDir}\MeyerScan_{YYYYMMDD}_{NNN}.log
+//   示例:
+//     C:\ProgramData\MeyerScan\logs\MeyerScan_20260612.log
+//     C:\ProgramData\MeyerScan\logs\MeyerScan_20260612_001.log
 //
 // 生命周期:
 //   1. 用日志目录路径构造。
-//   2. 调用 CurrentPath() 获取初始文件路径，然后打开它。
-//   3. 在每次刷新批次之前，调用 CheckRotation()。
-//      - 如果返回非空字符串，关闭旧文件并打开新路径。
-//      - 如果返回空字符串，继续写入当前文件。
+//   2. 每写入一条日志前调用 PathForNextWrite()。
+//   3. PathForNextWrite() 会按日期和文件大小返回本条日志应写入的文件路径。
 //
 // 已处理的边界情况:
 //   - 时钟漂移 / 手动时间更改: 如果系统时钟跨过午夜往回跳，
 //     Today() 返回新的（更早的）日期，与 m_currentDate 不同
 //     → 触发轮转。索引重置为 001，因此创建新文件。旧文件不会被覆盖。
-//   - 索引在 999 处溢出: 回绕到 001，覆盖当天最早的文件。
-//     在 10 MiB × 999 ≈ 10 GiB/天 的情况下，这在实际中不太可能发生。
+//   - 索引在 999 处溢出: 继续返回 _999，不再无限创建文件。
+//     在 10 MiB × 1000 ≈ 10 GiB/天 的情况下，这在实际中不太可能发生。
 // =============================================================================
 
 #pragma once
@@ -41,29 +42,25 @@ public:
     explicit LogRotation(const std::string& logDir);
 
     // -------------------------------------------------------------------
-    // CheckRotation — 检查当前日期和文件大小；如需要则轮转
+    // PathForNextWrite — 返回下一条日志应写入的文件路径
     // -------------------------------------------------------------------
-    // 必须在每次刷新批次前调用（约每 5 秒或每 100 行）。
+    // incomingBytes 是即将写入的字节数，包含换行符。
+    // Logger 在拿到跨进程互斥量之后调用本函数，保证多个进程不会同时
+    // 判断同一个文件大小并写穿大小限制。
     //
     // 返回值:
-    //   ""（空字符串）  — 不需要轮转；继续写入当前文件。
-    //   新的绝对路径    — 轮转已发生；调用方必须关闭旧文件句柄
-    //                     并打开这个新路径。
+    //   当前应追加的绝对路径。
     //
     // 副作用:
-    //   当轮转触发时更新内部日期/索引状态。
-    //
-    // 实现说明:
-    //   使用 _stati64 获取文件大小，因为它不需要打开文件
-    //  （我们已在 LogWriter 中以写入方式打开它，
-    //   从另一个句柄对同一文件做 stat 在 NTFS 上是无害的）。
-    std::string CheckRotation();
+    //   日期变化时重置为当天主文件。
+    //   当前文件写入本条后会超过大小限制时递增尾部序号。
+    std::string PathForNextWrite(uint64_t incomingBytes);
 
     // -------------------------------------------------------------------
     // CurrentPath — 当前活动日志文件的绝对路径
     // -------------------------------------------------------------------
     // 返回的路径在轮转事件之间保持稳定。
-    // 示例: "C:\...\logs\MeyerScan_20260612_001.log"
+    // 示例: "C:\...\logs\MeyerScan_20260612.log"
     std::string CurrentPath() const;
 
     // -------------------------------------------------------------------
@@ -80,16 +77,21 @@ public:
     static constexpr uint64_t kMaxFileSize = 10 * 1024 * 1024;
 
 private:
-    // 从日期（"YYYYMMDD"）和索引（1..999）构建完整路径。
+    // 从日期（"YYYYMMDD"）和索引构建完整路径。
+    // index == 0 表示当天主文件，不带尾部序号。
+    // index >= 1 表示超限分卷，追加 _NNN。
     std::string BuildPath(const std::string& date, int index) const;
 
     // 使用 Windows SYSTEMTIME API 返回今天的日期，格式为 "YYYYMMDD"。
     // 这是本地日期，与操作员在任务栏上看到的一致。
     std::string Today() const;
 
+    // 读取指定文件大小。文件不存在或无法访问时返回 0。
+    uint64_t FileSize(const std::string& path) const;
+
     // ---- 状态 ----------------------------------------------------------------
     std::string m_logDir;        // 例如 "C:\ProgramData\MeyerScan\logs\"
     std::string m_currentDate;   // 当前打开文件的 "YYYYMMDD"
-    int         m_currentIndex;  // 1..999
+    int         m_currentIndex;  // 0 表示主文件；1..999 表示超限分卷
     uint64_t    m_maxFileSize;   // 字节，默认 kMaxFileSize
 };

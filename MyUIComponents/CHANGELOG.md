@@ -1,5 +1,18 @@
 # MeyerScan UIComponents 变更记录
 
+## 2026-06-25
+
+- 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；`GetModuleVersion()` 从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。
+- 根据 `glm52` 建议统一 `Version.rc`：公司名、产品名和 `FileDescription` 与全项目版本资源规范保持一致。
+- 在 VS2015 工程中补充 `MEYER_MODULE_NAME="MeyerScan_UIComponents"`，保证后续日志宏输出正确共享 UI 模块名。
+
+## 2026-06-24
+
+- 根据“初学者可读”要求补强函数体内部注释：屏幕可用区域、缩放系数限制、等待页布局、进度条状态、sizePolicy、多语言变长和 QSS 暂存边界均增加关键说明。
+- 补充 `IUIComponents` 公共接口中文注释，明确控件工厂、等待页、辅助缩放系数和业务边界。
+- 补充 UIComponents 头文件和实现文件的函数级中文注释，说明共享 UI 组件只统一基础控件、尺寸、样式和等待页，不承载业务点击行为、配置读取或权限判断。
+- 进一步明确 1920x1080 缩放系数只用于图标、边距、控件高度等辅助尺寸，主布局仍应优先使用 Qt Layout。
+
 ## 2026-06-23
 
 - 新增共享 UI 组件模块骨架。

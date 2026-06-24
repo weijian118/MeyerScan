@@ -8,14 +8,10 @@
 //   Write() 调用
 //     → 级别过滤（原子操作）
 //     → LogFormat::FormatLine()
-//     → LogBuffer::Add()
-//     → （如果是 Error/Fatal 或达到阈值）唤醒后台线程
-//
-//   后台线程（每 5 秒或被唤醒时）:
-//     → LogBuffer::Drain()
-//     → LogRotation::CheckRotation()
-//     → LogWriter::WriteLine() × N
-//     → LogWriter::Flush()
+//     → 获取跨进程互斥量
+//     → LogRotation::PathForNextWrite()
+//     → LogWriter::WriteLineUnlocked()
+//     → FlushFileBuffers + CloseHandle
 //
 // 单例理由:
 //   进程级单例（LoggerImpl.cpp 中的静态局部变量）保证了
@@ -23,23 +19,16 @@
 //   安全地从静态初始化器中使用（C++11 的"魔法静态变量"
 //   是线程安全的，并保证恰好构造一次）。
 //
-// 为什么析构函数调用 Shutdown():
-//   单例在 DLL_PROCESS_DETACH 期间或静态析构时被销毁。
-//   通过在 ~LoggerImpl() 中调用 Shutdown()，我们给后台线程
-//   最后一次排空缓冲区的机会，在 CRT 本身被拆除之前。
-//   在静态析构开始之后写入的行可能会丢失 ——
-//   但这是任何日志库都固有的限制。
+// 为什么同步逐条写入:
+//   当前产品更看重日志完整性、现场可维护性和后台可移动/删除日志文件，
+//   因此 Logger 不长期持有文件句柄，也不使用后台缓冲线程。
 // =============================================================================
 
 #pragma once
 #include "Logger.h"
-#include "LogBuffer.h"
 #include "LogWriter.h"
 #include "LogRotation.h"
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
 
 class LoggerImpl : public ILogger {
 public:
@@ -72,21 +61,6 @@ private:
     LoggerImpl& operator=(const LoggerImpl&) = delete;
 
     // -------------------------------------------------------------------
-    // BackgroundThread — 刷新循环
-    // -------------------------------------------------------------------
-    // 在专用的 std::thread 上运行。以 5 秒超时等待 m_cv。
-    // 每次唤醒（信号或超时）时调用 DoFlush()。
-    // 当 m_running 变为 false 时退出。
-    void BackgroundThread();
-
-    // -------------------------------------------------------------------
-    // DoFlush — 排空缓冲区 → 检查轮转 → 写入 → 同步
-    // -------------------------------------------------------------------
-    // 从 BackgroundThread 和 Shutdown()（最终排空）中调用。
-    // 如果缓冲区为空，立即返回（无磁盘 I/O）。
-    void DoFlush();
-
-    // -------------------------------------------------------------------
     // 状态
     // -------------------------------------------------------------------
 
@@ -100,17 +74,6 @@ private:
     std::atomic<LogLevel> m_level{LogLevel::Info};
 
     // 流水线组件，按数据流顺序排列。
-    LogBuffer   m_buffer;      // 线程安全的行累积器
-    LogWriter   m_writer;      // 文件 I/O + 跨进程互斥量
+    LogWriter   m_writer;      // 跨进程互斥量 + 逐条打开/写入/关闭
     LogRotation m_rotation;    // 日期/大小跟踪；在 Init() 中更新
-
-    // 后台刷新线程。
-    //   m_thread:    线程对象（从 Init 之后到 Shutdown 之前可 join）
-    //   m_running:   在 Init 中设置为 true，在 Shutdown 中设置为 false
-    //   m_cvMutex:   与 m_cv 配对，用于条件变量
-    //   m_cv:        当缓冲区达到阈值或 Error/Fatal 时被通知
-    std::thread             m_thread;
-    std::atomic<bool>       m_running{false};
-    std::mutex              m_cvMutex;
-    std::condition_variable m_cv;
 };

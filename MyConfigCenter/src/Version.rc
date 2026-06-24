@@ -17,12 +17,12 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Meyer"
-            VALUE "FileDescription", "MeyerScan ConfigCenter"
+            VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "FileDescription", "MeyerScan ConfigCenter Module"
             VALUE "FileVersion", "0.1.0.0"
             VALUE "InternalName", "MeyerScan_ConfigCenter"
             VALUE "OriginalFilename", "MeyerScan_ConfigCenter.dll"
-            VALUE "ProductName", "MeyerScan"
+            VALUE "ProductName", "MeyerScan Digital Dental Scanner"
             VALUE "ProductVersion", "0.1.0.0"
         END
     END

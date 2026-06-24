@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Release|x64">
@@ -40,9 +40,8 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_LoginTest";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <LanguageStandard>stdcpp14</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -56,7 +55,7 @@
     <PostBuildEvent>
       <Command>xcopy /Y /D "D:\wj\My-wj\MyLogin\lib\MeyerLoginWidget.dll" "$(OutDir)"
 xcopy /Y /D "D:\wj\My-wj\MyLogin\*.qm" "$(OutDir)"
-xcopy /Y /D "D:\wj\My-wj\MyLogin\license.lic" "$(OutDir)"
+xcopy /Y /D /I "D:\wj\My-wj\MyLogin\license.lic" "$(OutDir)Resources\"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\deviceAuthAndCrypto.dll" "$(OutDir)"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\MeyerScanNetworkHelper.dll" "$(OutDir)"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\Qt5Core.dll" "$(OutDir)"

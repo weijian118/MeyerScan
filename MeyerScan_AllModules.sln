@@ -1,0 +1,66 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Logger", "MyLogger\MeyerScan_Logger.vcxproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Database", "MyDatabase\MeyerScan_Database.vcxproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_ConfigCenter", "MyConfigCenter\MeyerScan_ConfigCenter.vcxproj", "{7F22A561-4626-4A7F-9A70-CA44E347C231}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Permission", "MyPermission\MeyerScan_Permission.vcxproj", "{D9856F84-5574-4E76-9E14-569D9E55121E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_UIComponents", "MyUIComponents\MeyerScan_UIComponents.vcxproj", "{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_HomeUI", "MyHomeUI\MeyerScan_HomeUI.vcxproj", "{D4E5F6A7-B8C9-0123-DEF1-234567890123}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseUI", "MyCaseUI\MeyerScan_CaseUI.vcxproj", "{E4F5A6B7-C8D9-0123-EF12-345678901235}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseOrderService", "MyCaseOrderService\MeyerScan_CaseOrderService.vcxproj", "{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_OrderScanWorkspaceShell", "MyOrderScanWorkspaceShell\MeyerScan_OrderScanWorkspaceShell.vcxproj", "{66105806-C77C-4E7A-9B62-556919C26D39}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Calibration3DUI", "MyCalibration3DUI\MeyerScan_Calibration3DUI.vcxproj", "{C86833B8-B1E6-4F3A-9A4A-D48549D0B5BA}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CalibrationColorUI", "MyCalibrationColorUI\MeyerScan_CalibrationColorUI.vcxproj", "{8F618D5B-7A93-4F32-BD70-F8872B37C7CD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_VersionManager", "MyVersionManager\MeyerScan_VersionManager.vcxproj", "{7335D1EE-67B3-4AE8-A704-B2821B66F311}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan", "MyMainExe\MeyerScan.vcxproj", "{B4D04D69-4F1A-4E22-8D6E-9A8D6B6A4001}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.Build.0 = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.ActiveCfg = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.Build.0 = Release|x64
+		{7F22A561-4626-4A7F-9A70-CA44E347C231}.Release|x64.ActiveCfg = Release|x64
+		{7F22A561-4626-4A7F-9A70-CA44E347C231}.Release|x64.Build.0 = Release|x64
+		{D9856F84-5574-4E76-9E14-569D9E55121E}.Release|x64.ActiveCfg = Release|x64
+		{D9856F84-5574-4E76-9E14-569D9E55121E}.Release|x64.Build.0 = Release|x64
+		{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}.Release|x64.ActiveCfg = Release|x64
+		{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}.Release|x64.Build.0 = Release|x64
+		{D4E5F6A7-B8C9-0123-DEF1-234567890123}.Release|x64.ActiveCfg = Release|x64
+		{D4E5F6A7-B8C9-0123-DEF1-234567890123}.Release|x64.Build.0 = Release|x64
+		{E4F5A6B7-C8D9-0123-EF12-345678901235}.Release|x64.ActiveCfg = Release|x64
+		{E4F5A6B7-C8D9-0123-EF12-345678901235}.Release|x64.Build.0 = Release|x64
+		{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}.Release|x64.ActiveCfg = Release|x64
+		{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}.Release|x64.Build.0 = Release|x64
+		{66105806-C77C-4E7A-9B62-556919C26D39}.Release|x64.ActiveCfg = Release|x64
+		{66105806-C77C-4E7A-9B62-556919C26D39}.Release|x64.Build.0 = Release|x64
+		{C86833B8-B1E6-4F3A-9A4A-D48549D0B5BA}.Release|x64.ActiveCfg = Release|x64
+		{C86833B8-B1E6-4F3A-9A4A-D48549D0B5BA}.Release|x64.Build.0 = Release|x64
+		{8F618D5B-7A93-4F32-BD70-F8872B37C7CD}.Release|x64.ActiveCfg = Release|x64
+		{8F618D5B-7A93-4F32-BD70-F8872B37C7CD}.Release|x64.Build.0 = Release|x64
+		{7335D1EE-67B3-4AE8-A704-B2821B66F311}.Release|x64.ActiveCfg = Release|x64
+		{7335D1EE-67B3-4AE8-A704-B2821B66F311}.Release|x64.Build.0 = Release|x64
+		{B4D04D69-4F1A-4E22-8D6E-9A8D6B6A4001}.Release|x64.ActiveCfg = Release|x64
+		{B4D04D69-4F1A-4E22-8D6E-9A8D6B6A4001}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

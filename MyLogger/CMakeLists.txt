@@ -32,7 +32,7 @@
 # =============================================================================
 cmake_minimum_required(VERSION 3.4)
 project(MeyerScan_Logger
-    VERSION     1.0.0
+    VERSION     1.1.0
     DESCRIPTION "MeyerScan structured logging infrastructure DLL"
     LANGUAGES   CXX
 )
@@ -61,16 +61,15 @@ set(MODULE_NAME MeyerScan_Logger)
 add_library(${MODULE_NAME} SHARED
     # 源文件，按数据流顺序排列:
     src/LogFormat.cpp       # 步骤 1: 原始字段 → 格式化的 UTF-8 行
-    src/LogBuffer.cpp       # 步骤 2: 线程安全的行累积器
-    src/LogRotation.cpp     # 步骤 3: 基于日期/大小的文件轮转逻辑
-    src/LogWriter.cpp       # 步骤 4: 文件 I/O + 跨进程命名互斥量
-    src/LoggerImpl.cpp      # 步骤 5: 单例 + 流水线编排
+    src/LogRotation.cpp     # 步骤 2: 基于日期/大小的文件轮转逻辑
+    src/LogWriter.cpp       # 步骤 3: 文件 I/O + 跨进程命名互斥量
+    src/LoggerImpl.cpp      # 步骤 4: 单例 + 同步逐条写入编排
     src/Version.rc          # Windows 版本资源
 )
 
 # ---- 包含路径 ---------------------------------------------------------------
 # PUBLIC:  消费者看到 include/ → 它们可以 #include "Logger.h"
-# PRIVATE: 内部 .cpp 文件看到 src/ → 它们可以 #include "LogBuffer.h" 等
+# PRIVATE: 内部 .cpp 文件看到 src/ → 它们可以 #include "LogWriter.h" 等
 target_include_directories(${MODULE_NAME}
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -80,7 +79,9 @@ target_include_directories(${MODULE_NAME}
 # MEYER_LOGGER_EXPORTS 在 Logger.h 中激活 __declspec(dllexport)。
 # 这必须是 PRIVATE — 只有 DLL 本身应导出符号。
 target_compile_definitions(${MODULE_NAME}
-    PRIVATE MEYER_LOGGER_EXPORTS
+    PRIVATE
+        MEYER_LOGGER_EXPORTS
+        MEYER_MODULE_NAME="MeyerScan_Logger"
 )
 
 # ---- 链接库 -----------------------------------------------------------------
@@ -127,7 +128,7 @@ endif()
 #   - 全部五个日志级别
 #   - 级别过滤
 #   - 多线程压力测试（10 线程 × 500 条消息）
-#   - 立即 Error/Fatal 刷新
+#   - 逐条同步写入并关闭文件句柄
 #   - 优雅关闭
 #
 # 该测试也作为构建验证测试 — 如果它能编译和链接，

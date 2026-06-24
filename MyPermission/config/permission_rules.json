@@ -1,0 +1,32 @@
+{
+    "features": {
+        "home": {
+            "settings": {
+                "visible": true,
+                "enabled": true
+            }
+        },
+        "case": {
+            "backHome": {
+                "visible": true,
+                "enabled": true
+            },
+            "browse": {
+                "visible": true,
+                "enabled": true
+            }
+        },
+        "order": {
+            "create": {
+                "visible": true,
+                "enabled": true
+            }
+        },
+        "scan": {
+            "practice": {
+                "visible": true,
+                "enabled": true
+            }
+        }
+    }
+}
