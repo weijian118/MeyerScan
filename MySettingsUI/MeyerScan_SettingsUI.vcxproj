@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>MeyerScan_SettingsUI</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>MeyerScan_SettingsUI</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>MEYERSCAN_SETTINGSUI_EXPORTS;MEYER_MODULE_NAME="MeyerScan_SettingsUI";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyLogger\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;MeyerScan_Logger.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(ProjectDir)..\MyLogger\bin\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
+xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll" "$(OutDir)"
+xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\Release\MeyerScan_Logger.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyCalibration3DUI\bin\Release\MeyerScan_Calibration3DUI.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyCalibrationColorUI\bin\Release\MeyerScan_CalibrationColorUI.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="src\SettingsUIImpl.cpp" /></ItemGroup>
+  <ItemGroup><ClInclude Include="include\SettingsUI.h" /><ClInclude Include="src\SettingsUIImpl.h" /></ItemGroup>
+  <ItemGroup><ResourceCompile Include="src\Version.rc" /></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

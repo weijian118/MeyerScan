@@ -26,6 +26,7 @@
 *.sqlite3
 MySQL/
 MyCaseManager/MySQL/
+MyCaseManager/SQLite/
 MyCaseManager/*.db
 
 # ---- Visual Studio ----------------------------------------------------------

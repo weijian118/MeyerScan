@@ -6,6 +6,7 @@ CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 - 提供“返回首页”按钮，通过 `SetActionCallback()` 向 MainExe 上报 `CaseActionBackHome`；CaseUI 不直接切换首页。
 - 通过 `SetActionVisible()` / `SetActionEnabled()` 接收 MainExe 计算后的操作显隐和启用态；CaseUI 不直接读取权限文件。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。
+- 顶部按钮和患者/订单工具栏按钮优先使用 `MeyerScan_UIComponents.dll` 的标准按钮样式；UIComponents 不可用时降级为本地按钮样式。
 - 点击返回、导入、导出、删除、新建、打开、搜索、页签切换等客户操作时写入结构化日志。
 - 临时调用 `MeyerScan_Database.dll` 只用于框架 smoke 健康检查，不代表正式业务调用方式。
 - 如果进程级 Database 已由 MainExe 初始化并连接，CaseUI 只借用现有连接，不重复 Init/Connect。

@@ -1,0 +1,73 @@
+﻿#pragma once
+
+#include <QWidget>
+
+#ifdef MEYERSCAN_SETTINGSUI_EXPORTS
+#  define MEYERSCAN_SETTINGSUI_API __declspec(dllexport)
+#else
+#  define MEYERSCAN_SETTINGSUI_API __declspec(dllimport)
+#endif
+
+// ISettingsUI 是设置模块的公共接口。
+// 模块边界:
+//   - 设置模块负责设置主界面、设置分类切换、校准入口和设置内轻量流程。
+//   - MainExe、首页、案例管理、扫描重建只负责请求打开设置，不直接拼设置页面。
+//   - 颜色校准和三维校准作为独立模块嵌入设置模块，后续算法/设备细节仍留在各校准 DLL 内部。
+class MEYERSCAN_SETTINGSUI_API ISettingsUI {
+public:
+    // 虚析构函数保证跨 DLL 多态接口行为正确。
+    virtual ~ISettingsUI() = default;
+
+    // 初始化设置模块。
+    // appDirUtf8 必须是 MeyerScan.exe 所在目录；logDirUtf8 是统一 logs 目录。
+    virtual bool Init(const char* appDirUtf8, const char* logDirUtf8) = 0;
+
+    // 设置动作回调。
+    // callback 由 MainExe 提供，SettingsUI 只上报稳定 actionId。
+    virtual void SetActionCallback(void (*callback)(void* context, int actionId), void* context) = 0;
+
+    // 设置本次打开设置界面的来源上下文。
+    // openSource 使用 SettingsOpenSource；allowCalibration=false 时必须隐藏/禁用校准入口。
+    // 该接口必须在 CreateWidget() 之前调用；如果页面已经创建，模块也要尽量即时刷新可见状态。
+    virtual void SetOpenContext(int openSource, bool allowCalibration) = 0;
+
+    // 创建设置主页面。
+    // 调用方负责把返回的 QWidget 挂入 MainExe 或扫描重建壳子的内容区。
+    virtual QWidget* CreateWidget(QWidget* parent = nullptr) = 0;
+
+    // 通知设置模块：调用方即将销毁 CreateWidget() 返回的页面。
+    // 由于设置模块内部会缓存少量页面指针用于刷新状态，页面释放前必须调用该接口清空缓存。
+    virtual void DestroyWidget() = 0;
+
+    // 返回模块版本字符串，用于版本清单和现场排查。
+    virtual const char* GetModuleVersion() const = 0;
+
+    // 关闭设置模块并释放缓存引用。
+    // QWidget 的销毁仍由调用方页面容器或 Qt 父子关系负责。
+    virtual void Shutdown() = 0;
+};
+
+// 设置模块动作 ID。
+// MainExe 通过这些 ID 处理跨页面返回和后续设置保存流程。
+enum SettingsActionId {
+    SettingsActionClose = 1,          // 关闭设置并返回来源页面
+    SettingsActionApply = 2,          // 应用设置
+    SettingsActionConfirm = 3,        // 确认设置并关闭
+    SettingsActionRestore = 4,        // 恢复默认设置
+    SettingsActionOpen3DCalibration = 101,    // 打开三维校准页面
+    SettingsActionOpenColorCalibration = 102, // 打开颜色校准页面
+};
+
+// 设置界面打开来源。
+// 用 int 枚举跨 DLL 传递，避免把 QObject/QString/复杂对象放到 ABI 边界上。
+enum SettingsOpenSource {
+    SettingsOpenSourceUnknown = 0,         // 未指定来源，默认按首页来源处理
+    SettingsOpenSourceHome = 1,            // 首页打开设置
+    SettingsOpenSourceCase = 2,            // 案例管理打开设置
+    SettingsOpenSourceScanReconstruct = 3, // 扫描重建打开设置
+};
+
+// C ABI 工厂函数。
+// 后续 MainExe / ScanReconstructStudio 可用静态链接或动态加载方式获取设置模块。
+extern "C" MEYERSCAN_SETTINGSUI_API ISettingsUI* GetSettingsUI();
+

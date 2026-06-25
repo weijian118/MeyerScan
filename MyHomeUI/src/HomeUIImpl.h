@@ -3,11 +3,13 @@
 #include "HomeUI.h"
 #include "Database.h"
 #include "Logger.h"
+#include "UIComponents.h"
 #include <QCoreApplication>
 #include <QLibrary>
 #include <QString>
 
 using GetLoggerFunc = ILogger* (*)();
+using GetUIComponentsFunc = IUIComponents* (*)();
 
 // HomeUIImpl 是首页模块的唯一实现类。
 // 首页只负责展示入口和上报入口 ID，不保存订单、不判断流程、不直接启动扫描。
@@ -60,6 +62,9 @@ private:
     // 动态加载 Logger，并把 ILogger 指针缓存到成员变量。
     void LoadLogger(const char* logDir);
 
+    // 动态加载 UIComponents，并把 IUIComponents 指针缓存到成员变量。
+    void LoadUIComponents();
+
     // 做数据库健康检查；正式业务数据读取后续必须迁移到 Service。
     void InitDatabase(const char* databaseConfigPath);
 
@@ -76,8 +81,14 @@ private:
     // Logger DLL 句柄使用 PreventUnloadHint，避免进程退出时卸载顺序问题。
     QLibrary m_loggerLibrary;
 
+    // UIComponents DLL 句柄；首页只借用共享控件工厂，不拥有其生命周期。
+    QLibrary m_uiComponentsLibrary;
+
     // 缓存后的日志接口指针；模块内部后续写日志都复用该变量。
     ILogger* m_logger = nullptr;
+
+    // 缓存后的共享 UI 接口；不可用时首页降级为本地 QPushButton。
+    IUIComponents* m_uiComponents = nullptr;
 
     // 框架期借用数据库实例做健康检查；正式业务读取不应直接使用它。
     IDatabase* m_database = nullptr;

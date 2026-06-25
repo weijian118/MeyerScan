@@ -12,7 +12,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_HomeUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_HomeUI v0.1.0 (2026-06-17)";
+const char* Version = "MeyerScan_HomeUI v0.2.0 (2026-06-26)";
 }
 }
 
@@ -29,6 +29,7 @@ bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     // 首页模块本身不保存业务数据，只在启动时确认日志和数据库是否可用。
     // 这样首页既能独立测试，也能在 MainExe 中复用已经初始化好的基础设施。
     LoadLogger(logDir);
+    LoadUIComponents();
     InitDatabase(databaseConfigPath);
 
     // m_lastStatus 在 LoadLogger/InitDatabase 内部会被更新，
@@ -103,6 +104,33 @@ void HomeUIImpl::LoadLogger(const char* logDir) {
         m_logger = nullptr;
         m_lastStatus = "Logger init failed; continuing without log output";
         return;
+    }
+}
+
+// 加载共享 UI 组件模块。
+// UIComponents 只负责统一控件样式；首页入口含义、点击回调和权限状态仍由 HomeUI/MainExe 管理。
+void HomeUIImpl::LoadUIComponents() {
+    if (m_uiComponents) {
+        return;
+    }
+
+    m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
+    if (!m_uiComponentsLibrary.load()) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local styles");
+        return;
+    }
+
+    auto getUIComponents = reinterpret_cast<GetUIComponentsFunc>(m_uiComponentsLibrary.resolve("GetUIComponents"));
+    if (!getUIComponents) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "GetUIComponents export not found");
+        return;
+    }
+
+    m_uiComponents = getUIComponents();
+    if (m_uiComponents) {
+        const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
+        m_uiComponents->Init(appDirBytes.constData());
     }
 }
 
@@ -202,9 +230,20 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     for (int i = 0; i < names.size(); ++i) {
         // 按钮文本临时用两行展示：第一行入口名，第二行说明。
         // 正式视觉组件落地后，应迁到 UIComponents 的标准入口卡片/按钮。
-        auto* button = new QPushButton(names[i] + "\n" + descs[i], root);
+        const QString buttonText = names[i] + "\n" + descs[i];
+        const QByteArray buttonTextBytes = buttonText.toUtf8();
+        QPushButton* button = m_uiComponents
+            ? m_uiComponents->CreateButton(MeyerButtonRoleEntry,
+                                           MeyerButtonContentTextOnly,
+                                           buttonTextBytes.constData(),
+                                           "",
+                                           root)
+            : new QPushButton(buttonText, root);
         button->setMinimumSize(220, 110);
-        button->setStyleSheet("QPushButton{text-align:left;padding:14px;font-size:15px;} QPushButton:hover{background:#eef5ff;}");
+        if (!m_uiComponents) {
+            // UIComponents 不可用时保留本地降级样式，确保首页仍能打开。
+            button->setStyleSheet("QPushButton{text-align:left;padding:14px;font-size:15px;} QPushButton:hover{background:#eef5ff;}");
+        }
         // lambda 捕获 entryId 的值，而不是捕获 i。
         // 如果捕获 i，循环结束后所有按钮可能都读到同一个最终下标。
         const int entryId = entryIds[i];
@@ -250,6 +289,7 @@ void HomeUIImpl::Shutdown() {
     m_database = nullptr;
     m_databaseConnected = false;
     m_logger = nullptr;
+    m_uiComponents = nullptr;
     // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
 }
 

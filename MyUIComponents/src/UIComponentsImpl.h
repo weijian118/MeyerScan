@@ -2,6 +2,10 @@
 
 #include "UIComponents.h"
 
+#include <QIcon>
+#include <QSize>
+#include <QString>
+
 // UIComponentsImpl 提供跨 UI 模块共享的基础控件工厂。
 // 它只统一尺寸、样式和等待页，不承载业务点击行为、权限判断或配置读取。
 class UIComponentsImpl : public IUIComponents {
@@ -27,6 +31,26 @@ public:
     // 创建次操作按钮。
     QPushButton* CreateSecondaryButton(const char* textUtf8, QWidget* parent = nullptr) override;
 
+    // 创建标准 QPushButton，可选择角色和图标/文字布局。
+    QPushButton* CreateButton(int role,
+                              int contentLayout,
+                              const char* textUtf8,
+                              const char* iconResourcePathUtf8,
+                              QWidget* parent = nullptr) override;
+
+    // 创建标准 QToolButton，可选择角色和图标/文字布局。
+    QToolButton* CreateToolButton(int role,
+                                  int contentLayout,
+                                  const char* textUtf8,
+                                  const char* iconResourcePathUtf8,
+                                  QWidget* parent = nullptr) override;
+
+    // 给已有 QPushButton 应用统一样式。
+    void ApplyButtonStyle(QPushButton* button, int role, int contentLayout) override;
+
+    // 给已有 QToolButton 应用统一样式。
+    void ApplyToolButtonStyle(QToolButton* button, int role, int contentLayout) override;
+
     // 创建通用单行输入框。
     QLineEdit* CreateLineEdit(const char* placeholderUtf8, QWidget* parent = nullptr) override;
 
@@ -47,6 +71,18 @@ private:
     ~UIComponentsImpl() = default;
     UIComponentsImpl(const UIComponentsImpl&) = delete;
     UIComponentsImpl& operator=(const UIComponentsImpl&) = delete;
+
+    // 生成不同按钮角色对应的 QSS。
+    QString ButtonStyleSheet(int role) const;
+
+    // 根据按钮角色返回建议最小高度。
+    int ButtonMinimumHeight(int role) const;
+
+    // 根据按钮内容布局返回 QPushButton 的默认图标尺寸。
+    QSize ButtonIconSize(int contentLayout) const;
+
+    // 统一加载图标；空路径或加载失败时返回空图标，按钮仍正常显示文字。
+    QIcon LoadIcon(const char* iconResourcePathUtf8) const;
 
 private:
     // 基于当前屏幕相对 1920x1080 的横向辅助缩放系数。

@@ -63,7 +63,7 @@
 //   ---- 非 Qt 模块（算法 DLL，纯 C++） ----
 //   #include "Logger.h"
 //   GetLogger()->Init("C:/ProgramData/MeyerScan/logs/", LogLevel::Info);
-//   MEYER_LOG_INFO("ProcessFrame", "SN-001", "C-001", "System",
+//   MEYER_LOG_INFO("ProcessFrame", "SN-001", "C-001", "",
 //                  "Frame " + std::to_string(frameIdx) + " processed");
 //
 // 依赖（仅本头文件）:
@@ -153,7 +153,7 @@ public:
     // 对不适用的字段使用 ""（空字符串）；绝不要传递 nullptr。
     //
     // 参数语义:
-    //   module:    调用方 DLL/EXE 的名称，例如 "CaseService"。
+    //   module:    调用方 DLL/EXE 的名称，例如 "MeyerScan_CaseOrderService"。
     //              由 MEYER_LOG_* 宏通过 MEYER_MODULE_NAME 编译期定义
     //              自动填充。
     //   operation: 模块正在执行的操作，例如 "CreateCase"、

@@ -11,9 +11,9 @@
 //       b) 对日志路径来说足够快（通常每次调用 < 1 μs）。
 //       c) 容易审计缓冲区溢出（显式缓冲区大小）。
 //   - 输出采用“有值才显示”的紧凑格式。deviceId/caseId/operator 为空时
-//     不再输出 [Dev:-]、[Case:-]、[Op:-]，避免日志观感很差。
-//   - module/operation/content 都带明确分类标记，分别为 [Mod:]、[Op:]、
-//     [Content:]，方便后续脚本按字段读取和分析日志。
+//     不再输出 [Dev:-]、[Case:-]、[Opr:-]，避免日志观感很差。
+//   - 日志正文固定使用 [Content:] 标签。该标签已经写入全局文档和测试，
+//     后续日志读取/分析工具也会按这个字段名解析。
 //   - 尾随换行符被有意省略。LogWriter::WriteLineUnlocked()
 //     会追加 CRLF，确保每次系统级写入恰好是一条完整日志条目。
 // =============================================================================
@@ -86,7 +86,8 @@ std::string FormatLine(LogLevel level,
     // ---- 3. 组装日志行 --------------------------------------------------------
     // 基础格式:
     //   [时间] [级别] [Mod:模块] [Op:操作] [Dev:xxx] [Case:xxx] [Opr:xxx] [Content:内容]
-    // 后三个字段只有非空时才出现。
+    // Dev/Case/Opr/Content 字段只有非空时才出现。Mod/Op 如果调用方没有传值，
+    // 当前也会省略，避免生成没有实际信息的空标签。
     std::string line;
     line.reserve(256);
     line += "[";
@@ -120,6 +121,8 @@ std::string FormatLine(LogLevel level,
         line += "]";
     }
     if (txt[0]) {
+        // 日志正文使用 Content，而不是历史版本里的 Txt。
+        // 这里属于日志格式契约，不能由业务模块自行更改。
         line += " [Content:";
         line += txt;
         line += "]";

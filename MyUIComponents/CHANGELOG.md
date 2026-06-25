@@ -1,5 +1,17 @@
 # MeyerScan UIComponents 变更记录
 
+## 2026-06-26
+
+- 版本升级为 `v0.2.0`，新增“按钮角色 + 内容布局”的标准按钮样式体系。
+- 新增 `MeyerButtonRole`：Primary、Secondary、Text、Danger、Entry，用于表达按钮视觉层级，不表达业务权限。
+- 新增 `MeyerButtonContentLayout`：TextOnly、IconOnly、IconLeftText、IconTopText，用于统一纯文字、纯图标、左图右文、上图下文等常见按钮结构。
+- 新增 `CreateButton()` / `CreateToolButton()` / `ApplyButtonStyle()` / `ApplyToolButtonStyle()` 接口；调用模块可以创建标准控件，也可以对已有按钮套用统一样式。
+- 保留 `CreatePrimaryButton()` / `CreateSecondaryButton()` 旧接口并转发到新工厂，降低已有模块迁移成本。
+- 明确 UIComponents 只管理通用控件、通用样式、尺寸和多语言友好策略，不读取权限、不连接数据库、不决定页面跳转、不绑定业务 clicked 行为。
+- HomeUI 首页入口按钮已接入 `MeyerButtonRoleEntry`；CaseUI 顶部返回/设置按钮和患者/订单工具栏按钮已接入 Primary / Secondary / Danger 样式。
+- 更新 `Version.rc` 与 `ModuleInfo::Version` 到 `0.2.0`。
+- 验证：`MeyerScan_UIComponents.sln` Release x64 构建通过；HomeUI / CaseUI / MainExe 联动 smoke 通过。
+
 ## 2026-06-25
 
 - 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；`GetModuleVersion()` 从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。

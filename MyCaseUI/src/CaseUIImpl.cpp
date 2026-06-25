@@ -15,7 +15,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CaseUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_CaseUI v0.1.0 (2026-06-17)";
+const char* Version = "MeyerScan_CaseUI v0.2.0 (2026-06-26)";
 }
 }
 
@@ -32,6 +32,7 @@ bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     // 案例管理 UI 当前只负责界面框架和用户动作上报。
     // 初始化时只确认日志和数据库健康状态，不直接读取业务列表数据。
     LoadLogger(logDir);
+    LoadUIComponents();
     InitDatabase(databaseConfigPath);
 
     // m_lastStatus 会被日志/数据库初始化流程更新。
@@ -50,22 +51,26 @@ void CaseUIImpl::SetActionCallback(void (*callback)(void* context, int actionId)
 }
 
 // 设置动作入口显隐。
-// 当前只落地“返回首页”，后续其它动作也应按 actionId 在这里扩展。
+// 当前落地“返回首页”和“设置”，后续其它动作也应按 actionId 在这里扩展。
 void CaseUIImpl::SetActionVisible(int actionId, bool visible) {
     // 目前先落地返回首页按钮，后续导入/导出/删除等也可以按 actionId 扩展到这里。
     // CaseUI 只保存显隐状态，具体权限判断在 MainExe/Permission 完成。
     if (actionId == CaseActionBackHome) {
         m_backHomeVisible = visible;
+    } else if (actionId == CaseActionOpenSettings) {
+        m_settingsVisible = visible;
     }
 }
 
 // 设置动作入口启用态。
-// 当前先落地“返回首页”，后续其它动作也应按 actionId 在这里扩展。
+// 当前落地“返回首页”和“设置”，后续其它动作也应按 actionId 在这里扩展。
 void CaseUIImpl::SetActionEnabled(int actionId, bool enabled) {
     // enabled 与 visible 分离：visible=false 是隐藏入口，enabled=false 是显示但禁止点击。
     // 这样便于后续在按钮上加禁用原因提示。
     if (actionId == CaseActionBackHome) {
         m_backHomeEnabled = enabled;
+    } else if (actionId == CaseActionOpenSettings) {
+        m_settingsEnabled = enabled;
     }
 }
 
@@ -104,6 +109,33 @@ void CaseUIImpl::LoadLogger(const char* logDir) {
         m_logger = nullptr;
         m_lastStatus = "Logger init failed; continuing without log output";
         return;
+    }
+}
+
+// 加载共享 UI 组件模块。
+// CaseUI 只使用它统一按钮样式；动作 ID、日志和业务流程仍由 CaseUI/MainExe 管理。
+void CaseUIImpl::LoadUIComponents() {
+    if (m_uiComponents) {
+        return;
+    }
+
+    m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
+    if (!m_uiComponentsLibrary.load()) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local styles");
+        return;
+    }
+
+    auto getUIComponents = reinterpret_cast<GetUIComponentsFunc>(m_uiComponentsLibrary.resolve("GetUIComponents"));
+    if (!getUIComponents) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "GetUIComponents export not found");
+        return;
+    }
+
+    m_uiComponents = getUIComponents();
+    if (m_uiComponents) {
+        const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
+        m_uiComponents->Init(appDirBytes.constData());
     }
 }
 
@@ -158,7 +190,13 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
 
     auto* headerLayout = new QHBoxLayout();
     // 可见文本必须使用 tr("English source text")，中文显示由 qm 翻译文件处理。
-    auto* backButton = new QPushButton(tr("Back Home"), root);
+    QPushButton* backButton = m_uiComponents
+        ? m_uiComponents->CreateButton(MeyerButtonRoleSecondary,
+                                       MeyerButtonContentTextOnly,
+                                       tr("Back Home").toUtf8().constData(),
+                                       "",
+                                       root)
+        : new QPushButton(tr("Back Home"), root);
     backButton->setMinimumWidth(120);
     // 返回按钮的显隐来自 MainExe 综合配置中心和权限模块后的结果。
     backButton->setVisible(IsActionVisible(CaseActionBackHome));
@@ -168,6 +206,21 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
         // 按钮本身不直接访问 MainWindow，只上报动作 ID，保持模块间低耦合。
         NotifyAction(CaseActionBackHome, "BackHome");
     });
+    QPushButton* settingsButton = m_uiComponents
+        ? m_uiComponents->CreateButton(MeyerButtonRoleSecondary,
+                                       MeyerButtonContentTextOnly,
+                                       tr("Settings").toUtf8().constData(),
+                                       "",
+                                       root)
+        : new QPushButton(tr("Settings"), root);
+    settingsButton->setMinimumWidth(120);
+    // 设置入口也由 MainExe 统一下发显隐和启用态，CaseUI 不自己读取 Permission。
+    settingsButton->setVisible(IsActionVisible(CaseActionOpenSettings));
+    settingsButton->setEnabled(IsActionEnabled(CaseActionOpenSettings));
+    QObject::connect(settingsButton, &QPushButton::clicked, [this]() {
+        // 浏览模块只上报“打开设置”，真正打开设置页面由 MainExe 负责。
+        NotifyAction(CaseActionOpenSettings, "OpenSettings");
+    });
 
     auto* header = new QLabel(tr("Case Management"), root);
     QFont headerFont = header->font();
@@ -175,6 +228,7 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     headerFont.setBold(true);
     header->setFont(headerFont);
     headerLayout->addWidget(header, 1);
+    headerLayout->addWidget(settingsButton);
     headerLayout->addWidget(backButton);
     layout->addLayout(headerLayout);
 
@@ -226,10 +280,18 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
         CaseActionNewPatient,
     };
     for (int i = 0; i < buttons.size(); ++i) {
-        auto* button = new QPushButton(buttons[i], page);
-        // actionId/actionName 按值捕获，避免循环变量 i 在点击时已经变化。
         const int actionId = actionIds[i];
         const QString actionName = buttons[i];
+        const int role = actionId == CaseActionDeletePatient ? MeyerButtonRoleDanger : MeyerButtonRoleSecondary;
+        const QByteArray buttonTextBytes = actionName.toUtf8();
+        QPushButton* button = m_uiComponents
+            ? m_uiComponents->CreateButton(role,
+                                           MeyerButtonContentTextOnly,
+                                           buttonTextBytes.constData(),
+                                           "",
+                                           page)
+            : new QPushButton(actionName, page);
+        // actionId/actionName 按值捕获，避免循环变量 i 在点击时已经变化。
         QObject::connect(button, &QPushButton::clicked, [this, actionId, actionName]() {
             // 导入/导出/删除等动作只上报，不在 UI 层直接操作数据库或文件。
             NotifyAction(actionId, actionName);
@@ -287,10 +349,20 @@ QWidget* CaseUIImpl::CreateOrderTab(QWidget* parent) {
         CaseActionDeleteOrder,
     };
     for (int i = 0; i < buttons.size(); ++i) {
-        auto* button = new QPushButton(buttons[i], page);
-        // 复制 actionName 是为了日志中记录用户看到的动作名称。
         const int actionId = actionIds[i];
         const QString actionName = buttons[i];
+        const int role = actionId == CaseActionOpenOrder
+            ? MeyerButtonRolePrimary
+            : (actionId == CaseActionDeleteOrder ? MeyerButtonRoleDanger : MeyerButtonRoleSecondary);
+        const QByteArray buttonTextBytes = actionName.toUtf8();
+        QPushButton* button = m_uiComponents
+            ? m_uiComponents->CreateButton(role,
+                                           MeyerButtonContentTextOnly,
+                                           buttonTextBytes.constData(),
+                                           "",
+                                           page)
+            : new QPushButton(actionName, page);
+        // 复制 actionName 是为了日志中记录用户看到的动作名称。
         QObject::connect(button, &QPushButton::clicked, [this, actionId, actionName]() {
             // Open 动作也不在 CaseUI 内直接打开扫描模块，而是上报给 MainExe 统一编排。
             NotifyAction(actionId, actionName);
@@ -339,6 +411,7 @@ void CaseUIImpl::Shutdown() {
     m_database = nullptr;
     m_databaseConnected = false;
     m_logger = nullptr;
+    m_uiComponents = nullptr;
     // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
 }
 
@@ -377,6 +450,10 @@ bool CaseUIImpl::IsActionVisible(int actionId) const {
         // 返回首页按钮是当前已接入权限控制的第一个动作。
         return m_backHomeVisible;
     }
+    if (actionId == CaseActionOpenSettings) {
+        // 设置入口复用 home.settings 权限，由 MainExe 下发最终状态。
+        return m_settingsVisible;
+    }
     // 未接入权限的动作默认可见，方便开发阶段发现入口并逐步接入权限规则。
     return true;
 }
@@ -387,6 +464,10 @@ bool CaseUIImpl::IsActionEnabled(int actionId) const {
     if (actionId == CaseActionBackHome) {
         // 返回首页按钮是当前已接入 enabled 控制的第一个动作。
         return m_backHomeEnabled;
+    }
+    if (actionId == CaseActionOpenSettings) {
+        // 设置入口复用 home.settings 权限，由 MainExe 下发最终状态。
+        return m_settingsEnabled;
     }
     // 未接入权限的动作默认可用，后续按 actionId 逐步扩展。
     return true;

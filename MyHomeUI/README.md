@@ -6,6 +6,7 @@ HomeUI 是 MeyerScan 的 Qt Widgets 首页入口模块。
 - 通过 `SetEntryCallback()` 向 MainExe 上报入口 ID；HomeUI 不直接切换其他模块。
 - 通过 `SetEntryVisible()` / `SetEntryEnabled()` 接收 MainExe 计算后的入口显隐和启用态；HomeUI 不直接读取权限文件。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。
+- 首页入口按钮优先使用 `MeyerScan_UIComponents.dll` 的 Entry 标准按钮样式；UIComponents 不可用时降级为本地按钮样式。
 - 点击入口时写入结构化日志，MainExe 再记录跨模块导航和页面切换日志。
 - 临时调用 `MeyerScan_Database.dll` 只用于框架 smoke 健康检查，不代表正式业务调用方式。
 - 如果进程级 Database 已由 MainExe 初始化并连接，HomeUI 只借用现有连接，不重复 Init/Connect。

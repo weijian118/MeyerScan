@@ -63,6 +63,7 @@ enum CaseActionId {
     CaseActionOpenOrder = 203,    // 打开订单
     CaseActionDeleteOrder = 204,  // 删除订单
     CaseActionSearchOrder = 205,  // 搜索订单
+    CaseActionOpenSettings = 301, // 打开设置
 };
 
 // C ABI 工厂函数，便于 MainExe 直接或动态获取案例管理接口。

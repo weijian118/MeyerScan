@@ -45,6 +45,7 @@ const char* kDefaultVersionModules[] = {
     "MeyerScan_UIComponents.dll",
     "MeyerScan_HomeUI.dll",
     "MeyerScan_CaseUI.dll",
+    "MeyerScan_SettingsUI.dll",
     "MeyerScan_CaseOrderService.dll",
     "MeyerScan_OrderScanWorkspaceShell.dll",
     "MeyerScan_Calibration3DUI.dll",
@@ -97,6 +98,9 @@ MainWindow::~MainWindow() {
     }
     if (m_case) {
         m_case->Shutdown();
+    }
+    if (m_settings) {
+        m_settings->Shutdown();
     }
     if (m_permission) {
         m_permission->Shutdown();
@@ -152,11 +156,14 @@ void MainWindow::StartWithoutLoginForSmoke() {
     ShowHome();
     show();
     // 用定时器模拟用户切页面，验证页面创建、切换和释放不会阻塞事件循环。
-    QTimer::singleShot(400, this, [this]() { ShowCase(); });
+    // 先覆盖首页打开设置，再覆盖浏览页和扫描前资源释放，防止入口回调断链后人工才发现。
+    QTimer::singleShot(400, this, [this]() { ShowSettings(SettingsOpenSourceHome); });
     QTimer::singleShot(800, this, [this]() { ShowHome(); });
     QTimer::singleShot(1200, this, [this]() { ShowCase(); });
+    QTimer::singleShot(1400, this, [this]() { ShowHome(); });
+    QTimer::singleShot(1600, this, [this]() { ShowCase(); });
     // 最后模拟打开扫描重建前的资源释放要求。
-    QTimer::singleShot(1600, this, [this]() { PrepareForScanReconstruct(); });
+    QTimer::singleShot(2000, this, [this]() { PrepareForScanReconstruct(); });
 }
 
 // 登录参数必须基于应用目录构造。
@@ -371,6 +378,14 @@ void MainWindow::OnCaseAction(void* context, int actionId) {
     }
 }
 
+// C ABI 回调转发：SettingsUI 不直接依赖 MainWindow 类型。
+void MainWindow::OnSettingsAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleSettingsAction(actionId);
+    }
+}
+
 // 首页入口统一从这里分发，避免 HomeUI 自己切换其他模块页面。
 void MainWindow::HandleHomeEntryClicked(int entryId) {
     // 每一次客户点击都先写日志，再进入具体页面流程。
@@ -389,9 +404,12 @@ void MainWindow::HandleHomeEntryClicked(int entryId) {
         // 浏览入口进入 CaseUI，ShowCase 内部会懒加载并释放首页资源。
         ShowCase();
         break;
+    case HomeEntrySettings:
+        // 首页设置入口进入 SettingsUI，设置关闭后返回首页。
+        ShowSettings(SettingsOpenSourceHome);
+        break;
     case HomeEntryCreate:
     case HomeEntryPractice:
-    case HomeEntrySettings:
     default:
         WriteStatus(tr("Home entry %1 is not implemented yet").arg(entryId));
         break;
@@ -420,10 +438,47 @@ void MainWindow::HandleCaseAction(int actionId) {
         // 打开订单是进入扫描重建前的关键入口，必须先释放案例页。
         PrepareForScanReconstruct();
         break;
+    case CaseActionOpenSettings:
+        // 浏览页打开设置，关闭设置后回到浏览页。
+        ShowSettings(SettingsOpenSourceCase);
+        break;
     case CaseActionSwitchTab:
         break;
     default:
         WriteStatus(tr("Case action %1 is not implemented yet").arg(actionId));
+        break;
+    }
+}
+
+// 设置模块动作统一从这里分发，避免 SettingsUI 自己切换 MainExe 页面。
+void MainWindow::HandleSettingsAction(int actionId) {
+    WriteUserAction("SettingsAction", QString("Settings action clicked: %1").arg(actionId));
+
+    switch (actionId) {
+    case SettingsActionConfirm:
+    case SettingsActionClose:
+        // 当前骨架期 Confirm/Close 都只关闭设置并返回来源页面。
+        if (m_settingsOpenSource == SettingsOpenSourceCase) {
+            ShowCase();
+        } else {
+            ShowHome();
+        }
+        break;
+    case SettingsActionApply:
+        // Apply 先只记录日志，后续接 ConfigCenter/SettingsService 保存配置。
+        WriteStatus(tr("Settings applied"));
+        break;
+    case SettingsActionRestore:
+        // Restore 先只记录日志，后续接 ConfigCenter 默认值恢复。
+        WriteStatus(tr("Settings restored"));
+        break;
+    case SettingsActionOpen3DCalibration:
+    case SettingsActionOpenColorCalibration:
+        // 校准页面已经由 SettingsUI 内部嵌入，这里只记录跨模块动作。
+        WriteStatus(tr("Calibration page opened"));
+        break;
+    default:
+        WriteStatus(tr("Settings action %1 is not implemented yet").arg(actionId));
         break;
     }
 }
@@ -451,6 +506,7 @@ void MainWindow::ShowHome() {
         // 先把首页挂到内容区，再释放其它页面，避免删除当前正在显示的 QWidget。
         ReplaceContentWidget(m_homeWidget, "Home");
         ReleaseCasePage();
+        ReleaseSettingsPage();
         ReleaseWaitPage();
     }
 }
@@ -461,6 +517,23 @@ void MainWindow::ShowCase() {
         // CaseUI 是从首页入口进入的全屏页面，不作为首页的兄弟页面长期并列缓存。
         ReplaceContentWidget(m_caseWidget, "Case Management");
         ReleaseHomePage();
+        ReleaseSettingsPage();
+        ReleaseWaitPage();
+    }
+}
+
+// 显示设置页，并记录关闭设置后应回到的来源页面。
+void MainWindow::ShowSettings(int openSource) {
+    m_settingsOpenSource = openSource;
+    if (EnsureSettingsPage()) {
+        // 每次打开设置前都传来源上下文。
+        // 这样同一个 SettingsUI 单例从首页、浏览、未来扫描重建重复打开时，都能刷新校准入口状态。
+        m_settings->SetOpenContext(m_settingsOpenSource,
+                                   IsCalibrationAllowedForSettingsSource(m_settingsOpenSource));
+        ReplaceContentWidget(m_settingsWidget, "Settings");
+        // 设置页是独立主页面，打开后释放来源页面 widget，避免不可见页面占资源。
+        ReleaseHomePage();
+        ReleaseCasePage();
         ReleaseWaitPage();
     }
 }
@@ -549,6 +622,55 @@ bool MainWindow::EnsureCasePage() {
     return true;
 }
 
+// 创建设置页面。
+// SettingsUI 内部负责设置分类和校准入口；MainExe 只负责挂载和返回来源。
+bool MainWindow::EnsureSettingsPage() {
+    if (m_settingsWidget) {
+        return true;
+    }
+    m_settings = GetSettingsUI();
+    if (!m_settings) {
+        WriteStatus(tr("SettingsUI unavailable"));
+        return false;
+    }
+
+    if (!m_settingsInitialized) {
+        m_settingsInitialized = m_settings->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+    m_settings->SetActionCallback(&MainWindow::OnSettingsAction, this);
+    // CreateWidget 前先传一次来源上下文，确保校准页首次创建时状态正确。
+    m_settings->SetOpenContext(m_settingsOpenSource,
+                               IsCalibrationAllowedForSettingsSource(m_settingsOpenSource));
+
+    m_settingsWidget = m_settings->CreateWidget(this);
+    if (!m_settingsWidget) {
+        WriteStatus(tr("Settings widget create failed"));
+        return false;
+    }
+    WriteUserAction("PageCreate", "Settings page created");
+    return true;
+}
+
+// 根据设置来源返回设置关闭后应该回到的页面名称。
+// 当前用于日志/后续刷新预留；页面切换仍在 HandleSettingsAction 中按枚举分发。
+QString MainWindow::SettingsReturnPageName(int openSource) const {
+    switch (openSource) {
+    case SettingsOpenSourceCase:
+        return "Case";
+    case SettingsOpenSourceScanReconstruct:
+        return "ScanReconstruct";
+    case SettingsOpenSourceHome:
+    default:
+        return "Home";
+    }
+}
+
+// 扫描重建过程中不能打开校准。
+// 校准可能占用设备、算法资源或改变扫描状态，所以只允许首页/案例管理等非扫描流程打开。
+bool MainWindow::IsCalibrationAllowedForSettingsSource(int openSource) const {
+    return openSource != SettingsOpenSourceScanReconstruct;
+}
+
 // 首页不是当前页时才允许释放，避免删除正在显示的 QWidget。
 void MainWindow::ReleaseHomePage() {
     ReleasePageWidget(m_homeWidget, "Home", false);
@@ -564,6 +686,16 @@ void MainWindow::ReleaseCasePage() {
 // 登录阶段随后会 hide 主窗口，登录成功后再创建/显示首页。
 void MainWindow::ReleaseWaitPage() {
     ReleasePageWidget(m_waitWidget, "Wait", true);
+}
+
+// 设置页不是当前页时才允许释放。
+void MainWindow::ReleaseSettingsPage() {
+    if (m_settings && m_settingsWidget && m_activeWidget != m_settingsWidget) {
+        // SettingsUI 内部缓存了当前页面中的少量控件弱引用。
+        // 删除 QWidget 前先通知模块清空这些引用，避免下次打开设置时访问悬空指针。
+        m_settings->DestroyWidget();
+    }
+    ReleasePageWidget(m_settingsWidget, "Settings", false);
 }
 
 // 释放页面 widget 的统一函数。
@@ -660,6 +792,10 @@ void MainWindow::ApplyCaseActionRules() {
     m_case->SetActionVisible(CaseActionBackHome,
                              IsFeatureVisible("case.backHome", "feature.case.backHomeVisible", true));
     m_case->SetActionEnabled(CaseActionBackHome, IsFeatureEnabled("case.backHome", true));
+    // 浏览页设置入口复用 home.settings 权限，避免同一设置模块出现两套授权规则。
+    m_case->SetActionVisible(CaseActionOpenSettings,
+                             IsFeatureVisible("home.settings", "feature.home.settingsVisible", true));
+    m_case->SetActionEnabled(CaseActionOpenSettings, IsFeatureEnabled("home.settings", true));
 }
 
 // 统一合并配置显隐和权限显隐。
@@ -697,6 +833,7 @@ const char* MainWindow::HomeEntryFeatureId(int entryId) const {
 const char* MainWindow::CaseActionFeatureId(int actionId) const {
     switch (actionId) {
     case CaseActionBackHome: return "case.backHome";
+    case CaseActionOpenSettings: return "home.settings";
     default:                 return nullptr;
     }
 }

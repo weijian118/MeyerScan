@@ -3,11 +3,13 @@
 #include "CaseUI.h"
 #include "Database.h"
 #include "Logger.h"
+#include "UIComponents.h"
 #include <QCoreApplication>
 #include <QLibrary>
 #include <QString>
 
 using GetLoggerFunc = ILogger* (*)();
+using GetUIComponentsFunc = IUIComponents* (*)();
 
 // CaseUIImpl 是案例管理 UI 模块的实现。
 // 它只负责列表/按钮/页签等界面框架和动作上报，不直接做患者/订单 CRUD。
@@ -48,6 +50,9 @@ private:
     // 动态加载 Logger 并缓存 ILogger 指针。
     void LoadLogger(const char* logDir);
 
+    // 动态加载共享 UI 组件模块。
+    void LoadUIComponents();
+
     // 做数据库健康检查；正式业务数据读取后续迁到 CaseOrderService。
     void InitDatabase(const char* databaseConfigPath);
 
@@ -73,8 +78,14 @@ private:
     // Logger DLL 句柄使用 PreventUnloadHint，避免退出时卸载顺序破坏日志对象。
     QLibrary m_loggerLibrary;
 
+    // UIComponents DLL 句柄；CaseUI 只借用控件工厂统一样式。
+    QLibrary m_uiComponentsLibrary;
+
     // 缓存后的日志接口指针。
     ILogger* m_logger = nullptr;
+
+    // 缓存后的共享 UI 接口；不可用时降级为本地 Qt 控件。
+    IUIComponents* m_uiComponents = nullptr;
 
     // 框架期借用数据库实例做健康检查；正式列表/搜索不应直接用它。
     IDatabase* m_database = nullptr;
@@ -94,4 +105,10 @@ private:
 
     // 返回首页按钮是否可点击。
     bool m_backHomeEnabled = true;
+
+    // 设置按钮是否显示。
+    bool m_settingsVisible = true;
+
+    // 设置按钮是否可点击。
+    bool m_settingsEnabled = true;
 };

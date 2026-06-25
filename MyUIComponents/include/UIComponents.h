@@ -12,6 +12,26 @@ class QPushButton;
 class QLabel;
 class QComboBox;
 class QLineEdit;
+class QToolButton;
+
+// 通用按钮视觉角色。
+// 角色只描述外观重要性，不描述业务含义；业务权限和点击行为仍由调用模块决定。
+enum MeyerButtonRole {
+    MeyerButtonRolePrimary = 1,      // 高亮主按钮，例如 Confirm、Log In、Calibrate
+    MeyerButtonRoleSecondary = 2,    // 普通次按钮，例如 Cancel、Back、Edit
+    MeyerButtonRoleText = 3,         // 纯文字按钮，例如表格行内操作或轻量链接
+    MeyerButtonRoleDanger = 4,       // 危险动作按钮，例如 Delete
+    MeyerButtonRoleEntry = 5,        // 首页/工作台入口类大按钮
+};
+
+// 通用按钮内容布局。
+// 当前先服务 QPushButton/QToolButton 的图标和文字排列，后续可继续扩展图标尺寸、tooltip 等属性。
+enum MeyerButtonContentLayout {
+    MeyerButtonContentTextOnly = 1,       // 纯文字按钮
+    MeyerButtonContentIconOnly = 2,       // 纯图标按钮
+    MeyerButtonContentIconLeftText = 3,   // 左图标右文字
+    MeyerButtonContentIconTopText = 4,    // 上图标下文字
+};
 
 // IUIComponents 是共享 UI 控件模块的公共接口。
 // 模块边界:
@@ -43,6 +63,29 @@ public:
 
     // 创建次按钮，用于返回、取消、辅助动作。
     virtual QPushButton* CreateSecondaryButton(const char* textUtf8, QWidget* parent = nullptr) = 0;
+
+    // 创建标准 QPushButton。
+    // textUtf8 必须是调用方 tr("English source text") 后的显示文本；iconResourcePathUtf8 为空时创建无图标按钮。
+    virtual QPushButton* CreateButton(int role,
+                                      int contentLayout,
+                                      const char* textUtf8,
+                                      const char* iconResourcePathUtf8,
+                                      QWidget* parent = nullptr) = 0;
+
+    // 创建标准 QToolButton。
+    // 适合工具栏、纯图标或上图标下文字的紧凑按钮；业务模块仍负责连接 clicked 信号。
+    virtual QToolButton* CreateToolButton(int role,
+                                          int contentLayout,
+                                          const char* textUtf8,
+                                          const char* iconResourcePathUtf8,
+                                          QWidget* parent = nullptr) = 0;
+
+    // 将统一按钮样式应用到已有 QPushButton。
+    // 用于模块内部已经创建了按钮但希望复用 UIComponents 样式的场景。
+    virtual void ApplyButtonStyle(QPushButton* button, int role, int contentLayout) = 0;
+
+    // 将统一按钮样式应用到已有 QToolButton。
+    virtual void ApplyToolButtonStyle(QToolButton* button, int role, int contentLayout) = 0;
 
     // 创建统一单行输入框。
     virtual QLineEdit* CreateLineEdit(const char* placeholderUtf8, QWidget* parent = nullptr) = 0;

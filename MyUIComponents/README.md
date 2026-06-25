@@ -1,11 +1,12 @@
 # MeyerScan UIComponents
 
-`MyUIComponents` 是共享 UI 组件模块的第一版骨架。
+`MyUIComponents` 是共享 UI 组件模块。
 
 当前职责：
 
 - 提供统一 DPI 缩放系数查询。
-- 提供启动等待页、标题、主按钮、次按钮、输入框、下拉框等基础控件工厂。
+- 提供启动等待页、标题、按钮、输入框、下拉框等基础控件工厂。
+- 按“按钮角色 + 内容布局”统一管理常用按钮样式，例如主按钮、次按钮、纯文字按钮、危险按钮、首页入口按钮，以及纯文字/纯图标/左图右文/上图下文。
 - 后续承载主题、公共弹窗、表格样式、多语言刷新通知等 UI 基础能力。
 - 控件工厂参数必须由调用方传入 `tr("English source text")` 后的结果；UIComponents 只负责显示和样式，不把中文 UI 源文案写进控件工厂。
 
@@ -16,3 +17,22 @@
 - 多语言下不再按语言写 if/else 调整位置和大小，应使用 Qt Layout、最小宽度和内容自适应。
 - 界面可见文字 source text 统一使用英文，并通过调用方 `tr()` 翻译；即使需求文档写中文按钮名，源码仍写英文 source text。
 - 控件工厂只统一尺寸、样式和多语言适配基础，不决定按钮点击行为、不读取配置或权限。
+- 多个模块都会用到的通用控件和样式放入 UIComponents；只在单个业务模块出现的特殊/定制控件留在自身模块内部，避免共享模块膨胀成页面库。
+
+## 按钮样式策略
+
+`QPushButton` 和 `QToolButton` 先统一以下两个维度：
+
+| 维度 | 当前取值 | 用途 |
+|------|----------|------|
+| 角色 | Primary / Secondary / Text / Danger / Entry | 表达视觉层级，不表达业务权限 |
+| 内容布局 | TextOnly / IconOnly / IconLeftText / IconTopText | 表达图标和文字排列方式 |
+
+调用方可以直接创建标准按钮，也可以对已经创建的按钮调用 `ApplyButtonStyle()` / `ApplyToolButtonStyle()` 套用统一样式。按钮的 `clicked` 连接、权限显隐、业务动作仍由调用方模块负责。
+
+## 迁移状态
+
+- MainExe 已使用 UIComponents 创建启动等待页。
+- HomeUI 首页入口按钮已接入 `MeyerButtonRoleEntry`。
+- CaseUI 顶部返回/设置按钮和患者/订单工具栏按钮已接入 Primary / Secondary / Danger 样式。
+- SettingsUI 当前保留设置页内部专用样式，后续按页面逐步迁移通用按钮和表格样式；截图还原类布局仍属于 SettingsUI 自身职责。

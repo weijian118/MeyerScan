@@ -1,5 +1,14 @@
 # MeyerScan HomeUI 变更记录
 
+## 2026-06-26
+
+- 首页入口按钮接入 `MeyerScan_UIComponents.dll` 的标准按钮工厂，统一使用 `MeyerButtonRoleEntry` 样式。
+- 新增运行时动态加载 UIComponents 的缓存逻辑；共享 UI 模块不可用时保留本地 `QPushButton` 降级样式，保证首页仍可启动。
+- 明确 HomeUI 只负责入口页面结构、入口 ID 上报和入口状态渲染；按钮样式归 UIComponents，权限显隐/启用态仍由 MainExe 下发。
+- VS2015 工程增加 `..\MyUIComponents\include`，Release PostBuild 复制 `MeyerScan_UIComponents.dll`，保证测试宿主和主程序运行目录可加载共享样式模块。
+- 复查版本信息：`ModuleInfo::Version` 和 `Version.rc` 升级为 v0.2.0，避免版本清单继续显示旧框架版本。
+- 验证：`MeyerScan_HomeUI.sln` Release x64 构建通过，`HomeUITest.exe --smoke` 返回 0。
+
 ## 2026-06-25
 
 - 新增 `SetEntryEnabled()` 接口，接收 MainExe 下发的入口启用态；`enabled=false` 时按钮显示但禁用。

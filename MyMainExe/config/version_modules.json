@@ -10,6 +10,7 @@
         "MeyerScan_UIComponents.dll",
         "MeyerScan_HomeUI.dll",
         "MeyerScan_CaseUI.dll",
+        "MeyerScan_SettingsUI.dll",
         "MeyerScan_CaseOrderService.dll",
         "MeyerScan_OrderScanWorkspaceShell.dll",
         "MeyerScan_Calibration3DUI.dll",

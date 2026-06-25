@@ -3,11 +3,14 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDesktopWidget>
+#include <QFileInfo>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -16,7 +19,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIComponents";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_UIComponents v0.1.0 (2026-06-23)";
+const char* Version = "MeyerScan_UIComponents v0.2.0 (2026-06-26)";
 }
 
 const double kDesignWidth = 1920.0;
@@ -88,32 +91,100 @@ QWidget* UIComponentsImpl::CreateWaitWidget(const char* titleUtf8, const char* m
 // 创建主操作按钮。
 // 调用方负责传入已经经过 tr() 的文字，并负责连接 clicked 信号。
 QPushButton* UIComponentsImpl::CreatePrimaryButton(const char* textUtf8, QWidget* parent) {
-    // textUtf8 应该已经是调用方 tr("English source text") 后的结果。
-    auto* button = new QPushButton(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
-
-    // 高度使用 ScaleY 辅助，宽度交给布局和 sizePolicy 自适应多语言文本。
-    button->setMinimumHeight(static_cast<int>(42 * m_scaleY));
-    button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-
-    // 当前骨架先用 QSS 固化基础风格；后续可集中改为统一 qss 文件。
-    button->setStyleSheet("QPushButton{background:#007d68;color:white;border:0;border-radius:4px;padding:8px 18px;}"
-                          "QPushButton:hover{background:#009176;}"
-                          "QPushButton:disabled{background:#d8d8d8;color:#888;}");
-    return button;
+    // 保留旧接口，内部转到新标准按钮工厂。
+    return CreateButton(MeyerButtonRolePrimary, MeyerButtonContentTextOnly, textUtf8, "", parent);
 }
 
 // 创建次操作按钮。
 // 仅统一外观和基本尺寸，不内置任何业务行为。
 QPushButton* UIComponentsImpl::CreateSecondaryButton(const char* textUtf8, QWidget* parent) {
-    auto* button = new QPushButton(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
+    // 保留旧接口，内部转到新标准按钮工厂。
+    return CreateButton(MeyerButtonRoleSecondary, MeyerButtonContentTextOnly, textUtf8, "", parent);
+}
 
-    // 次按钮略低于主按钮，但仍保持足够点击高度，适合触控和高 DPI。
-    button->setMinimumHeight(static_cast<int>(40 * m_scaleY));
-    button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-    button->setStyleSheet("QPushButton{background:#f6f8fa;color:#23313f;border:1px solid #cfd8dc;border-radius:4px;padding:8px 16px;}"
-                          "QPushButton:hover{background:#edf2f5;}"
-                          "QPushButton:disabled{color:#999;border-color:#ddd;}");
+// 创建标准 QPushButton。
+// role 决定视觉层级，contentLayout 决定图标和文字的组合方式。
+QPushButton* UIComponentsImpl::CreateButton(int role,
+                                            int contentLayout,
+                                            const char* textUtf8,
+                                            const char* iconResourcePathUtf8,
+                                            QWidget* parent) {
+    // textUtf8 必须由调用方先 tr()，UIComponents 不写业务文案。
+    auto* button = new QPushButton(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
+    const QIcon icon = LoadIcon(iconResourcePathUtf8);
+    if (!icon.isNull()) {
+        button->setIcon(icon);
+    }
+    ApplyButtonStyle(button, role, contentLayout);
     return button;
+}
+
+// 创建标准 QToolButton。
+// ToolButton 更适合工具栏和纯图标按钮，不替代普通业务按钮。
+QToolButton* UIComponentsImpl::CreateToolButton(int role,
+                                                int contentLayout,
+                                                const char* textUtf8,
+                                                const char* iconResourcePathUtf8,
+                                                QWidget* parent) {
+    auto* button = new QToolButton(parent);
+    button->setText(QString::fromUtf8(textUtf8 ? textUtf8 : ""));
+    const QIcon icon = LoadIcon(iconResourcePathUtf8);
+    if (!icon.isNull()) {
+        button->setIcon(icon);
+    }
+    ApplyToolButtonStyle(button, role, contentLayout);
+    return button;
+}
+
+// 给已有 QPushButton 应用统一样式。
+// 这让 HomeUI/CaseUI 等已有代码可以逐步迁移，不需要一次性改完所有按钮创建方式。
+void UIComponentsImpl::ApplyButtonStyle(QPushButton* button, int role, int contentLayout) {
+    if (!button) {
+        return;
+    }
+
+    // 高度统一由角色决定，宽度交给布局和 sizePolicy 自适应多语言文本。
+    button->setMinimumHeight(ButtonMinimumHeight(role));
+    button->setSizePolicy(role == MeyerButtonRoleEntry ? QSizePolicy::Expanding : QSizePolicy::MinimumExpanding,
+                          QSizePolicy::Fixed);
+    button->setIconSize(ButtonIconSize(contentLayout));
+    button->setStyleSheet(ButtonStyleSheet(role));
+
+    if (contentLayout == MeyerButtonContentIconOnly) {
+        // 纯图标按钮不强制清空 text，调用方可保留 text 用于无障碍/tooltip。
+        button->setMinimumWidth(ButtonMinimumHeight(role));
+        button->setMaximumWidth(qMax(ButtonMinimumHeight(role), static_cast<int>(52 * m_scaleX)));
+    } else if (contentLayout == MeyerButtonContentIconTopText) {
+        // QPushButton 原生不擅长“上图下文”，这里只给更高的最小高度。
+        // 复杂工具栏建议使用 CreateToolButton()，它能通过 toolButtonStyle 原生支持。
+        button->setMinimumHeight(qMax(ButtonMinimumHeight(role), static_cast<int>(74 * m_scaleY)));
+    }
+}
+
+// 给已有 QToolButton 应用统一样式。
+void UIComponentsImpl::ApplyToolButtonStyle(QToolButton* button, int role, int contentLayout) {
+    if (!button) {
+        return;
+    }
+
+    button->setMinimumHeight(ButtonMinimumHeight(role));
+    button->setIconSize(ButtonIconSize(contentLayout));
+    button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+    QString style = ButtonStyleSheet(role);
+    style.replace("QPushButton", "QToolButton");
+    button->setStyleSheet(style);
+
+    if (contentLayout == MeyerButtonContentIconOnly) {
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setMinimumWidth(ButtonMinimumHeight(role));
+    } else if (contentLayout == MeyerButtonContentIconTopText) {
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setMinimumHeight(qMax(ButtonMinimumHeight(role), static_cast<int>(74 * m_scaleY)));
+    } else if (contentLayout == MeyerButtonContentIconLeftText) {
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    } else {
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    }
 }
 
 // 创建通用输入框。
@@ -173,6 +244,78 @@ void UIComponentsImpl::Shutdown() {
     // 恢复默认比例，便于测试宿主重复 Init/Shutdown 时结果可预测。
     m_scaleX = 1.0;
     m_scaleY = 1.0;
+}
+
+// 生成不同按钮角色对应的样式表。
+// 角色只表示视觉层级，不包含任何业务权限语义。
+QString UIComponentsImpl::ButtonStyleSheet(int role) const {
+    switch (role) {
+    case MeyerButtonRolePrimary:
+        return "QPushButton{background:#007d68;color:white;border:0;border-radius:4px;padding:8px 18px;}"
+               "QPushButton:hover{background:#009176;}"
+               "QPushButton:pressed{background:#006652;}"
+               "QPushButton:disabled{background:#d8d8d8;color:#888;}";
+    case MeyerButtonRoleText:
+        return "QPushButton{background:transparent;color:#007d68;border:0;border-radius:4px;padding:6px 10px;}"
+               "QPushButton:hover{background:#e7f3f0;}"
+               "QPushButton:pressed{background:#d6ebe6;}"
+               "QPushButton:disabled{color:#999;}";
+    case MeyerButtonRoleDanger:
+        return "QPushButton{background:#c0392b;color:white;border:0;border-radius:4px;padding:8px 16px;}"
+               "QPushButton:hover{background:#d24a3c;}"
+               "QPushButton:pressed{background:#9f2f25;}"
+               "QPushButton:disabled{background:#e1d2cf;color:#9a8f8c;}";
+    case MeyerButtonRoleEntry:
+        return "QPushButton{text-align:left;background:white;color:#23313f;border:1px solid #d8e1e7;border-radius:6px;padding:14px;}"
+               "QPushButton:hover{background:#edf8f5;border-color:#9ccfc3;}"
+               "QPushButton:pressed{background:#dff1ec;}"
+               "QPushButton:disabled{background:#f4f4f4;color:#999;border-color:#e2e2e2;}";
+    case MeyerButtonRoleSecondary:
+    default:
+        return "QPushButton{background:#f6f8fa;color:#23313f;border:1px solid #cfd8dc;border-radius:4px;padding:8px 16px;}"
+               "QPushButton:hover{background:#edf2f5;}"
+               "QPushButton:pressed{background:#e1e8ec;}"
+               "QPushButton:disabled{color:#999;border-color:#ddd;background:#f4f4f4;}";
+    }
+}
+
+// 根据角色返回最小高度。
+int UIComponentsImpl::ButtonMinimumHeight(int role) const {
+    if (role == MeyerButtonRoleEntry) {
+        return static_cast<int>(qMax(86.0, 104.0 * m_scaleY));
+    }
+    if (role == MeyerButtonRoleText) {
+        return static_cast<int>(qMax(30.0, 34.0 * m_scaleY));
+    }
+    return static_cast<int>(qMax(36.0, 40.0 * m_scaleY));
+}
+
+// 根据内容布局返回图标尺寸。
+QSize UIComponentsImpl::ButtonIconSize(int contentLayout) const {
+    if (contentLayout == MeyerButtonContentIconTopText) {
+        const int size = static_cast<int>(qMax(24.0, 32.0 * qMin(m_scaleX, m_scaleY)));
+        return QSize(size, size);
+    }
+    if (contentLayout == MeyerButtonContentIconOnly) {
+        const int size = static_cast<int>(qMax(18.0, 24.0 * qMin(m_scaleX, m_scaleY)));
+        return QSize(size, size);
+    }
+    const int size = static_cast<int>(qMax(16.0, 20.0 * qMin(m_scaleX, m_scaleY)));
+    return QSize(size, size);
+}
+
+// 加载图标。
+// 资源路径可以是 Qt 资源路径，也可以是安装目录下的绝对/相对文件路径。
+QIcon UIComponentsImpl::LoadIcon(const char* iconResourcePathUtf8) const {
+    const QString path = QString::fromUtf8(iconResourcePathUtf8 ? iconResourcePathUtf8 : "").trimmed();
+    if (path.isEmpty()) {
+        return QIcon();
+    }
+    QIcon icon(path);
+    if (!icon.isNull()) {
+        return icon;
+    }
+    return QIcon();
 }
 
 // C ABI 导出函数。

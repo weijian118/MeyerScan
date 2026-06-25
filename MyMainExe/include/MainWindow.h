@@ -9,6 +9,7 @@
 #include "HomeUI.h"
 #include "MeyerLoginWidget.h"
 #include "Permission.h"
+#include "SettingsUI.h"
 #include "UIComponents.h"
 
 class QLabel;
@@ -49,11 +50,17 @@ private:
     // CaseUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
     static void OnCaseAction(void* context, int actionId);
 
+    // SettingsUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnSettingsAction(void* context, int actionId);
+
     // 处理首页入口点击，例如浏览、创建、练习、设置。
     void HandleHomeEntryClicked(int entryId);
 
     // 处理案例管理页面动作，例如返回首页或打开订单。
     void HandleCaseAction(int actionId);
+
+    // 处理设置页面动作，例如关闭、确认、应用和校准入口。
+    void HandleSettingsAction(int actionId);
 
     // 判断登录 DLL 的状态码是否代表可以进入主界面。
     bool IsLoginAcceptedStatus(int status) const;
@@ -64,6 +71,9 @@ private:
     // 显示案例管理页；如果页面尚未创建则延迟创建。
     void ShowCase();
 
+    // 显示设置页；openSource 记录关闭设置后回到哪个主页面，并决定校准入口是否可用。
+    void ShowSettings(int openSource);
+
     // 进入扫描重建前释放案例管理页，把内存/显存资源留给扫描重建。
     void PrepareForScanReconstruct();
 
@@ -73,6 +83,15 @@ private:
     // 确保 CaseUI 已初始化并已创建 QWidget。
     bool EnsureCasePage();
 
+    // 确保 SettingsUI 已初始化并已创建 QWidget。
+    bool EnsureSettingsPage();
+
+    // 根据设置来源返回设置关闭后应该回到的页面名称。
+    QString SettingsReturnPageName(int openSource) const;
+
+    // 判断当前来源是否允许打开三维/颜色校准。
+    bool IsCalibrationAllowedForSettingsSource(int openSource) const;
+
     // 释放非当前显示的首页 QWidget。
     void ReleaseHomePage();
 
@@ -81,6 +100,9 @@ private:
 
     // 释放等待页。登录窗口显示后必须释放等待页，避免挡在主窗口中。
     void ReleaseWaitPage();
+
+    // 释放设置页。
+    void ReleaseSettingsPage();
 
     // 释放指定页面指针。allowActive=false 时不会释放当前正在显示的页面。
     void ReleasePageWidget(QWidget*& pageWidget, const QString& pageName, bool allowActive);
@@ -155,12 +177,14 @@ private:
     CBLMeyerLoginWidget m_loginWidget;
     IHomeUI* m_home = nullptr;
     ICaseUI* m_case = nullptr;
+    ISettingsUI* m_settings = nullptr;
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
     IUIComponents* m_uiComponents = nullptr;
     ILogger* m_logger = nullptr;
     QWidget* m_homeWidget = nullptr;
     QWidget* m_caseWidget = nullptr;
+    QWidget* m_settingsWidget = nullptr;
     QWidget* m_waitWidget = nullptr;
     QWidget* m_contentRoot = nullptr;
     QWidget* m_activeWidget = nullptr;
@@ -174,5 +198,7 @@ private:
     bool m_loginCompleted = false;
     bool m_homeInitialized = false;
     bool m_caseInitialized = false;
+    bool m_settingsInitialized = false;
     bool m_loggerInitialized = false;
+    int m_settingsOpenSource = SettingsOpenSourceHome;
 };

@@ -3,25 +3,25 @@
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 0,2,0,0
  PRODUCTVERSION 0,2,0,0
- FILEFLAGSMASK 0x3fL
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
 #else
- FILEFLAGS 0x0L
+ FILEFLAGS 0
 #endif
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_DLL
- FILESUBTYPE 0x0L
+ FILESUBTYPE 0
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
-        BLOCK "040904b0"
+        BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
-            VALUE "FileDescription", "MeyerScan UIComponents Module"
+            VALUE "FileDescription", "MeyerScan Settings UI Module"
             VALUE "FileVersion", "0.2.0.0"
-            VALUE "InternalName", "MeyerScan_UIComponents"
-            VALUE "OriginalFilename", "MeyerScan_UIComponents.dll"
+            VALUE "InternalName", "MeyerScan_SettingsUI"
+            VALUE "OriginalFilename", "MeyerScan_SettingsUI.dll"
             VALUE "ProductName", "MeyerScan Digital Dental Scanner"
             VALUE "ProductVersion", "0.2.0.0"
         END

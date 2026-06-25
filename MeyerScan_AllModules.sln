@@ -16,6 +16,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_HomeUI", "MyHomeU
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseUI", "MyCaseUI\MeyerScan_CaseUI.vcxproj", "{E4F5A6B7-C8D9-0123-EF12-345678901235}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_SettingsUI", "MySettingsUI\MeyerScan_SettingsUI.vcxproj", "{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseOrderService", "MyCaseOrderService\MeyerScan_CaseOrderService.vcxproj", "{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_OrderScanWorkspaceShell", "MyOrderScanWorkspaceShell\MeyerScan_OrderScanWorkspaceShell.vcxproj", "{66105806-C77C-4E7A-9B62-556919C26D39}"
@@ -47,6 +49,8 @@ Global
 		{D4E5F6A7-B8C9-0123-DEF1-234567890123}.Release|x64.Build.0 = Release|x64
 		{E4F5A6B7-C8D9-0123-EF12-345678901235}.Release|x64.ActiveCfg = Release|x64
 		{E4F5A6B7-C8D9-0123-EF12-345678901235}.Release|x64.Build.0 = Release|x64
+		{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}.Release|x64.ActiveCfg = Release|x64
+		{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}.Release|x64.Build.0 = Release|x64
 		{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}.Release|x64.ActiveCfg = Release|x64
 		{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}.Release|x64.Build.0 = Release|x64
 		{66105806-C77C-4E7A-9B62-556919C26D39}.Release|x64.ActiveCfg = Release|x64
