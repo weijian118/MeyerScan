@@ -1,6 +1,6 @@
 {
     "database": {
-        "type": "mysql"
+        "type": "sqlite"
     },
     "feature": {
         "home": {

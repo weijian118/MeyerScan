@@ -29,6 +29,8 @@ const double kDesignHeight = 1080.0;
 // 返回共享 UI 组件单例。
 // 当前模块是无业务状态的控件工厂，单例可避免重复计算全局屏幕缩放。
 UIComponentsImpl& UIComponentsImpl::Instance() {
+    // 共享 UI 组件没有业务状态，使用单例主要是统一保存屏幕缩放系数。
+    // 函数内 static 在 C++11 中线程安全，足够轻量。
     static UIComponentsImpl instance;
     return instance;
 }
@@ -38,9 +40,11 @@ UIComponentsImpl& UIComponentsImpl::Instance() {
 bool UIComponentsImpl::Init(const char* /*appDirUtf8*/) {
     // availableGeometry() 取当前主屏可用区域，不包含任务栏。
     // 这里不是做绝对坐标缩放，只是给控件高度、边距等辅助尺寸一个温和比例。
+    // 注意：主布局仍交给 Qt Layout，自适应多语言文本长度；比例只影响辅助尺寸。
     const QRect geometry = QApplication::desktop()->availableGeometry();
 
     // 限制在 0.75~2.0，避免小屏过小不可点，也避免 4K 屏控件无限放大。
+    // qMax/qMin 是 Qt 的模板函数，写法比手工 if 更紧凑，含义仍是“夹紧到范围内”。
     m_scaleX = qMax(0.75, qMin(2.0, geometry.width() / kDesignWidth));
     m_scaleY = qMax(0.75, qMin(2.0, geometry.height() / kDesignHeight));
     return true;
@@ -61,25 +65,32 @@ double UIComponentsImpl::ScaleY() const {
 QWidget* UIComponentsImpl::CreateWaitWidget(const char* titleUtf8, const char* messageUtf8, QWidget* parent) {
     // parent 由 MainExe 的页面容器传入，Qt 父子关系会负责销毁等待页。
     auto* root = new QWidget(parent);
+    // objectName 方便样式表、自动化测试或调试器定位这个页面。
     root->setObjectName("MeyerScanWaitWidget");
 
     // 等待页使用布局而非固定坐标，适配多语言和不同分辨率。
     auto* layout = new QVBoxLayout(root);
+    // setContentsMargins 控制内部留白，避免等待内容贴边。
     layout->setContentsMargins(36, 36, 36, 36);
+    // setSpacing 控制子控件之间的固定间距，保持页面视觉稳定。
     layout->setSpacing(14);
 
     // title/message 都由调用方决定，UIComponents 不写业务文案。
     auto* title = CreatePageTitle(titleUtf8, root);
     auto* message = new QLabel(QString::fromUtf8(messageUtf8 ? messageUtf8 : ""), root);
+    // 居中展示等待信息，不让不同长度文本影响布局方向。
     message->setAlignment(Qt::AlignCenter);
     message->setStyleSheet("color:#607080;font-size:15px;");
 
     // 不确定总进度时使用忙碌进度条：range(0,0) 是 Qt 的无限进度模式。
     auto* progress = new QProgressBar(root);
     progress->setRange(0, 0);
+    // 关闭百分比文本，因为无限进度没有明确百分比。
     progress->setTextVisible(false);
+    // 高度使用缩放后的辅助尺寸，但设置下限保证小屏仍可见。
     progress->setFixedHeight(static_cast<int>(qMax(6.0, 8.0 * m_scaleY)));
 
+    // 上下 stretch 把内容推到垂直居中，窗口高度变化时等待内容仍在视觉中心。
     layout->addStretch();
     layout->addWidget(title);
     layout->addWidget(message);
@@ -111,10 +122,13 @@ QPushButton* UIComponentsImpl::CreateButton(int role,
                                             QWidget* parent) {
     // textUtf8 必须由调用方先 tr()，UIComponents 不写业务文案。
     auto* button = new QPushButton(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
+    // iconResourcePathUtf8 可以为空；LoadIcon 为空时返回 null icon，不影响纯文字按钮。
     const QIcon icon = LoadIcon(iconResourcePathUtf8);
     if (!icon.isNull()) {
+        // setIcon 只设置图标数据；图标大小由 ApplyButtonStyle 统一决定。
         button->setIcon(icon);
     }
+    // 样式和尺寸集中到一个函数，便于后续统一调整所有模块按钮外观。
     ApplyButtonStyle(button, role, contentLayout);
     return button;
 }
@@ -127,6 +141,7 @@ QToolButton* UIComponentsImpl::CreateToolButton(int role,
                                                 const char* iconResourcePathUtf8,
                                                 QWidget* parent) {
     auto* button = new QToolButton(parent);
+    // QToolButton 支持文字在图标下方/旁边，比 QPushButton 更适合工具栏。
     button->setText(QString::fromUtf8(textUtf8 ? textUtf8 : ""));
     const QIcon icon = LoadIcon(iconResourcePathUtf8);
     if (!icon.isNull()) {
@@ -140,19 +155,24 @@ QToolButton* UIComponentsImpl::CreateToolButton(int role,
 // 这让 HomeUI/CaseUI 等已有代码可以逐步迁移，不需要一次性改完所有按钮创建方式。
 void UIComponentsImpl::ApplyButtonStyle(QPushButton* button, int role, int contentLayout) {
     if (!button) {
+        // 允许调用方传空指针，方便业务代码在控件可选创建时直接调用而不崩溃。
         return;
     }
 
     // 高度统一由角色决定，宽度交给布局和 sizePolicy 自适应多语言文本。
     button->setMinimumHeight(ButtonMinimumHeight(role));
+    // Entry 类按钮通常用于首页入口卡片，允许横向扩展；其它按钮也最少按内容扩展。
     button->setSizePolicy(role == MeyerButtonRoleEntry ? QSizePolicy::Expanding : QSizePolicy::MinimumExpanding,
                           QSizePolicy::Fixed);
+    // setIconSize 只影响按钮内部图标显示尺寸，不改变原始图片文件。
     button->setIconSize(ButtonIconSize(contentLayout));
+    // Qt 样式表按控件类型选择器生效；这里集中生成，避免各模块手写不同颜色/圆角。
     button->setStyleSheet(ButtonStyleSheet(role));
 
     if (contentLayout == MeyerButtonContentIconOnly) {
         // 纯图标按钮不强制清空 text，调用方可保留 text 用于无障碍/tooltip。
         button->setMinimumWidth(ButtonMinimumHeight(role));
+        // 最大宽度限制避免图标按钮在布局里被拉成长条。
         button->setMaximumWidth(qMax(ButtonMinimumHeight(role), static_cast<int>(52 * m_scaleX)));
     } else if (contentLayout == MeyerButtonContentIconTopText) {
         // QPushButton 原生不擅长“上图下文”，这里只给更高的最小高度。
@@ -170,11 +190,13 @@ void UIComponentsImpl::ApplyToolButtonStyle(QToolButton* button, int role, int c
     button->setMinimumHeight(ButtonMinimumHeight(role));
     button->setIconSize(ButtonIconSize(contentLayout));
     button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+    // ButtonStyleSheet 生成的是 QPushButton 选择器，ToolButton 复用颜色体系时替换选择器即可。
     QString style = ButtonStyleSheet(role);
     style.replace("QPushButton", "QToolButton");
     button->setStyleSheet(style);
 
     if (contentLayout == MeyerButtonContentIconOnly) {
+        // QToolButton 原生支持 ToolButtonIconOnly，不需要自己写布局。
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setMinimumWidth(ButtonMinimumHeight(role));
     } else if (contentLayout == MeyerButtonContentIconTopText) {
@@ -193,8 +215,10 @@ QLineEdit* UIComponentsImpl::CreateLineEdit(const char* placeholderUtf8, QWidget
     auto* edit = new QLineEdit(parent);
 
     // placeholder 只作为输入提示；正式错误提示应由业务模块在旁边/弹窗中展示。
+    // fromUtf8 保证多语言占位文字从跨 DLL 字节转换成 Qt 字符串。
     edit->setPlaceholderText(QString::fromUtf8(placeholderUtf8 ? placeholderUtf8 : ""));
     edit->setMinimumHeight(static_cast<int>(36 * m_scaleY));
+    // 宽度交给父布局拉伸，高度固定，避免输入框因为文字变化上下跳动。
     edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     edit->setStyleSheet("QLineEdit{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:white;color:#23313f;}"
                         "QLineEdit:focus{border-color:#007d68;}");
@@ -208,6 +232,7 @@ QComboBox* UIComponentsImpl::CreateComboBox(QWidget* parent) {
 
     // 下拉框宽度设置为 MinimumExpanding，让翻译较长的选项有空间撑开。
     combo->setMinimumHeight(static_cast<int>(36 * m_scaleY));
+    // 下拉项不在这里添加，因为 UIComponents 不理解业务枚举。
     combo->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
     combo->setStyleSheet("QComboBox{border:1px solid #cfd8dc;border-radius:4px;padding:5px 10px;background:white;color:#23313f;}"
                          "QComboBox:focus{border-color:#007d68;}");
@@ -222,6 +247,7 @@ QLabel* UIComponentsImpl::CreatePageTitle(const char* textUtf8, QWidget* parent)
     // 标题允许换行，防止英文/德文等长翻译在窄屏上被截断。
     label->setAlignment(Qt::AlignCenter);
     label->setWordWrap(true);
+    // Preferred 高度让换行标题可以自然变高，不会强行截断。
     label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     // 字体大小暂时固定 pointSize，不跟 viewport 线性缩放，避免极端分辨率下文字比例失控。
@@ -249,6 +275,7 @@ void UIComponentsImpl::Shutdown() {
 // 生成不同按钮角色对应的样式表。
 // 角色只表示视觉层级，不包含任何业务权限语义。
 QString UIComponentsImpl::ButtonStyleSheet(int role) const {
+    // switch 让每个视觉角色的样式集中在一个地方，后续换肤时只改这里。
     switch (role) {
     case MeyerButtonRolePrimary:
         return "QPushButton{background:#007d68;color:white;border:0;border-radius:4px;padding:8px 18px;}"
@@ -282,24 +309,30 @@ QString UIComponentsImpl::ButtonStyleSheet(int role) const {
 // 根据角色返回最小高度。
 int UIComponentsImpl::ButtonMinimumHeight(int role) const {
     if (role == MeyerButtonRoleEntry) {
+        // 首页入口卡片需要更高，容纳标题和说明两行文本。
         return static_cast<int>(qMax(86.0, 104.0 * m_scaleY));
     }
     if (role == MeyerButtonRoleText) {
+        // 文本按钮更轻，通常用于“返回”“取消”等弱操作。
         return static_cast<int>(qMax(30.0, 34.0 * m_scaleY));
     }
+    // 普通按钮保持可点击高度下限，兼顾鼠标和触控设备。
     return static_cast<int>(qMax(36.0, 40.0 * m_scaleY));
 }
 
 // 根据内容布局返回图标尺寸。
 QSize UIComponentsImpl::ButtonIconSize(int contentLayout) const {
     if (contentLayout == MeyerButtonContentIconTopText) {
+        // 上图下文的图标可以稍大，因为按钮高度也更高。
         const int size = static_cast<int>(qMax(24.0, 32.0 * qMin(m_scaleX, m_scaleY)));
         return QSize(size, size);
     }
     if (contentLayout == MeyerButtonContentIconOnly) {
+        // 纯图标按钮的图标占据主要视觉面积，但仍保留边距。
         const int size = static_cast<int>(qMax(18.0, 24.0 * qMin(m_scaleX, m_scaleY)));
         return QSize(size, size);
     }
+    // 左图右文场景图标不宜过大，否则会挤压多语言文本。
     const int size = static_cast<int>(qMax(16.0, 20.0 * qMin(m_scaleX, m_scaleY)));
     return QSize(size, size);
 }
@@ -307,19 +340,23 @@ QSize UIComponentsImpl::ButtonIconSize(int contentLayout) const {
 // 加载图标。
 // 资源路径可以是 Qt 资源路径，也可以是安装目录下的绝对/相对文件路径。
 QIcon UIComponentsImpl::LoadIcon(const char* iconResourcePathUtf8) const {
+    // trim 去掉配置或调用方传入路径两侧空格，避免很难察觉的图标加载失败。
     const QString path = QString::fromUtf8(iconResourcePathUtf8 ? iconResourcePathUtf8 : "").trimmed();
     if (path.isEmpty()) {
         return QIcon();
     }
+    // QIcon 同时支持 :/xxx 资源路径和磁盘文件路径。
     QIcon icon(path);
     if (!icon.isNull()) {
         return icon;
     }
+    // 当前不做路径猜测，避免 UIComponents 偷偷依赖 currentPath 或某个固定资源目录。
     return QIcon();
 }
 
 // C ABI 导出函数。
 // MainExe 和各 UI 测试宿主通过该函数获取共享控件工厂。
 extern "C" MEYERSCAN_UICOMPONENTS_API IUIComponents* GetUIComponents() {
+    // C ABI 工厂函数保持导出名稳定，方便其它 DLL 用 QLibrary 动态获取。
     return &UIComponentsImpl::Instance();
 }

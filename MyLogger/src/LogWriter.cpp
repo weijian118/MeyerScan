@@ -171,9 +171,12 @@ void LogWriter::Unlock() {
 // WriteLine
 // ---------------------------------------------------------------------------
 bool LogWriter::WriteLine(const std::string& path, const std::string& line) {
+    // 互斥量覆盖“选择好文件路径后的实际写入”阶段。
+    // 文件路径由 LogRotation 选择；这里保证同一时刻只有一个进程往目标文件追加一行。
     if (!Lock()) {
         return false;
     }
+    // WriteLineUnlocked 假设调用方已经拿到锁，避免锁逻辑和文件 I/O 互相嵌套过深。
     const bool ok = WriteLineUnlocked(path, line);
     Unlock();
     return ok;
@@ -193,7 +196,10 @@ bool LogWriter::WriteLineUnlocked(const std::string& path, const std::string& li
     // 日志仍能正确写入。
     const std::wstring widePath = Utf8ToWide(path);
     HANDLE file = CreateFileW(widePath.c_str(),
+                              // FILE_APPEND_DATA 让 Windows 把每次写入追加到文件尾部，
+                              // 避免多个进程先 Seek 再 Write 产生竞态。
                               FILE_APPEND_DATA,
+                              // 允许读、写、删除共享，是为了售后工具可以在日志继续写入时打包/移动旧文件。
                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               nullptr,
                               OPEN_ALWAYS,
@@ -209,7 +215,9 @@ bool LogWriter::WriteLineUnlocked(const std::string& path, const std::string& li
 
     // 行内容是 UTF-8 原始字节。先写正文，再写 Windows 友好的 CRLF。
     if (!line.empty()) {
+        // WriteFile 的 written 是 DWORD；日志单行不会超过 4GB，转换是安全的。
         ok = WriteFile(file, line.data(), static_cast<DWORD>(line.size()), &written, nullptr) &&
+             // 检查 written 可以发现磁盘满、网络盘异常等“部分写入”问题。
              written == line.size();
     }
 

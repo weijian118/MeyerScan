@@ -230,6 +230,8 @@ DatabaseImpl::~DatabaseImpl() {
 //   VoidResult::Fail(DbQueryFailed)    - 配置文件不存在或格式错误
 // =============================================================================
 VoidResult DatabaseImpl::Init(const char* configPath) {
+    // QMutexLocker 是 RAII 锁：构造时加锁，函数任何 return 路径离开作用域时自动解锁。
+    // 这样比手写 lock/unlock 更不容易在错误分支忘记释放互斥量。
     QMutexLocker locker(&m_mutex);
 
     // 参数校验
@@ -273,6 +275,7 @@ VoidResult DatabaseImpl::Init(const char* configPath) {
 // =============================================================================
 bool DatabaseImpl::LoadConfig(const char* configPath) {
     // 打开配置文件
+    // configPath 约定为 UTF-8，先转 QString；fromNativeSeparators 统一 Windows/Qt 路径分隔符。
     const QString configFilePath = QDir::fromNativeSeparators(QString::fromUtf8(configPath));
     QFile file(configFilePath);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -285,11 +288,13 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
     m_configDir = QFileInfo(configFilePath).absoluteDir().absolutePath();
 
     // 读取文件内容
+    // readAll 适合小型 JSON 配置；配置文件不应存放大数据。
     QByteArray data = file.readAll();
     file.close();
 
     // 解析 JSON 文档
     QJsonParseError error;
+    // fromJson 只负责语法解析；字段缺失时后面用默认值兜底。
     QJsonDocument doc = QJsonDocument::fromJson(data, &error);
     if (error.error != QJsonParseError::NoError) {
         LogError("LoadConfig", "Failed to parse JSON config");
@@ -302,6 +307,7 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
     // 解析数据库类型
     // JSON 缺省使用 mysql，保持与当前已安装软件默认数据库一致。
     QString dbTypeValue = root["databaseType"].toString("mysql");
+    // DatabaseType 对外是枚举，内部配置结构用 int32_t 存储，保持 POD ABI 稳定。
     m_config.dbType = (dbTypeValue.toLower() == "sqlite") ?
         static_cast<int32_t>(DatabaseType::SQLite) :
         static_cast<int32_t>(DatabaseType::MySQL);
@@ -352,6 +358,7 @@ QString DatabaseImpl::ResolvePathFromConfig(const QString& configuredPath) const
     QFileInfo fileInfo(normalized);
     if (fileInfo.isAbsolute()) {
         // 已经是绝对路径时只做 cleanPath，不再套配置目录。
+        // cleanPath 会折叠 "./"、"../" 等片段，避免同一路径在日志中出现多种写法。
         return QDir::cleanPath(normalized);
     }
 
@@ -368,6 +375,7 @@ QString DatabaseImpl::ResolvePathFromConfig(const QString& configuredPath) const
 //   VoidResult::Fail(DbConnectionFailed) - 连接失败
 // =============================================================================
 VoidResult DatabaseImpl::Connect() {
+    // Connect 会修改 QSqlDatabase 成员和 m_connected 状态，必须串行化。
     QMutexLocker locker(&m_mutex);
 
     // 已连接状态，直接返回成功
@@ -378,6 +386,7 @@ VoidResult DatabaseImpl::Connect() {
     // 根据数据库类型调用相应连接方法
     bool success = false;
     if (m_config.dbType == static_cast<int32_t>(DatabaseType::MySQL)) {
+        // MySQL 与 SQLite 使用不同 QSqlDatabase driver，但对外接口保持一致。
         success = ConnectMySQL();
     } else {
         success = ConnectSQLite();
@@ -456,9 +465,15 @@ bool DatabaseImpl::ConnectSQLite() {
     m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
     m_connectionName = connectionName;
 
-    // 设置数据库文件路径
-    // SQLite 文件路径来自配置文件，允许相对安装目录迁移。
-    m_db.setDatabaseName(QString::fromUtf8(m_config.sqlitePath));
+    // 设置数据库文件路径。
+    // SQLite 可以自动创建数据库文件，但不会自动创建父目录；
+    // 因此首次运行前先创建 Data 目录，避免配置正确却因为目录不存在而连接失败。
+    const QString sqliteFilePath = QString::fromUtf8(m_config.sqlitePath);
+    const QString sqliteDirPath = QFileInfo(sqliteFilePath).absolutePath();
+    if (!sqliteDirPath.isEmpty()) {
+        QDir().mkpath(sqliteDirPath);
+    }
+    m_db.setDatabaseName(sqliteFilePath);
 
     // 尝试打开连接
     if (!m_db.open()) {
@@ -692,6 +707,7 @@ Result<DbResult> DatabaseImpl::ExecuteQuery(const char* sql) {
     // ExecuteQuery 只返回影响行数，不返回结果集。
     // 需要结果集时使用 ExecuteQueryJson，避免调用方直接依赖 QSqlQuery。
     QSqlQuery query(m_db);
+    // QString::fromUtf8 保证 SQL 中中文路径/备注等文本按 UTF-8 解释。
     if (!query.exec(QString::fromUtf8(sql))) {
         LogError("ExecuteQuery", query.lastError().text().toUtf8().constData());
         return Result<DbResult>::Fail(
@@ -700,6 +716,7 @@ Result<DbResult> DatabaseImpl::ExecuteQuery(const char* sql) {
     }
 
     // 记录影响行数
+    // 对 SELECT，某些驱动 numRowsAffected 可能返回 -1；调用方不应把它当作结果行数。
     result.affectedRows = query.numRowsAffected();
     return Result<DbResult>::Ok(result);
 }
@@ -743,6 +760,8 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJson(const char* sql,
 
     // Database 模块只负责通用 SQL 执行，不判断业务字段含义。
     QSqlQuery query(m_db);
+    // 注意：这里仍执行调用方传入的 SQL，所以正式业务层必须控制 SQL 来源。
+    // UI 模块不得直接调用这个接口拼业务 SQL。
     if (!query.exec(QString::fromUtf8(sql))) {
         LogError("ExecuteQueryJson", query.lastError().text().toUtf8().constData());
         return Result<DbJsonResult>::Fail(ErrorCode::DbQueryFailed,

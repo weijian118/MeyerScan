@@ -23,8 +23,8 @@
 //   Test 9: 线程安全测试
 //
 // 注意事项:
-//   - 部分 MySQL 测试依赖数据库服务运行
-//   - 备份测试依赖 MySQL 数据目录存在
+//   - 当前测试默认使用 SQLite，避免依赖本机 MySQL 服务状态
+//   - MySQL 仍由配置文件和 Database 模块支持，后续可单独增加 MySQL 专项测试
 //   - 测试输出到控制台和日志文件
 // =============================================================================
 
@@ -34,6 +34,7 @@
 #include <fstream>
 #include <string>
 #include <windows.h>
+#include <QCoreApplication>
 #include "../include/Database.h"
 
 // =============================================================================
@@ -181,9 +182,14 @@ static void TestQuery(IDatabase* db) {
         return;
     }
 
-    // 执行有效查询
-    Result<DbResult> result = db->ExecuteQuery("SHOW TABLES");
-    TEST_ASSERT(result.IsSuccess(), "ExecuteQuery(SHOW TABLES) 成功");
+    // 不同数据库驱动的“列出表”语法不同。
+    // 为了让测试默认 SQLite 和后续 MySQL 都能复用，这里按当前类型选择最小查询。
+    const DatabaseType dbType = db->GetDatabaseType();
+    const char* tableListSql = dbType == DatabaseType::SQLite
+        ? "SELECT name FROM sqlite_master WHERE type='table'"
+        : "SHOW TABLES";
+    Result<DbResult> result = db->ExecuteQuery(tableListSql);
+    TEST_ASSERT(result.IsSuccess(), "ExecuteQuery(列出表) 成功");
 
     // 执行通用 JSON 查询。该能力只做行列转换，不承载业务语义。
     char jsonBuffer[4096] = {0};
@@ -294,6 +300,7 @@ static std::string NormalizePath(std::string path) {
     for (char& ch : path) {
         if (ch == '\\') {
             // 统一转为正斜杠，后续 ParentPath 只查找一种分隔符即可。
+            // 这里按引用遍历 char&，可以直接修改原字符串里的字符。
             ch = '/';
         }
     }
@@ -304,6 +311,7 @@ static std::string NormalizePath(std::string path) {
 // 这里不使用 std::filesystem，因为 VS2015/v140 环境不支持 C++17 filesystem。
 static std::string ParentPath(const std::string& path) {
     const size_t pos = path.find_last_of('/');
+    // find_last_of 找不到分隔符时返回 npos，此时没有可解析父目录。
     return pos == std::string::npos ? std::string() : path.substr(0, pos);
 }
 
@@ -352,6 +360,7 @@ static std::string WriteRuntimeTestConfig() {
     const std::string releaseDir = ResolveReleaseDir();
     const std::string configDir = releaseDir + "/config";
     // CreateDirectoryA 只能创建最后一级目录；Release 目录已存在，所以这里足够。
+    // 如果目录已存在，CreateDirectoryA 会失败并设置 ERROR_ALREADY_EXISTS，但这里不需要特别处理。
     CreateDirectoryA(configDir.c_str(), nullptr);
 
     const std::string configPath = configDir + "/db_config_test.json";
@@ -364,7 +373,7 @@ static std::string WriteRuntimeTestConfig() {
     // 这里故意写相对路径，验证 Database::ResolvePathFromConfig 是否按配置文件目录解析。
     file
         << "{\n"
-        << "    \"databaseType\": \"mysql\",\n"
+        << "    \"databaseType\": \"sqlite\",\n"
         << "    \"mysql\": {\n"
         << "        \"host\": \"127.0.0.1\",\n"
         << "        \"port\": 3308,\n"
@@ -372,7 +381,7 @@ static std::string WriteRuntimeTestConfig() {
         << "        \"database\": \"mscan\",\n"
         << "        \"dataDir\": \"../../../../MySQL/data/mscan\"\n"
         << "    },\n"
-        << "    \"sqlitePath\": \"../Data/MeyerScanSQLite.db\"\n"
+        << "    \"sqlitePath\": \"../Data/MeyerScanSQLiteTest.db\"\n"
         << "}\n";
     return configPath;
 }
@@ -442,6 +451,7 @@ static void TestThreadSafety(IDatabase* db) {
     if (db->IsConnected()) {
         // 连续调用多个方法，测试互斥锁
         for (int i = 0; i < 5; i++) {
+            // 这里不是严格并发测试，而是快速验证重复调用不会破坏内部状态。
             db->IsConnected();
             db->GetDatabaseType();
             db->GetConfig();
@@ -463,15 +473,21 @@ static void TestThreadSafety(IDatabase* db) {
 //   4. 输出测试汇总
 //   5. 返回测试结果状态码
 // =============================================================================
-int main() {
+int main(int argc, char* argv[]) {
+    // Database.dll 使用 Qt Core/Sql。
+    // 测试宿主先创建 QCoreApplication，确保 Qt 插件路径、全局对象和 SQL 驱动加载环境完成初始化。
+    QCoreApplication app(argc, argv);
+
     s_moduleRoot = ResolveModuleRoot();
 
     // -------------------------------------------------------------------------
     // 设置日志文件
     // -------------------------------------------------------------------------
     const std::string testLogPath = s_moduleRoot + "/bin/Release/test_output.log";
+    // fopen 使用 "w" 会覆盖上次测试日志，保持每次测试输出干净。
     s_logFile = fopen(testLogPath.c_str(), "w");
     if (!s_logFile) {
+        // 文件不可写时退到 stdout，保证测试结果仍可见。
         s_logFile = stdout;
     }
 

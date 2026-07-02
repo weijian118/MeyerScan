@@ -1,5 +1,16 @@
 # MeyerScan VersionManager 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
+- 按评审结论同步边界：当前版本清单能力已并入 MainExe，本模块作为历史骨架仍保持 manifest 驱动，不恢复目录全量扫描。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake 和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `VersionManagerImpl.cpp`：补充 manifest 驱动版本清单、为什么不扫描第三方库、`QFileInfo`、时间戳文件名、Windows 版本资源 API、`HIWORD/LOWORD` 版本号拆分和成员 `QByteArray` 返回路径生命周期说明。
+- 本轮只补充注释和文档记录，不改变历史 VersionManager 骨架的 manifest 读取和 versionList 输出逻辑。
+
 ## 2026-06-25
 
 - 历史 VersionManager 骨架改为读取 `config/version_modules.json`，只记录清单中声明的 MeyerScan 拆分模块 EXE/DLL；不再扫描运行目录所有 DLL，避免 Qt、OpenSSL、AWS、VC/UCRT 等第三方库进入运行时版本清单。

@@ -37,23 +37,54 @@
 #include <windows.h>  // GetLocalTime, SYSTEMTIME
 
 namespace {
-// 测试日志目录。集中定义，避免测试中硬编码散落。
-const char* kLogDir = "F:\\MeyerScan\\MyLogger\\test\\logs";
+// 返回路径中的目录部分。
+// VS2015 不支持 std::filesystem，所以这里保留一个很小的字符串工具函数。
+std::string DirectoryOfPath(const std::string& path) {
+    const std::string::size_type pos = path.find_last_of("\\/");
+    // 同时查找正斜杠和反斜杠，兼容 Windows API 路径和手工拼接路径。
+    return pos == std::string::npos ? std::string() : path.substr(0, pos);
+}
+
+// 返回当前测试程序所在目录。
+// 测试路径必须从 exe 位置推导，不能写死 F:\MeyerScan 这类开发机路径。
+std::string ExecutableDir() {
+    char path[MAX_PATH] = { 0 };
+    // nullptr 表示获取当前进程 exe 的完整路径，不依赖 current directory。
+    const DWORD length = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        // 长度 >= MAX_PATH 说明路径可能被截断，回退 "." 让后续测试暴露目录问题。
+        return ".";
+    }
+    return DirectoryOfPath(path);
+}
+
+// 测试日志目录。
+// LoggerTest.exe 通常位于 MyLogger/bin/Release，日志写到同级 logs，
+// 这样拷贝测试目录或在其它机器运行时也不会依赖固定盘符。
+const std::string& TestLogDir() {
+    // 函数内 static 保证目录字符串只构造一次，并且引用在程序结束前有效。
+    static const std::string dir = ExecutableDir() + "\\logs";
+    return dir;
+}
 
 // 返回今天的主日志文件路径。
 // Logger 新规则是每天默认只生成 MeyerScan_YYYYMMDD.log。
 std::string TodayLogPath() {
     SYSTEMTIME st;
+    // 使用本地日期，与 Logger 的 LogRotation::Today 保持同一规则。
     GetLocalTime(&st);
     char date[16];
+    // YYYYMMDD 固定 8 位，文件名排序和日期排序一致。
     snprintf(date, sizeof(date), "%04d%02d%02d", st.wYear, st.wMonth, st.wDay);
-    return std::string(kLogDir) + "\\MeyerScan_" + date + ".log";
+    return TestLogDir() + "\\MeyerScan_" + date + ".log";
 }
 
 // 读取整个文本文件。
 // 测试只读取当前日志文件，文件通常很小，直接读入字符串足够简单。
 std::string ReadTextFile(const std::string& path) {
+    // binary 模式避免 Windows 文本模式自动转换换行，检查内容更接近真实文件。
     std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
+    // istreambuf_iterator 是读取整个文件到 string 的简洁写法，适合小型测试日志。
     return std::string((std::istreambuf_iterator<char>(file)),
                        std::istreambuf_iterator<char>());
 }
@@ -71,6 +102,7 @@ int main() {
     // 如果直接扫描整天文件，会把旧内容误判为本次测试失败。
     // 因此测试启动前只删除测试目录下当天主日志文件，不影响正式 logs 目录。
     const std::string logPath = TodayLogPath();
+    // 删除失败通常表示文件不存在；这里不把它视为错误。
     std::remove(logPath.c_str());
     std::remove((logPath + ".move_test").c_str());
 
@@ -89,7 +121,7 @@ int main() {
     // 以免污染源代码树。
     //
     // 使用 LogLevel::Debug（最详细级别）—— 测试期间我们希望看到所有内容。
-    bool ok = log->Init(std::string(kLogDir), LogLevel::Debug);
+    bool ok = log->Init(TestLogDir(), LogLevel::Debug);
     if (!ok) {
         std::cerr << "FATAL: Init() failed — check that the path is writable"
                   << std::endl;
@@ -154,6 +186,7 @@ int main() {
     std::vector<std::thread> threads;
     threads.reserve(10);  // 避免线程创建期间的重新分配
     for (int t = 0; t < 10; ++t) {
+        // emplace_back 直接在 vector 内构造 thread 对象，避免一次临时对象移动。
         threads.emplace_back([t, log]() {
             // 按值捕获 t。每个线程写入 500 条消息，使用唯一的设备 ID，
             // 以便输出可追溯。
@@ -170,6 +203,7 @@ int main() {
 
     // 等待所有线程完成。
     for (auto& th : threads) {
+        // join 等待线程结束，确保所有日志都写完后再检查文件内容。
         th.join();
     }
     std::cout << "done (5000 messages)" << std::endl;
@@ -189,6 +223,7 @@ int main() {
     log->Write(LogLevel::Info, "LoggerTest", "CompactFormat",
                "", "", "", "Compact format should omit empty fields");
     const std::string logText = ReadTextFile(logPath);
+    // 这些 find 检查同时验证旧格式已经被清理、新格式字段已经写入。
     if (logText.find("[Dev:-") != std::string::npos ||
         logText.find("[Case:-") != std::string::npos ||
         logText.find("[Op:-") != std::string::npos ||
@@ -203,6 +238,7 @@ int main() {
     // 写完后 Logger 不应长期占用文件句柄；重命名成功说明后台可以移动/删除日志文件。
     const std::string movedPath = logPath + ".move_test";
     std::remove(movedPath.c_str());
+    // std::rename 成功说明 Logger 没有长期占用日志文件句柄。
     if (std::rename(logPath.c_str(), movedPath.c_str()) != 0) {
         std::cerr << "FATAL: Log file rename failed — file handle may still be open" << std::endl;
         return 1;
@@ -223,11 +259,11 @@ int main() {
     // ---- 9. 验证日志文件存在 ----------------------------------------------------
     // 快速健全检查 —— 日志目录下现在应至少有一个 .log 文件。
     std::cout << "[PASS] Log file written to: "
-              << kLogDir << std::endl;
+              << TestLogDir() << std::endl;
 
     // ---- 完成 -----------------------------------------------------------------
     std::cout << "\n=== All tests passed ===" << std::endl;
-    std::cout << "Check the log file(s) in: " << kLogDir << std::endl;
+    std::cout << "Check the log file(s) in: " << TestLogDir() << std::endl;
     std::cout << "Expected line count: ~5000+ (stress) + ~7 (other messages)"
               << std::endl;
 

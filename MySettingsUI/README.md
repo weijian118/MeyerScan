@@ -25,11 +25,13 @@
 
 | 标签页 | 字段 | 说明 |
 |--------|------|------|
-| 医生管理 | 姓名/性别/电话/科室 | 医生信息维护，骨架期占位数据 |
-| 诊所管理 | 名称/地址/电话/城市 | 诊所信息维护，骨架期占位数据 |
-| 技工所管理 | 名称/联系人/电话/地址 | 技工所信息维护，骨架期占位数据 |
+| 医生管理 | 姓名/性别/电话/科室 | 从 RuntimeDataCenter 的 `local.doctors` 读取只读快照 |
+| 诊所管理 | 名称/地址/电话/城市 | 从 RuntimeDataCenter 的 `local.clinics` 读取只读快照 |
+| 技工所管理 | 名称/联系人/电话/地址 | 从 RuntimeDataCenter 的 `local.labs` 读取只读快照 |
 
-每个标签页包含搜索栏、数据表格和编辑/删除按钮。正式阶段应接入 CaseOrderService。
+每个标签页包含搜索栏、数据表格和编辑/删除按钮。当前只做读取展示；新增、编辑、删除和主数据维护后续统一接入 CaseOrderService 或专门设置服务。
+
+测试宿主在空 SQLite 库中会创建最小演示表并写入医生、诊所、技工所、患者、订单各一条数据，用于验证“数据库 -> RuntimeDataCenter -> SettingsUI 表格”的链路。正式 `MeyerScan_SettingsUI.dll` 不负责建表、迁移或写入业务数据。
 
 ### 云端设置（Cloud，v0.2.0 新增）
 
@@ -79,8 +81,10 @@
 
 ## 边界规则
 
-- 设置模块可以优先使用 Qt Widgets、Layout、信号槽、`QString`。
+- 设置模块是界面模块，可以使用 Qt Widgets、Layout、信号槽、`QString`；设置保存、权限判断、业务数据维护和校准算法/设备重资源仍通过 ConfigCenter、Permission、RuntimeDataCenter、校准模块或后续服务接口完成。
 - 设置模块不直接读写业务数据库；后续配置保存统一走 ConfigCenter 或专门设置服务。
+- Information 页面允许读取 RuntimeDataCenter 的 JSON 快照；解析跨 DLL JSON 缓冲区时必须按真实 UTF-8 字符串读取，不能把整块预分配缓冲区直接交给 JSON 解析器。
+- SettingsUI 只初始化 RuntimeDataCenter，不主动 `ReloadAll()`；MainExe 启动期负责全域刷新，独立测试或缓存为空时由 `GetDomainJson()` 按需懒加载 Information 页需要的医生、诊所、技工所 domain。
 - 可见文本必须使用 `tr("English source text")`，中文显示由 qm 翻译。
 - 日志目录由 MainExe 或测试宿主基于安装目录传入，禁止用当前工作目录推导运行资源。
 
@@ -89,3 +93,9 @@
 ```powershell
 & 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_SettingsUI.sln /p:Configuration=Release /p:Platform=x64
 ```
+
+## 2026-07-01 补充说明
+
+- `SettingsUITest.exe --smoke` 的演示库会补齐 RuntimeDataCenter 当前全部本地 domain 的最小表结构和一条演示数据。
+- SettingsUI Information 页面当前只展示医生、诊所、技工所，但 MainExe 集成时会刷新软件信息、设置、账号、患者、订单、设备等 domain；演示库补齐这些表可以让日志保持干净。
+- 正式 `MeyerScan_SettingsUI.dll` 仍只读取 RuntimeDataCenter 快照，不承担 schema 初始化、旧库迁移或业务数据写入。

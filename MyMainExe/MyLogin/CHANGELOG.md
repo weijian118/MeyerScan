@@ -1,5 +1,15 @@
 # MeyerScan MyLogin 变更记录
 
+## 2026-07-02
+
+- 新增登录测试宿主 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建；外部既有 `MeyerLoginWidget.dll/lib` 仍作为已交付依赖链接，不把登录源码纳入当前仓库重写。
+- 按评审结论同步本地备份规则：测试宿主源码、工程文件、CMake 和自研测试产物随全部模块一起备份到 `F:\MeyerScan-Reposit`。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `LoginHost.cpp`：补充登录模块信号槽连接、登录参数逐项赋值、`QString` 结构体不能 `memset`、`Resources/license.lic` 路径拼接、URL UTF-8 转换和 `QTimer::singleShot(0)` 延迟退出原因。
+- 本轮只补充注释和文档记录，不改变既有登录 DLL 调用参数和 smoke 自动退出逻辑。
+
 ## 2026-06-25
 
 - 离线许可运行路径同步改为 `Resources/license.lic`，与 MainExe 正式运行规则一致。

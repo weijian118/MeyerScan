@@ -30,12 +30,14 @@
 #   cmake --preset ninja-debug
 #   cmake --build --preset ninja-debug
 # =============================================================================
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.15)
 project(MeyerScan_Logger
     VERSION     1.1.0
     DESCRIPTION "MeyerScan structured logging infrastructure DLL"
     LANGUAGES   CXX
 )
+
+include(../cmake/MeyerScanCommon.cmake)
 
 # ---------------------------------------------------------------------------
 # C++ 标准: C++14
@@ -101,6 +103,7 @@ set_target_properties(${MODULE_NAME} PROPERTIES
     SUFFIX      ".dll"
     OUTPUT_NAME "${MODULE_NAME}"
 )
+meyer_set_module_output(${MODULE_NAME})
 
 # ---- MSVC 运行时: 静态链接 (/MT) -------------------------------------------
 # /MT (MultiThreaded) 将 MSVC 运行时静态链接到 DLL 中。
@@ -116,8 +119,7 @@ set_target_properties(${MODULE_NAME} PROPERTIES
 #
 # 项目规则: 无 Qt 依赖的基础模块可使用 /MT；有 Qt 依赖的模块使用 /MD。
 if(MSVC)
-    set_property(TARGET ${MODULE_NAME} PROPERTY
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    meyer_use_static_crt(${MODULE_NAME})
 endif()
 
 # ---------------------------------------------------------------------------
@@ -153,6 +155,7 @@ if(BUILD_TESTS)
     # 将测试 .exe 放在 .dll 旁边，以便在运行时能找到它，
     # 无需修改 %PATH%。
     set_target_properties(LoggerTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/$<CONFIG>"
     )
+    meyer_use_static_crt(LoggerTest)
 endif()

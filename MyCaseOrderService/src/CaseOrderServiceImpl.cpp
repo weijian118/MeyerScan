@@ -39,7 +39,9 @@ void CopyMessage(char* target, int targetSize, const char* message) {
 // 返回病例订单服务单例。
 // 当前服务是进程内共享服务，避免多个调用方重复连接数据库或重复创建 schema。
 CaseOrderServiceImpl& CaseOrderServiceImpl::Instance() {
+    // 服务层需要共享 Database/Logger 引用，使用进程内单例能避免多个服务对象重复连接。
     static CaseOrderServiceImpl instance;
+    // 返回引用，后续 C ABI 导出函数再转成接口指针。
     return instance;
 }
 
@@ -48,6 +50,7 @@ CaseOrderServiceImpl& CaseOrderServiceImpl::Instance() {
 bool CaseOrderServiceImpl::Init(const char* databaseConfigPathUtf8, const char* logDirUtf8) {
     // 保存调用方传入的路径字节数组，后续独立测试或重连时可以复用。
     // 路径由 MainExe 基于 applicationDirPath() 计算，服务层不使用 currentPath。
+    // QByteArray 会复制传入字节，避免调用方临时 QByteArray 析构后这里留下悬空 const char*。
     m_databaseConfigPath = QByteArray(databaseConfigPathUtf8 ? databaseConfigPathUtf8 : "");
     m_logDir = QByteArray(logDirUtf8 ? logDirUtf8 : "");
 
@@ -70,6 +73,7 @@ bool CaseOrderServiceImpl::Init(const char* databaseConfigPathUtf8, const char* 
     if (!m_database->IsConnected()) {
         VoidResult initResult = m_database->Init(m_databaseConfigPath.constData());
         if (initResult.IsError()) {
+            // Database 返回的是固定结构体结果，message 指向模块内短消息，立刻写入日志即可。
             WriteLog(LogLevel::Error, "Init", initResult.message ? initResult.message : "Database init failed");
             return false;
         }
@@ -123,6 +127,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::EnsureSchema() {
 
     // ExecuteScript 返回成功执行数量，不抛异常。
     // 这里要求所有 schema SQL 都成功，否则认为服务层 schema 未准备好。
+    // sizeof(scripts) / sizeof(scripts[0]) 是 C/C++ 里计算静态数组元素个数的常用写法。
     const int successCount = m_database->ExecuteScript(scripts, sizeof(scripts) / sizeof(scripts[0]));
     if (successCount != static_cast<int>(sizeof(scripts) / sizeof(scripts[0]))) {
         WriteLog(LogLevel::Error, "EnsureSchema", "Case/order schema creation failed");
@@ -148,11 +153,13 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
     // 外部传入的是一组患者/订单信息，使用 JSON 便于字段增删。
     // 这里先验证它确实是 JSON 对象，避免无效文本写入数据库。
     QJsonParseError parseError;
+    // QByteArray(patientOrderJsonUtf8) 会把 C 字符串复制为 Qt 字节数组，供 JSON 解析器读取。
     const QJsonDocument document = QJsonDocument::fromJson(QByteArray(patientOrderJsonUtf8), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         return Fail(2, "patientOrderJsonUtf8 must be a JSON object");
     }
 
+    // document.object() 得到 JSON 根对象；后续字段不存在时 toString() 返回空字符串。
     const QJsonObject root = document.object();
     // orderId 是当前骨架表的主键，也是 UI/扫描流程之间最稳定的引用 ID。
     const QString orderId = root.value("orderId").toString().trimmed();
@@ -165,6 +172,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
     const QString patientId = root.value("patientId").toString().trimmed();
     const QString caseId = root.value("caseId").toString().trimmed();
     const QString status = root.value("status").toString("created").trimmed();
+    // Compact 保留完整 JSON 语义但去掉空白，适合存库和跨模块传输。
     const QString payload = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
     const QString escapedPayload = EscapeSqlText(payload);
     // 时间统一用 UTC，避免多时区/系统时区变化导致排序和同步混乱。
@@ -183,6 +191,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
         .arg(escapedPayload)
         .arg(EscapeSqlText(now));
 
+    // sql.toUtf8() 返回临时 QByteArray；constData() 在本完整表达式内有效，ExecuteUpdate 会立即读取。
     Result<DbResult> updateResult = m_database->ExecuteUpdate(sql.toUtf8().constData());
     if (updateResult.IsError()) {
         // 返回 Database 的错误码和消息，让调用方能区分参数错误与数据库错误。
@@ -214,6 +223,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* ord
     // Database 当前通过调用方缓冲区返回 JSON。
     // 256KB 足够当前患者/订单组合骨架测试，后续大附件不能放在这里传递。
     QByteArray jsonBuffer(1024 * 256, '\0');
+    // ExecuteQueryJson 写入的是通用表格 JSON，不直接返回单个 payload。
     Result<DbJsonResult> queryResult = m_database->ExecuteQueryJson(sql.toUtf8().constData(),
                                                                     jsonBuffer.data(),
                                                                     jsonBuffer.size());
@@ -224,6 +234,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* ord
 
     // ExecuteQueryJson 返回统一表格 JSON：{ columns:[], rows:[] }。
     // 服务层只从 rows[0].payload_json 取回业务 JSON，隐藏数据库表结构。
+    // QByteArray 的 constData() 是以 '\0' 结尾的缓冲区，可直接给 fromJson 解析。
     QJsonDocument tableDocument = QJsonDocument::fromJson(jsonBuffer.constData());
     const QJsonArray rows = tableDocument.object().value("rows").toArray();
     if (rows.isEmpty()) {
@@ -272,12 +283,14 @@ CaseOrderServiceResult CaseOrderServiceImpl::ListReferenceDataJson(const char* c
 
     // 输出统一结构，方便 UI 只关心 items，不关心底层表名和 SQL。
     QJsonObject root;
+    // schemaVersion 是业务 JSON 的版本，不等于 DLL 文件版本；用于未来字段结构兼容。
     root.insert("schemaVersion", 1);
     root.insert("category", category.isEmpty() ? "all" : category);
     root.insert("source", "CaseOrderService");
     root.insert("items", QJsonDocument::fromJson(jsonBuffer.constData()).object().value("rows").toArray());
 
     WriteLog(LogLevel::Info, "ListReferenceDataJson", QString("category=%1").arg(category.isEmpty() ? "all" : category));
+    // 最终输出依然是紧凑 JSON，调用方只需解析 items 数组。
     return CopyToBuffer(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)), buffer, bufferSize);
 }
 
@@ -302,6 +315,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
             return Fail(2, "queryArgsJsonUtf8 must be a JSON object");
         }
         const QString orderId = args.object().value("orderId").toString().trimmed();
+        // 临时 QByteArray 的 constData() 只在函数调用表达式期间有效；GetPatientOrderJson 会立即复制/读取。
         return GetPatientOrderJson(orderId.toUtf8().constData(), buffer, bufferSize);
     }
 
@@ -313,6 +327,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
             return Fail(2, "queryArgsJsonUtf8 must be a JSON object");
         }
         const QString category = args.object().value("category").toString();
+        // category 继续交给 ListReferenceDataJson 做白名单映射，QueryJson 不重复规则。
         return ListReferenceDataJson(category.toUtf8().constData(), buffer, bufferSize);
     }
 
@@ -345,6 +360,7 @@ void CaseOrderServiceImpl::Shutdown() {
 CaseOrderServiceResult CaseOrderServiceImpl::Ok(const char* message) const {
     // 结果结构体每次重新创建，避免返回未初始化内存给调用方。
     CaseOrderServiceResult result;
+    // errorCode == 0 是当前服务层成功约定。
     result.errorCode = 0;
     CopyMessage(result.message, sizeof(result.message), message);
     return result;
@@ -355,6 +371,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::Ok(const char* message) const {
 CaseOrderServiceResult CaseOrderServiceImpl::Fail(int errorCode, const char* message) const {
     // 失败也用同一个结构体返回，调用方只需要检查 errorCode 是否为 0。
     CaseOrderServiceResult result;
+    // 非 0 错误码保留给调用方做分支处理；message 给日志/提示使用。
     result.errorCode = errorCode;
     CopyMessage(result.message, sizeof(result.message), message);
     return result;
@@ -386,6 +403,7 @@ QString CaseOrderServiceImpl::EscapeSqlText(const QString& text) const {
     QString escaped = text;
     // SQL 字符串中的单引号用两个单引号表示。
     // 这只能解决基础字符串拼接问题，不能替代参数绑定。
+    // QString::replace 会原地替换所有匹配项。
     escaped.replace("'", "''");
     return escaped;
 }
@@ -418,6 +436,8 @@ void CaseOrderServiceImpl::WriteLog(LogLevel level, const char* operation, const
         return;
     }
     const QByteArray bytes = content.toUtf8();
+    // bytes 必须是局部变量，不能直接 content.toUtf8().constData() 后跨多行使用。
+    // 这里 Write 会立即读取 constData()，因此局部 QByteArray 的生命周期足够。
     // 服务层当前没有真实操作员上下文，传空字符串让 Logger 省略 Op 字段。
     m_logger->Write(level, ModuleInfo::Name, operation, "", "", "", bytes.constData());
 }
@@ -425,5 +445,6 @@ void CaseOrderServiceImpl::WriteLog(LogLevel level, const char* operation, const
 // C ABI 导出函数。
 // UI、外部适配器和测试宿主通过该函数获取病例订单服务接口。
 extern "C" MEYERSCAN_CASEORDERSERVICE_API ICaseOrderService* GetCaseOrderService() {
+    // 对外只暴露接口指针，调用方不需要包含实现类头文件。
     return &CaseOrderServiceImpl::Instance();
 }

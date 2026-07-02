@@ -2,6 +2,8 @@
 
 `MyCaseOrderService` 输出 `MeyerScan_CaseOrderService.dll`，用于统一管理患者、订单、医生、技工所、诊所等与数据库强相关的领域数据。
 
+2026-07-02 评审后，CaseOrderService 按非界面业务服务管理：后续新增能力优先评估非 Qt 实现。当前 Qt JSON 只作为内部字段映射实现，公共接口继续使用 UTF-8 JSON 和调用方缓冲区。
+
 ## 当前定位
 
 - 患者和订单在口扫软件内强关联，当前不再拆成 `CaseService.dll` 和 `OrderService.dll` 两个模块。
@@ -10,7 +12,7 @@
 - 当前已提供轻量 schema 占位：`ms_patient_order` 存患者/订单组合 JSON，`ms_reference_data` 存医生、诊所、技工所等分类主数据。
 - 当前实现可保存/读取患者订单 JSON、列出参考数据，并预留 `QueryJson()` 统一查询入口；正式字段表、迁移脚本、DAO 和权限复核后续继续补充。
 - 依赖 `MeyerScan_Database.dll v1.2.0+` 的 `ExecuteQueryJson()` 基础能力。
-- 本模块允许并优先使用 Qt 默认能力，包括 `QString`、`QJsonDocument/QJsonObject`、`QVariantMap`、`QDateTime` 和 Qt SQL 相关类型；不为“架构干净”刻意规避 Qt。需要收敛为 `const char*` / 调用方缓冲区的只是对外稳定 ABI 和跨进程/第三方边界。
+- 当前内部可继续使用 Qt JSON 维持已跑通的骨架链路，但 Qt 不进入公共头文件和长期 ABI；后续可替换为非 Qt JSON/DAO 实现，调用方接口保持稳定。
 
 ## 边界
 

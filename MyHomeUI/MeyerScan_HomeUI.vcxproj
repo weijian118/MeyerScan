@@ -57,13 +57,13 @@
 xcopy /Y /D &quot;$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll&quot; &quot;$(OutDir)&quot;
 xcopy /Y /D &quot;$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll&quot; &quot;$(OutDir)&quot;
 xcopy /Y /D &quot;$(ProjectDir)..\MyDatabase\bin\$(Configuration)\libmysql.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y /D &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll&quot; &quot;$(OutDir)platforms\&quot;
-xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll&quot; &quot;$(OutDir)sqldrivers\&quot;
-xcopy /Y /D /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll&quot; &quot;$(OutDir)sqldrivers\&quot;</Command>
+xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll&quot; &quot;$(OutDir)&quot;
+xcopy /Y /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll&quot; &quot;$(OutDir)platforms\&quot;
+xcopy /Y /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll&quot; &quot;$(OutDir)sqldrivers\&quot;
+xcopy /Y /I &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll&quot; &quot;$(OutDir)sqldrivers\&quot;</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

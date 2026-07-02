@@ -1,5 +1,16 @@
 # MeyerScan Permission 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
+- 按评审结论修正非界面模块 Qt 边界：当前 Qt JSON 读取规则文件只作为内部实现细节，公共接口保持 `const char*` / `bool`；后续新增能力优先评估非 Qt 实现。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、权限配置说明和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `PermissionImpl.cpp`：补充授权文件路径推导、JSON 严格 bool 解析、`visible` / `enabled` 区别、默认全开放规则、不覆盖已有授权文件和 C ABI 工厂函数等说明。
+- 本轮只补充注释和文档记录，不改变权限规则读取和判断逻辑。
+
 ## 2026-06-25
 
 - 新增 `config/permission_rules.json` 默认模板，并在 VS2015 PostBuild 中复制到 Release `config/`；字段说明继续放在同级 `permission_rules.md`，JSON 内部不写注释。

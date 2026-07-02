@@ -12,6 +12,7 @@
         "MeyerScan_CaseUI.dll",
         "MeyerScan_SettingsUI.dll",
         "MeyerScan_CaseOrderService.dll",
+        "MeyerScan_RuntimeDataCenter.dll",
         "MeyerScan_OrderScanWorkspaceShell.dll",
         "MeyerScan_Calibration3DUI.dll",
         "MeyerScan_CalibrationColorUI.dll"

@@ -2,10 +2,15 @@
 
 #include "SettingsUI.h"
 #include "Logger.h"
+#include "RuntimeDataCenter.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLibrary>
 #include <QString>
+#include <QStringList>
 
 class QLabel;
 class QPushButton;
@@ -18,6 +23,7 @@ class ICalibrationColorUI;
 using GetLoggerFunc = ILogger* (*)();
 using GetCalibration3DUIFunc = ICalibration3DUI* (*)();
 using GetCalibrationColorUIFunc = ICalibrationColorUI* (*)();
+using GetRuntimeDataCenterFunc = IRuntimeDataCenter* (*)();
 
 // SettingsUIImpl 是设置模块当前骨架实现。
 // 设计目标是先跑通“多入口打开设置 -> 设置内切换分类 -> 打开校准子页 -> 返回/关闭”的流程。
@@ -61,6 +67,9 @@ private:
     // 动态加载三维校准和颜色校准模块。
     void LoadCalibrationModules();
 
+    // 动态加载运行时数据中心，用于读取医生、诊所、技工所等只读快照。
+    void LoadRuntimeDataCenter();
+
     // 写结构化日志；日志不可用时静默返回。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 
@@ -81,6 +90,26 @@ private:
     QWidget* CreateScanPage(QWidget* parent);
     QWidget* CreateDataPage(QWidget* parent);
     QWidget* CreateAboutPage(QWidget* parent);
+
+    // 创建信息管理页的单个标签页。
+    QWidget* CreateInfoTabPage(QWidget* parent,
+                               const QStringList& headers,
+                               const QList<QStringList>& rows);
+
+    // 从 RuntimeDataCenter 读取某个 domain 的 items 数组。
+    QJsonArray LoadRuntimeItems(const char* domain);
+
+    // 把医生快照转换成表格行。
+    QList<QStringList> BuildDoctorRows(const QJsonArray& items) const;
+
+    // 把诊所快照转换成表格行。
+    QList<QStringList> BuildClinicRows(const QJsonArray& items) const;
+
+    // 把技工所快照转换成表格行。
+    QList<QStringList> BuildLabRows(const QJsonArray& items) const;
+
+    // 从 JSON 对象读取第一个非空字段。
+    QString FirstText(const QJsonObject& object, const QStringList& keys) const;
 
     // 创建校准卡片。
     QWidget* CreateCalibrationCard(QWidget* parent,
@@ -107,6 +136,10 @@ private:
     // Logger DLL 句柄和缓存后的日志接口。
     QLibrary m_loggerLibrary;
     ILogger* m_logger = nullptr;
+
+    // RuntimeDataCenter DLL 句柄和缓存后的快照接口。
+    QLibrary m_runtimeDataCenterLibrary;
+    IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
 
     // 校准模块句柄和接口指针。设置模块只嵌入 QWidget，不处理算法细节。
     QLibrary m_calibration3DLibrary;

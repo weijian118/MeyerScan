@@ -20,6 +20,7 @@
 #include <QVBoxLayout>
 
 #include <windows.h>
+#include <cstring>
 
 #include "Database.h"
 #include "Logger.h"
@@ -47,6 +48,7 @@ const char* kDefaultVersionModules[] = {
     "MeyerScan_CaseUI.dll",
     "MeyerScan_SettingsUI.dll",
     "MeyerScan_CaseOrderService.dll",
+    "MeyerScan_RuntimeDataCenter.dll",
     "MeyerScan_OrderScanWorkspaceShell.dll",
     "MeyerScan_Calibration3DUI.dll",
     "MeyerScan_CalibrationColorUI.dll",
@@ -101,6 +103,10 @@ MainWindow::~MainWindow() {
     }
     if (m_settings) {
         m_settings->Shutdown();
+    }
+    if (m_runtimeDataCenter) {
+        // 运行时数据中心借用 Database/Logger，必须在 Database/Logger 关闭前释放缓存引用。
+        m_runtimeDataCenter->Shutdown();
     }
     if (m_permission) {
         m_permission->Shutdown();
@@ -302,6 +308,35 @@ void MainWindow::InitInfrastructure() {
                         "",
                         "",
                         databaseMessage);
+    }
+
+    // RuntimeDataCenter 在数据库连接后初始化。
+    // 它负责把常用本地表和云端诊所信息缓存成 JSON 快照，UI/建单模块后续只读取稳定 domain。
+    m_runtimeDataCenter = GetRuntimeDataCenter();
+    if (m_runtimeDataCenter) {
+        const bool runtimeDataInitOk = m_runtimeDataCenter->Init(m_databaseConfigPathUtf8.constData(),
+                                                                 m_logDirUtf8.constData());
+        RuntimeDataCenterResult reloadResult;
+        if (runtimeDataInitOk) {
+            // 当前 SQLite 可能是空库，ReloadAll 失败不阻断启动，只写 Warning。
+            // 等 migration/初始化模块落地后，再把缺表视作更明确的安装或迁移问题。
+            reloadResult = m_runtimeDataCenter->ReloadAll();
+        } else {
+            std::memset(&reloadResult, 0, sizeof(reloadResult));
+            reloadResult.errorCode = 5;
+            std::strncpy(reloadResult.message,
+                         "RuntimeDataCenter init failed",
+                         sizeof(reloadResult.message) - 1);
+        }
+        if (m_logger) {
+            m_logger->Write(reloadResult.IsSuccess() ? LogLevel::Info : LogLevel::Warning,
+                            ModuleInfo::Name,
+                            "RuntimeDataCenter",
+                            "",
+                            "",
+                            "",
+                            reloadResult.message);
+        }
     }
 
     // 每次启动生成一份版本清单，便于现场复现时知道 EXE/DLL 的具体版本组合。
@@ -524,6 +559,7 @@ void MainWindow::ShowCase() {
 
 // 显示设置页，并记录关闭设置后应回到的来源页面。
 void MainWindow::ShowSettings(int openSource) {
+    // 记录来源不是为了页面跳转本身，而是让 SettingsUI 能判断校准入口是否允许显示。
     m_settingsOpenSource = openSource;
     if (EnsureSettingsPage()) {
         // 每次打开设置前都传来源上下文。
@@ -550,6 +586,8 @@ void MainWindow::PrepareForScanReconstruct() {
     // singleShot(0) 把后续动作排到当前事件处理结束后执行。
     QTimer::singleShot(0, this, [this]() {
         // 立即处理已投递的 DeferredDelete，尽早释放案例页资源。
+        // Qt 的 deleteLater 不会马上析构对象，而是投递 DeferredDelete 事件；
+        // sendPostedEvents 可以在进入扫描前主动处理这类事件，减少不可见页面继续占资源的时间。
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         WriteUserAction("PrepareScanReconstructDone", "Case page release event processed");
         WriteStatus(tr("Scan reconstruct module is not implemented yet"));
@@ -561,17 +599,20 @@ void MainWindow::PrepareForScanReconstruct() {
 bool MainWindow::EnsureHomePage() {
     if (m_homeWidget) {
         // 页面已经存在时直接复用，避免重复创建控件。
+        // 复用只发生在当前页面未被释放的短周期内；离开页面后 ReleaseHomePage 会清空指针。
         return true;
     }
     // GetHomeUI 返回 HomeUI DLL 内部单例。
     m_home = GetHomeUI();
     if (!m_home) {
+        // DLL 加载失败、导出函数缺失或依赖 DLL 缺失都可能导致这里为空。
         WriteStatus(tr("HomeUI unavailable"));
         return false;
     }
 
     if (!m_homeInitialized) {
         // Init 只调用一次，CreateWidget 可以在页面释放后再次调用。
+        // HomeUI 内部不拥有数据库和日志，只保存路径/接口引用。
         m_homeInitialized = m_home->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
     }
     // 设置回调后，HomeUI 按钮点击才能回到 MainExe 分发。
@@ -582,6 +623,7 @@ bool MainWindow::EnsureHomePage() {
     // 页面 QWidget 的父对象设为 MainWindow，随后挂入 MainExe 唯一内容区显示。
     m_homeWidget = m_home->CreateWidget(this);
     if (!m_homeWidget) {
+        // CreateWidget 失败通常说明模块内部依赖不可用，先停留在当前页并写状态。
         WriteStatus(tr("Home widget create failed"));
         return false;
     }
@@ -599,12 +641,14 @@ bool MainWindow::EnsureCasePage() {
     // GetCaseUI 返回 CaseUI DLL 内部单例。
     m_case = GetCaseUI();
     if (!m_case) {
+        // CaseUI 是独立 DLL，返回空说明模块或依赖没有正确复制到发布目录。
         WriteStatus(tr("CaseUI unavailable"));
         return false;
     }
 
     if (!m_caseInitialized) {
         // CaseUI 初始化只做轻量基础设施检查，业务数据后续走服务层。
+        // 即使数据库暂不可用，CaseUI 也应能创建空列表页面。
         m_caseInitialized = m_case->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
     }
     // CaseUI 的所有按钮动作都回调给 MainExe 分发。
@@ -615,6 +659,7 @@ bool MainWindow::EnsureCasePage() {
     // 创建 QWidget 后由 ShowCase 挂到 MainExe 内容区显示。
     m_caseWidget = m_case->CreateWidget(this);
     if (!m_caseWidget) {
+        // 页面创建失败时不切换内容区，避免把用户带到空白页。
         WriteStatus(tr("Case widget create failed"));
         return false;
     }
@@ -626,15 +671,19 @@ bool MainWindow::EnsureCasePage() {
 // SettingsUI 内部负责设置分类和校准入口；MainExe 只负责挂载和返回来源。
 bool MainWindow::EnsureSettingsPage() {
     if (m_settingsWidget) {
+        // 设置页已经创建时直接复用，但 ShowSettings 仍会重新 SetOpenContext，
+        // 因此来源变化和校准入口状态仍能刷新。
         return true;
     }
     m_settings = GetSettingsUI();
     if (!m_settings) {
+        // 设置模块缺失时只提示状态，主程序仍可继续停留在来源页面。
         WriteStatus(tr("SettingsUI unavailable"));
         return false;
     }
 
     if (!m_settingsInitialized) {
+        // SettingsUI 初始化会加载 Logger 和 RuntimeDataCenter，但校准模块仍然懒加载。
         m_settingsInitialized = m_settings->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
     m_settings->SetActionCallback(&MainWindow::OnSettingsAction, this);
@@ -644,6 +693,7 @@ bool MainWindow::EnsureSettingsPage() {
 
     m_settingsWidget = m_settings->CreateWidget(this);
     if (!m_settingsWidget) {
+        // 设置页失败不能影响首页/浏览继续使用。
         WriteStatus(tr("Settings widget create failed"));
         return false;
     }
@@ -712,13 +762,20 @@ void MainWindow::ReleasePageWidget(QWidget*& pageWidget, const QString& pageName
     }
 
     if (m_activeWidget == pageWidget) {
+        // allowActive=true 的等待页释放会走到这里。
+        // 先清 active 指针，避免后续 ReplaceContentWidget 以为旧页面仍在显示。
         m_activeWidget = nullptr;
     }
 
     // 从 layout 中移除后再 deleteLater，避免 layout 继续管理一个即将释放的 widget。
     m_contentLayout->removeWidget(pageWidget);
     WriteUserAction("PageRelease", QString("%1 page released").arg(pageName));
+    // deleteLater 比 delete 更适合 Qt 槽函数/事件处理中释放控件：
+    // 如果当前点击信号还在调用栈里，立即 delete 可能销毁 sender 或其父对象，导致崩溃。
     pageWidget->deleteLater();
+    // 注意：deleteLater 后 C++ 对象尚未立即析构，但业务指针必须马上置空。
+    // 这样后续 EnsureXXXPage 会重新创建页面，不会误用一个“等待删除”的 QWidget。
+    // 这里把成员指针置空，表示“逻辑上已经释放”；真实析构由事件循环稍后完成。
     pageWidget = nullptr;
 }
 
@@ -737,6 +794,7 @@ void MainWindow::ReplaceContentWidget(QWidget* widget, const QString& pageName) 
     }
 
     // 切换期间关闭内容区更新，避免用户看到 layout 移除/加入过程中的中间状态。
+    // setUpdatesEnabled(false) 只是暂停重绘，不会阻止 layout 数据结构更新。
     m_contentRoot->setUpdatesEnabled(false);
 
     QWidget* oldWidget = m_activeWidget;
@@ -744,15 +802,18 @@ void MainWindow::ReplaceContentWidget(QWidget* widget, const QString& pageName) 
         // 旧页面先从 layout 中拿掉，但暂不删除。
         // 调用方随后会按资源规则释放对应成员指针，这样页面变量和真实对象保持一致。
         m_contentLayout->removeWidget(oldWidget);
+        // hide 避免旧页面短暂浮现在内容区外；真正释放由 ShowHome/ShowCase 等函数决定。
         oldWidget->hide();
     }
 
     // 新页面必须占满内容区。Qt layout 会负责多分辨率和多语言下的实际排版。
+    // addWidget(widget, 1) 中的 1 是 stretch，表示它吃掉垂直方向剩余空间。
     m_contentLayout->addWidget(widget, 1);
     widget->show();
     m_activeWidget = widget;
 
     m_contentRoot->setUpdatesEnabled(true);
+    // update 触发一次重绘，把“移除旧页面 + 加入新页面”的结果合并显示，减少闪现。
     m_contentRoot->update();
     WriteUserAction("PageSwitch", QString("Switch to %1").arg(pageName));
     WriteStatus(pageName);
@@ -762,12 +823,14 @@ void MainWindow::ReplaceContentWidget(QWidget* widget, const QString& pageName) 
 // ConfigCenter 表达产品默认策略，Permission 表达授权结果；MainExe 集中合并，HomeUI 只接收最终 UI 状态。
 void MainWindow::ApplyHomeEntryRules() {
     if (!m_home) {
+        // HomeUI 尚未加载时没有规则可下发。
         return;
     }
 
     // 设置入口：配置默认可见 && 权限可见；enabled 只由权限决定。
     m_home->SetEntryVisible(HomeEntrySettings,
                             IsFeatureVisible("home.settings", "feature.home.settingsVisible", true));
+    // visible 控制是否显示，enabled 控制显示后能否点击；两者含义不同，不能互相替代。
     m_home->SetEntryEnabled(HomeEntrySettings, IsFeatureEnabled("home.settings", true));
 
     // 浏览入口当前没有 runtime_config 默认项，先由 Permission 控制 visible/enabled。
@@ -785,12 +848,14 @@ void MainWindow::ApplyHomeEntryRules() {
 // 不同动作后续可能有不同判断时机；当前先把页面创建前即可确定的按钮状态集中到这里。
 void MainWindow::ApplyCaseActionRules() {
     if (!m_case) {
+        // CaseUI 尚未加载时没有按钮状态可设置。
         return;
     }
 
     // 返回首页按钮：配置默认可见 && 权限可见；enabled 由权限控制禁用态。
     m_case->SetActionVisible(CaseActionBackHome,
                              IsFeatureVisible("case.backHome", "feature.case.backHomeVisible", true));
+    // enabled=false 时按钮仍可见但不可点，适合让用户知道有此功能但当前无权限/不可用。
     m_case->SetActionEnabled(CaseActionBackHome, IsFeatureEnabled("case.backHome", true));
     // 浏览页设置入口复用 home.settings 权限，避免同一设置模块出现两套授权规则。
     m_case->SetActionVisible(CaseActionOpenSettings,
@@ -801,18 +866,24 @@ void MainWindow::ApplyCaseActionRules() {
 // 统一合并配置显隐和权限显隐。
 // configKey 允许为空，表示该功能暂时没有产品默认项，只读取 Permission。
 bool MainWindow::IsFeatureVisible(const char* featureId, const char* configKey, bool defaultVisible) const {
+    // ConfigCenter 控制产品/客户默认策略，例如某客户版本默认隐藏某入口。
     const bool visibleByConfig = (m_config && configKey && configKey[0])
         ? m_config->GetBool(configKey, defaultVisible)
         : defaultVisible;
+    // Permission 控制授权结果，例如设备/账号/版本不满足时隐藏入口。
     const bool visibleByPermission = m_permission
         ? m_permission->IsFeatureVisible(featureId, defaultVisible)
         : defaultVisible;
+    // 两者取 AND：产品策略不开放或授权不允许，最终都不可见。
+    // 这里把合并逻辑放在 MainExe，是为了让 UI 模块只接收最终状态，不关心配置/权限来源。
     return visibleByConfig && visibleByPermission;
 }
 
 // 统一读取 Permission enabled。
 // enabled=false 必须真实生效：UI 设置禁用态，后续动作执行入口还要继续复核。
 bool MainWindow::IsFeatureEnabled(const char* featureId, bool defaultEnabled) const {
+    // enabled 只表达“可执行/可点击”，不会改变可见性。
+    // 动作执行前也会再次调用它复核，避免 UI 状态异常时越权执行。
     return m_permission ? m_permission->IsFeatureEnabled(featureId, defaultEnabled) : defaultEnabled;
 }
 
@@ -846,6 +917,7 @@ void MainWindow::WriteVersionList() {
     const QString appDirPath = QCoreApplication::applicationDirPath();
     const QString logDirPath = ResolveLogDir();
     const QString manifestPath = QDir(appDirPath).filePath("config/version_modules.json");
+    // manifest 不存在时写默认清单；存在时尊重文件内容，便于后续新增模块无需改 MainExe 代码。
     EnsureDefaultVersionManifest(manifestPath);
 
     QDir versionDir(logDirPath + "/versionList");
@@ -857,6 +929,7 @@ void MainWindow::WriteVersionList() {
     QJsonArray modules;
     const QStringList moduleFiles = LoadVersionManifest(manifestPath);
     for (const QString& moduleFile : moduleFiles) {
+        // manifest 中只写文件名或相对路径，最终都以 appDir 为根解析。
         QFileInfo fileInfo(QDir(appDirPath).filePath(moduleFile));
         QJsonObject module;
         // name 便于人工快速查看，path 便于工具定位实际文件。
@@ -866,6 +939,7 @@ void MainWindow::WriteVersionList() {
         if (fileInfo.exists()) {
             // 某些 DLL 没有 Windows 版本资源，ReadFileVersion 会返回空字符串。
             module.insert("fileVersion", ReadFileVersion(fileInfo.absoluteFilePath()));
+            // JSON 没有 64 位整数的稳定跨解析器表示，这里转 double 足够记录文件大小。
             module.insert("size", static_cast<double>(fileInfo.size()));
             module.insert("lastModified", fileInfo.lastModified().toString(Qt::ISODate));
         } else {
@@ -891,6 +965,7 @@ void MainWindow::WriteVersionList() {
     const bool opened = file.open(QIODevice::WriteOnly | QIODevice::Truncate);
     if (opened) {
         // 使用 Indented 方便人工直接打开阅读。
+        // versionList 是排查文件，不走 Compact；可读性优先于体积。
         file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 
@@ -912,11 +987,13 @@ void MainWindow::WriteVersionList() {
 QStringList MainWindow::LoadVersionManifest(const QString& manifestPath) const {
     QFile file(manifestPath);
     if (!file.open(QIODevice::ReadOnly)) {
+        // 读不到 manifest 时返回空列表；启动不中断，后续日志/版本清单会暴露缺失。
         return QStringList();
     }
 
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     if (!document.isObject()) {
+        // JSON 格式错误时不猜测内容，避免把第三方 DLL 全扫进去。
         return QStringList();
     }
 
@@ -924,13 +1001,17 @@ QStringList MainWindow::LoadVersionManifest(const QString& manifestPath) const {
     const QJsonArray items = document.object().value("modules").toArray();
     for (const QJsonValue& item : items) {
         if (item.isString()) {
+            // 当前主格式：modules 数组中直接写文件名字符串。
             const QString name = item.toString().trimmed();
             if (!name.isEmpty()) {
+                // manifest 中按顺序追加，版本清单输出顺序也保持一致，方便人工比对。
                 modules.append(name);
             }
         } else if (item.isObject()) {
+            // 兼容未来扩展格式：{ "file": "...", "note": "..." }。
             const QString name = item.toObject().value("file").toString().trimmed();
             if (!name.isEmpty()) {
+                // note 等说明字段只给人看，不进入版本扫描路径。
                 modules.append(name);
             }
         }
@@ -942,16 +1023,19 @@ QStringList MainWindow::LoadVersionManifest(const QString& manifestPath) const {
 // 后续新增模块时维护 config/version_modules.json，而不是修改扫描代码。
 void MainWindow::EnsureDefaultVersionManifest(const QString& manifestPath) const {
     if (QFileInfo::exists(manifestPath)) {
+        // 文件已存在时不覆盖，避免用户或打包脚本维护的清单被默认值重写。
         return;
     }
 
     QDir dir(QFileInfo(manifestPath).absolutePath());
     if (!dir.exists()) {
+        // mkpath 可递归创建 config 目录；已存在时也安全。
         QDir().mkpath(dir.absolutePath());
     }
 
     QJsonArray modules;
     for (const char* moduleName : kDefaultVersionModules) {
+        // 默认清单只包含拆分出来的自研模块，不包含 Qt、VC runtime、OpenSSL 等第三方库。
         modules.append(QString::fromLatin1(moduleName));
     }
 
@@ -971,6 +1055,7 @@ QString MainWindow::ReadFileVersion(const QString& filePath) const {
     DWORD handle = 0;
     // Windows 版本资源 API 使用宽字符路径，先转成本机分隔符和 std::wstring。
     const std::wstring nativePath = QDir::toNativeSeparators(filePath).toStdWString();
+    // 第一次调用只问资源块大小；handle 在现代 Windows 中通常未使用，但 API 需要传地址。
     const DWORD size = GetFileVersionInfoSizeW(nativePath.c_str(), &handle);
     if (size == 0) {
         // 没有版本资源或读取失败都返回空，不能影响主程序启动。
@@ -979,6 +1064,7 @@ QString MainWindow::ReadFileVersion(const QString& filePath) const {
 
     // 版本资源大小由 Windows API 返回，按该大小申请缓冲区。
     QByteArray data(static_cast<int>(size), 0);
+    // GetFileVersionInfoW 把整个版本资源块写入 data，后续 VerQueryValueW 在这块内存里取结构。
     if (!GetFileVersionInfoW(nativePath.c_str(), handle, size, data.data())) {
         return QString();
     }
@@ -986,11 +1072,13 @@ QString MainWindow::ReadFileVersion(const QString& filePath) const {
     // "\\" 表示读取 VS_FIXEDFILEINFO 根结构。
     VS_FIXEDFILEINFO* info = nullptr;
     UINT infoSize = 0;
+    // VerQueryValueW 返回的 info 指针指向 data 内部，不能在 data 析构后继续保存。
     if (!VerQueryValueW(data.data(), L"\\", reinterpret_cast<LPVOID*>(&info), &infoSize) || !info) {
         return QString();
     }
 
     // Windows 把版本号拆在两个 DWORD 中，高低字分别组成 a.b.c.d。
+    // HIWORD/LOWORD 是 Windows 提供的宏，用来从 32 位整数中拆出高 16 位和低 16 位。
     return QString("%1.%2.%3.%4")
         .arg(HIWORD(info->dwFileVersionMS))
         .arg(LOWORD(info->dwFileVersionMS))
@@ -1005,6 +1093,7 @@ void MainWindow::WriteUserAction(const QString& operation, const QString& conten
         return;
     }
     // operation/content 先转 UTF-8，保证跨 DLL char* 接口读到稳定字节。
+    // QByteArray 局部变量必须活到 m_logger->Write 调用结束，所以不能把 toUtf8().constData() 拆到临时表达式里长期保存。
     const QByteArray operationBytes = operation.toUtf8();
     const QByteArray contentBytes = content.toUtf8();
     m_logger->Write(LogLevel::Info,
@@ -1041,5 +1130,5 @@ void MainWindow::InitLoggerEarly() {
     if (m_logger && m_logger->Init(m_logDirUtf8.constData(), LogLevel::Info)) {
         m_loggerInitialized = true;
         m_logger->Write(LogLevel::Info, ModuleInfo::Name, "Startup", "", "", "", "Logger initialized early");
-	}
+    }
 }

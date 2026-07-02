@@ -1,5 +1,16 @@
 # MeyerScan HomeUI 变更记录
 
+## 2026-07-02
+
+- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents、Database 等当前依赖。
+- 按评审结论同步 UI/业务分离规则：HomeUI 继续作为 Qt 入口 UI，只展示入口、记录操作和上报入口 ID；建单规则、加载订单规则、权限核心判断不得进入首页模块。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试宿主和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `HomeUIImpl.cpp`：补充 `QLibrary` 动态加载、UIComponents 可选降级、入口回调 C ABI、按钮 lambda 捕获、`QByteArray::constData()` 生命周期、Qt Layout 和基础设施借用边界说明。
+- 本轮只补充注释和文档记录，不改变首页入口、显隐/启用态或 UIComponents 接入逻辑。
+
 ## 2026-06-26
 
 - 首页入口按钮接入 `MeyerScan_UIComponents.dll` 的标准按钮工厂，统一使用 `MeyerButtonRoleEntry` 样式。

@@ -2,6 +2,8 @@
 
 `MyConfigCenter` 是配置中心模块的第一版骨架，当前先用于打通主流程。
 
+2026-07-02 评审后，ConfigCenter 按非界面模块管理：后续新增能力优先评估非 Qt 实现。当前 Qt JSON/文件读取只作为内部实现细节，公共接口不暴露 Qt 类型。
+
 - 配置文件固定从 `MeyerScan.exe` 所在目录下的 `config/runtime_config.json` 读取。
 - 配置字段说明写在同级 `config/runtime_config.md`，JSON 内部不写注释。
 - 禁止使用 `QDir::currentPath()` 作为运行路径，避免第三方软件拉起时工作目录错误。
@@ -16,7 +18,7 @@
 
 字段含义：
 
-- `database.type`：产品/客户默认数据库类型，当前支持 `mysql` / `sqlite`，MainExe 读取后调用 Database 切换类型。
+- `database.type`：产品/客户默认数据库类型，当前支持 `mysql` / `sqlite`；当前默认值为 `sqlite`，MainExe 读取后调用 Database 切换类型。
 - `feature.home.settingsVisible`：首页“设置”入口的产品默认显隐，最终还要与 Permission 的 `home.settings.visible` 合并。
 - `feature.case.backHomeVisible`：案例管理“返回首页”按钮的产品默认显隐，最终还要与 Permission 的 `case.backHome.visible` 合并。
 

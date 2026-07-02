@@ -1,5 +1,27 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，作为 VSCode/CMake Tools 构建入口，同时继续保留 VS2015 `MeyerScan.vcxproj` 和聚合解决方案。
+- 新增根目录 CMake 聚合工程后，MainExe 作为最终主程序目标放在构建顺序末尾，链接 HomeUI、CaseUI、SettingsUI、ConfigCenter、Permission、RuntimeDataCenter、Database、Logger 和外部登录库。
+- 按评审结论同步工程规则：GitHub 提交之外，MainExe 及其依赖产物需要随全部模块一起备份到 `F:\MeyerScan-Reposit`。
+- 继续按“实现技巧型注释”要求补强 `MainWindow.cpp`：补充 Home/Case/Settings 页面创建失败降级、UI 模块初始化边界、单内容区页面释放、`deleteLater()` 延迟析构、Layout stretch、配置/权限 visible 与 enabled 合并、版本 manifest 顺序、Windows 文件版本资源和 Logger 早期初始化的实现说明。
+- 本轮只补充注释和文档记录，不改变 MainExe 启动、登录、单实例、页面切换、RuntimeDataCenter 或版本清单行为。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 MainExe 相关注释口径：前一轮已补充启动等待页、登录参数、基础设施初始化、配置/权限合并、页面创建/切换/释放、扫描前释放 CaseUI、版本清单、Windows 文件版本 API、`deleteLater()` / 事件循环和单实例测试入口说明。
+- 本轮在全局文档中把这些注释要求升级为“解释代码实现技巧”，后续 MainExe 新增逻辑必须同步说明 Qt 事件循环、页面所有权、跨 DLL 缓冲区、Windows API 和权限复核机制。
+- 本轮只补充注释规则和文档记录，不改变 MainExe 启动、页面切换、版本清单或 RuntimeDataCenter 集成逻辑。
+
+## 2026-06-30
+
+- MainExe 接入 `MeyerScan_RuntimeDataCenter.dll`，数据库连接后初始化运行时数据中心并执行 `ReloadAll()`。
+- 版本清单 `config/version_modules.json` 新增 `MeyerScan_RuntimeDataCenter.dll`，Release PostBuild 同步复制该模块。
+- 默认运行链路切换为 SQLite 后，RuntimeDataCenter 允许空库/缺表以 Warning 形式记录，不阻断主程序启动。
+- Release PostBuild 的自研 Qt DLL、平台插件和 SQL 驱动复制来源统一为编译所用 `C:\Qt\Qt5.6.3\5.6.3\msvc2015_64`，避免聚合根输出目录混用 Qt 5.6.2 / 5.6.3；外部登录相关既有 DLL 仍从已安装软件目录复制。
+- `MeyerScan.exe --smoke-main` 需同时覆盖单模块输出目录和根聚合输出目录，保证 MainExe、CaseUI、RuntimeDataCenter、Database 和 Qt 运行库链路一致。
+
 ## 2026-06-25
 
 - 版本清单改为读取 `config/version_modules.json`，只记录拆分模块 EXE/DLL，不再把 Qt、OpenSSL、AWS、VC/UCRT 等第三方库写入 `logs/versionList`。

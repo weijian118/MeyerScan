@@ -19,6 +19,8 @@ const char* Version = "MeyerScan_HomeUI v0.2.0 (2026-06-26)";
 // 返回首页模块单例。
 // 当前 DLL 只暴露一个 IHomeUI 实例，避免多个首页对象重复初始化 Logger/Database。
 HomeUIImpl& HomeUIImpl::Instance() {
+    // 首页模块在进程内只需要一个接口实例。
+    // 函数内 static 由 C++11 保证线程安全初始化，避免自己写互斥锁。
     static HomeUIImpl instance;
     return instance;
 }
@@ -28,6 +30,7 @@ HomeUIImpl& HomeUIImpl::Instance() {
 bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     // 首页模块本身不保存业务数据，只在启动时确认日志和数据库是否可用。
     // 这样首页既能独立测试，也能在 MainExe 中复用已经初始化好的基础设施。
+    // 初始化顺序先日志、再 UIComponents、再数据库，确保后续异常能尽量写日志。
     LoadLogger(logDir);
     LoadUIComponents();
     InitDatabase(databaseConfigPath);
@@ -43,6 +46,7 @@ bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
 void HomeUIImpl::SetEntryCallback(void (*callback)(void* context, int entryId), void* context) {
     // C ABI 回调不能捕获 C++ 对象，所以把 MainExe 的 this 指针作为 context 原样保存。
     // 用户点击按钮时再把 context 传回去，由 MainExe 自己转换成 MainWindow*。
+    // 这样 HomeUI 不需要包含 MainWindow.h，模块边界更干净。
     m_entryCallback = callback;
     m_entryCallbackContext = context;
 }
@@ -53,6 +57,7 @@ void HomeUIImpl::SetEntryVisible(int entryId, bool visible) {
     // m_entryVisible 的下标与 HomeEntry 枚举值一一对应。
     // 0 号位不用，合法入口是 1..4，超出范围说明调用方传错了 ID。
     if (entryId > 0 && entryId < 5) {
+        // 数组保存的是运行期最终状态，CreateWidget 时会一次性应用到按钮。
         m_entryVisible[entryId] = visible;
     }
 }
@@ -63,6 +68,7 @@ void HomeUIImpl::SetEntryEnabled(int entryId, bool enabled) {
     // enabled 与 visible 分开保存。
     // 这样客户包可以把某个入口显示出来但暂时禁用，后续再配合 tooltip/弹窗解释原因。
     if (entryId > 0 && entryId < 5) {
+        // 与显隐分开保存，便于后续实现“可见但灰掉”的授权提示。
         m_entryEnabled[entryId] = enabled;
     }
 }
@@ -85,6 +91,7 @@ void HomeUIImpl::LoadLogger(const char* logDir) {
     // PreventUnloadHint 表示进程退出前尽量不要卸载 Logger DLL。
     // 这样可以规避 Qt/Windows 退出阶段 DLL 卸载顺序导致的悬空函数指针。
     m_loggerLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    // 只写模块名，不写 .dll 后缀，让 Qt 按平台规则查找对应动态库。
     m_loggerLibrary.setFileName("MeyerScan_Logger");
     if (!m_loggerLibrary.load()) {
         m_lastStatus = "Logger unavailable; continuing without log output";
@@ -115,6 +122,7 @@ void HomeUIImpl::LoadUIComponents() {
     }
 
     m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    // UIComponents 是可选依赖，加载失败时首页仍用本地降级样式。
     m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
     if (!m_uiComponentsLibrary.load()) {
         WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local styles");
@@ -129,7 +137,9 @@ void HomeUIImpl::LoadUIComponents() {
 
     m_uiComponents = getUIComponents();
     if (m_uiComponents) {
+        // applicationDirPath 用于传安装目录，不能用 currentPath。
         const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
+        // appDirBytes 必须作为局部变量保存到 Init 调用结束，避免临时 QByteArray 指针悬空。
         m_uiComponents->Init(appDirBytes.constData());
     }
 }
@@ -157,12 +167,14 @@ void HomeUIImpl::InitDatabase(const char* databaseConfigPath) {
     // databaseConfigPath 仍必须由测试宿主从 EXE 目录推导后传入。
     VoidResult initResult = m_database->Init(databaseConfigPath ? databaseConfigPath : "");
     if (initResult.IsError()) {
+        // message 是 DatabaseResult 的短文本，直接拼入状态标签和日志即可。
         m_lastStatus = QString("Database init failed: %1").arg(initResult.message ? initResult.message : "unknown");
         return;
     }
 
     VoidResult connectResult = m_database->Connect();
     if (connectResult.IsError()) {
+        // 独立测试时 SQLite/MySQL 连接失败不会阻止首页创建，只在状态区显示降级原因。
         m_lastStatus = QString("Database connect failed: %1").arg(connectResult.message ? connectResult.message : "unknown");
         return;
     }
@@ -177,12 +189,14 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     // root 的 parent 由 MainExe 的内容区容器或测试窗口传入。
     // Qt 会按父子关系释放子控件，后面只需要 delete root 即可释放整页。
     auto* root = new QWidget(parent);
+    // objectName 方便测试宿主或样式表定位首页根节点。
     root->setObjectName("MeyerScanHomeUIRoot");
     root->setMinimumSize(760, 480);
 
     // 这里先使用 Qt Layout，而不是固定坐标。
     // 多语言文本变长、多分辨率缩放时，Layout 会自动重新分配空间。
     auto* layout = new QVBoxLayout(root);
+    // 首页使用布局适配不同语言和分辨率，避免固定坐标造成翻译文本截断。
     layout->setContentsMargins(28, 24, 28, 24);
     layout->setSpacing(18);
 
@@ -200,6 +214,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     layout->addWidget(subtitle);
 
     auto* grid = new QGridLayout();
+    // QGridLayout 负责把入口排列成两列，窗口变宽/变窄时由布局重新分配空间。
     grid->setSpacing(14);
 
     const QStringList names = {
@@ -231,6 +246,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
         // 按钮文本临时用两行展示：第一行入口名，第二行说明。
         // 正式视觉组件落地后，应迁到 UIComponents 的标准入口卡片/按钮。
         const QString buttonText = names[i] + "\n" + descs[i];
+        // QByteArray 保存 UTF-8 字节，供 UIComponents 的 C ABI 风格接口读取。
         const QByteArray buttonTextBytes = buttonText.toUtf8();
         QPushButton* button = m_uiComponents
             ? m_uiComponents->CreateButton(MeyerButtonRoleEntry,
@@ -239,6 +255,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
                                            "",
                                            root)
             : new QPushButton(buttonText, root);
+        // 最小尺寸保证两行入口文字有基本阅读空间；最终尺寸仍由 GridLayout 决定。
         button->setMinimumSize(220, 110);
         if (!m_uiComponents) {
             // UIComponents 不可用时保留本地降级样式，确保首页仍能打开。
@@ -247,6 +264,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
         // lambda 捕获 entryId 的值，而不是捕获 i。
         // 如果捕获 i，循环结束后所有按钮可能都读到同一个最终下标。
         const int entryId = entryIds[i];
+        // clicked 连接到 lambda，把 Qt 信号转成模块自己的入口 ID 回调。
         QObject::connect(button, &QPushButton::clicked, [this, entryId]() { NotifyEntryClicked(entryId); });
         // 权限/配置在 MainExe 中先调用 SetEntryVisible 写入状态，
         // CreateWidget 时再按状态决定是否显示按钮。
@@ -258,6 +276,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     }
 
     layout->addLayout(grid);
+    // stretch 把状态栏压到底部，让入口区保持靠上且有呼吸空间。
     layout->addStretch();
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
@@ -290,7 +309,7 @@ void HomeUIImpl::Shutdown() {
     m_databaseConnected = false;
     m_logger = nullptr;
     m_uiComponents = nullptr;
-    // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
+    // QLibrary 使用 PreventUnloadHint，进程退出前尽量不卸载 DLL，避免退出阶段函数指针悬空。
 }
 
 // 写结构化日志。
@@ -317,6 +336,7 @@ void HomeUIImpl::NotifyEntryClicked(int entryId) {
     WriteLog(LogLevel::Info, "EntryClicked", QString("Home entry clicked: %1").arg(entryId));
     if (m_entryCallback) {
         // HomeUI 不知道 MainExe 如何切页面，只上报入口 ID，保持 UI 模块边界简单。
+        // m_entryCallbackContext 通常是 MainWindow*，但 HomeUI 只把它当 void* 原样传回。
         m_entryCallback(m_entryCallbackContext, entryId);
     }
 }

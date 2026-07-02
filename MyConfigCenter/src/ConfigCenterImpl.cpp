@@ -20,7 +20,10 @@ const char* Version = "MeyerScan_ConfigCenter v0.1.0 (2026-06-23)";
 // 返回配置中心单例。
 // 配置中心在进程内只维护一份 runtime_config.json 缓存，避免多个模块重复读写文件。
 ConfigCenterImpl& ConfigCenterImpl::Instance() {
+    // 函数内 static 是最轻量的进程内单例写法。
+    // C++11 起编译器会保证多线程首次进入时只构造一次，不需要我们手写锁。
     static ConfigCenterImpl instance;
+    // 返回引用而不是指针，说明该对象一定存在，调用方也不需要负责释放。
     return instance;
 }
 
@@ -29,14 +32,18 @@ ConfigCenterImpl& ConfigCenterImpl::Instance() {
 bool ConfigCenterImpl::Init(const char* appDirUtf8) {
     // 调用方必须传 MeyerScan.exe 所在目录；这里不使用 QDir::currentPath()，
     // 因为软件可能由第三方 HIS/美亚美牙等程序拉起，工作目录并不可靠。
+    // QString::fromUtf8 负责把跨 DLL 传入的 UTF-8 字节转换成 Qt 内部 Unicode 字符串。
     m_appDir = QString::fromUtf8(appDirUtf8 ? appDirUtf8 : "");
     if (m_appDir.isEmpty()) {
+        // 应用目录为空时继续往下会把配置写到不可预测位置，所以直接失败。
         return false;
     }
 
     // 配置目录统一放在应用目录 config 下，便于安装包、自动更新和现场排查。
     QDir dir(m_appDir);
+    // mkpath 可递归创建目录；目录已存在时也会返回成功，适合初始化阶段幂等调用。
     dir.mkpath("config");
+    // filePath 会使用当前 QDir 的基准路径拼出完整路径，避免手工拼接分隔符出错。
     m_configPath = dir.filePath("config/runtime_config.json");
 
     // 首次运行时生成最小默认配置，保证后续读取逻辑不用处理“文件不存在”分支。
@@ -45,6 +52,7 @@ bool ConfigCenterImpl::Init(const char* appDirUtf8) {
     // 只读打开配置文件；读完后立即关闭，避免后续迁移写回时文件仍被占用。
     QFile file(m_configPath);
     if (!file.open(QIODevice::ReadOnly)) {
+        // QFile 打开失败一般是路径错误、权限问题或文件被异常占用。
         return false;
     }
 
@@ -53,8 +61,10 @@ bool ConfigCenterImpl::Init(const char* appDirUtf8) {
     const QByteArray configBytes = file.readAll();
     file.close();
 
+    // QJsonDocument::fromJson 会解析 UTF-8 JSON；解析失败时 document 不是 object。
     const QJsonDocument document = QJsonDocument::fromJson(configBytes);
     if (!document.isObject()) {
+        // runtime_config.json 顶层必须是对象，因为后续按点号路径逐级读取字段。
         return false;
     }
 
@@ -63,6 +73,7 @@ bool ConfigCenterImpl::Init(const char* appDirUtf8) {
 
     // 清理历史 startup 配置，防止旧文件继续控制固定启动流程。
     MigrateDeprecatedStartupConfig();
+    // 初始化标志只在配置已经读取、迁移完成后置 true，避免半初始化状态被其它模块使用。
     m_initialized = true;
     return true;
 }
@@ -74,6 +85,7 @@ bool ConfigCenterImpl::GetBool(const char* key, bool defaultValue) const {
     // 例如 feature.home.settingsVisible -> 父对象 feature.home，叶子 settingsVisible。
     QString leafName;
     const QJsonObject object = ResolveObject(QString::fromUtf8(key ? key : ""), &leafName);
+    // QJsonObject::value 找不到字段时返回 undefined QJsonValue，不会抛异常。
     const QJsonValue value = object.value(leafName);
 
     // 只有 JSON 字段确实是 bool 时才采用配置值；类型不匹配时回退默认值，避免坏配置影响启动。
@@ -88,6 +100,7 @@ int ConfigCenterImpl::GetInt(const char* key, int defaultValue) const {
     const QJsonValue value = object.value(leafName);
 
     // Qt JSON 中整数也以 double 存储，toInt() 会做安全转换。
+    // isDouble() 是 Qt JSON 对数字类型的统一判断，不代表配置必须写小数。
     return value.isDouble() ? value.toInt() : defaultValue;
 }
 
@@ -96,6 +109,7 @@ int ConfigCenterImpl::GetInt(const char* key, int defaultValue) const {
 bool ConfigCenterImpl::GetString(const char* key, const char* defaultValue, char* buffer, int bufferSize) const {
     // 调用方提供缓冲区，避免跨 DLL 由一边分配内存、另一边释放内存。
     if (!buffer || bufferSize <= 0) {
+        // buffer 无效时不能写默认值，只能通过 false 告知调用方读取失败。
         return false;
     }
 
@@ -105,11 +119,13 @@ bool ConfigCenterImpl::GetString(const char* key, const char* defaultValue, char
 
     // 字段不存在或类型不是字符串时，仍把 defaultValue 写入 buffer，让调用方可以继续使用默认策略。
     const QString text = value.isString() ? value.toString() : QString::fromUtf8(defaultValue ? defaultValue : "");
+    // 统一转 UTF-8，保证 C ABI 调用方拿到的是跨语言/跨模块都稳定的字节格式。
     const QByteArray bytes = text.toUtf8();
 
     // 预留 1 个字节写 '\0'，保证调用方收到的是 C 字符串。
     const int copySize = qMin(bufferSize - 1, bytes.size());
     if (copySize > 0) {
+        // memcpy 只复制原始字节，不尝试解释字符；如果缓冲区太小，后面仍会补 '\0'。
         memcpy(buffer, bytes.constData(), static_cast<size_t>(copySize));
     }
     buffer[copySize] = '\0';
@@ -128,15 +144,18 @@ void ConfigCenterImpl::Shutdown() {
     // 仅清理内存缓存，不删除或重写配置文件。
     // 退出阶段尽量少做磁盘写入，避免异常退出时破坏配置。
     m_root = QJsonObject();
+    // 标志复位后，后续调用方可以重新 Init 重新加载配置文件。
     m_initialized = false;
 }
 
 // 将点号分隔的 key 解析为父对象和叶子字段。
 // 这个函数只做简单读取，不创建缺失节点，也不修改 JSON。
 QJsonObject ConfigCenterImpl::ResolveObject(const QString& key, QString* leafName) const {
+    // SkipEmptyParts 让 "feature..home" 这类异常 key 不产生空段，降低坏输入影响。
     const QStringList parts = key.split('.', QString::SkipEmptyParts);
     if (parts.isEmpty()) {
         if (leafName) {
+            // 调用方传了 leafName 指针时必须写入确定值，避免它继续使用旧内容。
             *leafName = QString();
         }
         return QJsonObject();
@@ -146,6 +165,7 @@ QJsonObject ConfigCenterImpl::ResolveObject(const QString& key, QString* leafNam
     // 逐级向下找父对象。中间节点不存在时 toObject() 返回空对象，
     // 后续读取自然会回退默认值，不在这里抛错。
     for (int i = 0; i < parts.size() - 1; ++i) {
+        // value(parts[i]) 可能不是对象；toObject() 会返回空对象，读取逻辑保持容错。
         object = object.value(parts[i]).toObject();
     }
 
@@ -167,6 +187,7 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
     // 默认数据库类型先写 mysql，保持与当前已安装口扫软件默认部署一致。
     QJsonObject root;
     QJsonObject database;
+    // insert 会覆盖同名字段；这里是新对象，所以效果等同于写入一项。
     database.insert("type", "mysql");
 
     // feature 只表达产品/客户默认显示策略，不表达授权。
@@ -185,6 +206,7 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
     // 写入失败不抛异常；Init 随后打开文件失败会返回 false，让 MainExe 记录启动问题。
     QFile file(configPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        // Indented 格式方便人工打开检查；配置文件体积很小，不需要 Compact。
         file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 }
@@ -195,14 +217,17 @@ void ConfigCenterImpl::MigrateDeprecatedStartupConfig() {
     // 旧版本曾把等待页/单实例写进 startup 配置。
     // 现在这两个属于 MainExe 固定流程，所以检测到就清掉，避免现场配置残留产生误解。
     if (!m_root.contains("startup")) {
+        // 没有旧字段时直接返回，避免无意义地重写配置文件和改变文件修改时间。
         return;
     }
 
+    // QJsonObject::remove 只修改内存中的对象；下面还需要写回磁盘。
     m_root.remove("startup");
 
     // 迁移后立即写回，后续人工查看 runtime_config.json 时不会再看到已废弃字段。
     QFile file(m_configPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        // Truncate 先清空旧文件内容，再写入迁移后的完整 JSON，避免旧尾部残留。
         file.write(QJsonDocument(m_root).toJson(QJsonDocument::Indented));
     }
 }
@@ -210,5 +235,6 @@ void ConfigCenterImpl::MigrateDeprecatedStartupConfig() {
 // 导出配置中心接口。
 // MainExe 通过该入口读取产品/客户默认策略，再与 Permission 授权结果合并。
 extern "C" MEYERSCAN_CONFIGCENTER_API IConfigCenter* GetConfigCenter() {
+    // 返回接口基类指针，隐藏 ConfigCenterImpl 具体类，降低调用方编译依赖。
     return &ConfigCenterImpl::Instance();
 }

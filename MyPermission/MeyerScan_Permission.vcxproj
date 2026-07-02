@@ -50,7 +50,7 @@
       <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
+      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
 xcopy /Y /D /I "$(ProjectDir)config\*.json" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)config\*.md" "$(OutDir)config\"</Command>
     </PostBuildEvent>

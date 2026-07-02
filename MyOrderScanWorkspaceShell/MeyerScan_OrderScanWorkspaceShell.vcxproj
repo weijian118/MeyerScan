@@ -50,9 +50,9 @@
       <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(ProjectDir)..\MyLogger\bin\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
-xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll" "$(OutDir)"
-xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
+      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
+xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll" "$(OutDir)"
+xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\Release\MeyerScan_Logger.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

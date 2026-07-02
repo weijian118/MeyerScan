@@ -7,7 +7,7 @@
 - 建单模块和扫描重建模块直接相邻，用户体验上不能割裂。
 - 本模块负责顶部步骤、页面容器、当前步骤切换和后续进程/窗口嵌入的统一边界。
 - `OrderCreateUI`、`ScanReconstructStudio.exe`、处理页和发送页后续作为工作台内页面或进程容器接入。
-- 本模块是 Qt Widgets UI 容器模块，可以优先使用 Qt 默认能力，包括 `QWidget`、`QStackedWidget`、Qt Layout、信号槽、`QString` 和 `QMap`；不需要刻意规避 Qt。跨进程同步扫描状态时再收敛为 IPC/POD/UTF-8 JSON。
+- 本模块是 Qt Widgets UI 容器模块，可以使用 `QWidget`、`QStackedWidget`、Qt Layout、信号槽、`QString` 和 `QMap` 组织界面；建单保存、加载规则、扫描采集和数据处理不进入本模块。跨进程同步扫描状态时必须收敛为 IPC/POD/UTF-8 JSON。
 
 ## 边界
 

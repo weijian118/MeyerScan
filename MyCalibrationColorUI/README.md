@@ -5,7 +5,7 @@
 ## 当前定位
 
 - 当前版本是 Qt Widgets 最小骨架，用于先固定模块边界和集成方式。
-- 本模块可以优先使用 Qt 默认能力，包括 `QWidget`、Qt Layout、信号槽、`QString` 和 `QJsonDocument`。
+- 本模块是界面模块，可以使用 Qt Widgets、Qt Layout、信号槽和 `QString`；算法、设备重资源和跨进程状态同步仍通过清晰接口隔离，不把 Qt UI 对象传到模块边界外。
 - 后续颜色校准算法 DLL、DeviceCmd、DeviceTransport 接入本模块内部，不把颜色校准流程写入 MainExe 或 EngineeringSettings。
 - 可见 UI 文案必须使用 `tr("English source text")`，源码不写中文 UI source text。
 - 日志目录由 MainExe 或测试宿主基于安装目录传入，禁止使用当前工作目录推导运行资源。

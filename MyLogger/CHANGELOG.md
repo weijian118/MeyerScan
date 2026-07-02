@@ -1,5 +1,18 @@
 # MeyerScan Logger 变更记录
 
+## 2026-07-02
+
+- 调整模块 `CMakeLists.txt`，纳入根目录公共 CMake 规则，继续保持 Logger 无 Qt 依赖和静态 CRT 策略。
+- 按评审结论确认 Logger 是非界面基础设施模块模板：能不用 Qt 就不用 Qt，公共 ABI 继续保持 `const char*` / POD / 纯虚接口。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试项目和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `LoggerTest.cpp`：补充 `GetModuleFileNameA`、函数内 static 测试目录、`GetLocalTime` 日期生成、整文件读取、`std::thread::join`、`std::rename` 验证文件句柄关闭和日志格式反向断言说明。
+- 前一轮已补强 Logger 实现中日志轮转、跨进程互斥、逐条同步写入、`CreateFileW` 和关闭句柄等说明。
+- 重构规则复核时修正 `LoggerTest.exe` 的测试日志目录：由原先写死 `F:\MeyerScan\MyLogger\test\logs` 改为基于测试 exe 所在目录推导到同级 `logs`。
+- 该调整只影响测试宿主，正式 Logger 仍由调用方传入 `MeyerScan.exe` 同级 `logs` 目录；测试项目也必须遵守“不依赖开发机绝对路径”的运行路径规则。
+
 ## 2026-06-26
 
 - 复查全局文档和代码契约后，确认日志正文标签必须固定为 `[Content:]`，并修正 `LogFormat.cpp` 中残留的历史 `[Txt:]` 输出。

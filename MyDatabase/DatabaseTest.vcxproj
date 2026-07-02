@@ -69,10 +69,10 @@
       <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(SolutionDir)bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Cored.dll" "$(OutDir)"
-xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sqld.dll" "$(OutDir)"
-xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysqld.dll" "$(OutDir)sqldrivers\"
-xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlited.dll" "$(OutDir)sqldrivers\"</Command>
+      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Cored.dll" "$(OutDir)"
+xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sqld.dll" "$(OutDir)"
+xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysqld.dll" "$(OutDir)sqldrivers\"
+xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlited.dll" "$(OutDir)sqldrivers\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -96,11 +96,11 @@ xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlited.dll"
       <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(SolutionDir)bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
-xcopy /Y /D "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll" "$(OutDir)"
+      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
+xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll" "$(OutDir)"
 xcopy /Y /D "C:\Program Files (x86)\MeyerScan\libmysql.dll" "$(OutDir)"
-xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
-xcopy /Y /D /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
+xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
+xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

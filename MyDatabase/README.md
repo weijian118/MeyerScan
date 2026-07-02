@@ -6,7 +6,7 @@
 
 ## 📖 项目简介
 
-MeyerScan Database 模块（`MeyerScan_Database.dll`）是 MeyerScan 项目的数据库基础设施模块，提供统一的数据库访问抽象层。模块允许并推荐使用 Qt SQL（`QSqlDatabase` / `QSqlQuery`）连接 MySQL 和 SQLite；Qt 依赖不改变它的架构角色，真正需要严格控制的是职责边界：本模块只做连接、SQL 执行、事务、备份等基础能力，不承载病例、订单、权限、UI 等业务逻辑。
+MeyerScan Database 模块（`MeyerScan_Database.dll`）是 MeyerScan 项目的数据库基础设施模块，提供统一的数据库访问抽象层。2026-07-02 评审后，非界面模块默认优先评估非 Qt 实现；Database 当前继续使用 Qt SQL（`QSqlDatabase` / `QSqlQuery`）维持已跑通的 MySQL 和 SQLite 链路，但 Qt 只作为 `.cpp` 内部实现细节，公共接口继续保持 POD / UTF-8 / 调用方缓冲区，便于后续替换内部实现。本模块只做连接、SQL 执行、事务、备份等基础能力，不承载病例、订单、权限、UI 等业务逻辑。
 
 ### ✨ 核心特性
 
@@ -106,7 +106,7 @@ MSBuild MeyerScan_Database.sln /p:Configuration=Release /p:Platform=x64
 
 ```json
 {
-    "databaseType": "mysql",
+    "databaseType": "sqlite",
     "mysql": {
         "host": "127.0.0.1",
         "port": 3308,
@@ -118,7 +118,7 @@ MSBuild MeyerScan_Database.sln /p:Configuration=Release /p:Platform=x64
 }
 ```
 
-运行时相对路径以 `db_config.json` 所在目录为基准解析。正式发布时配置文件位于 `MeyerScan.exe` 同级 `config/` 目录，因此示例中的 `../MySQL/...` 和 `../Data/...` 指向安装根目录下的对应文件夹。测试宿主会生成自己的 `bin/Release/config/db_config_test.json`，避免复用正式发布配置时出现路径语义混淆。
+当前默认数据库类型是 SQLite，MySQL 仍作为可切换能力保留。运行时相对路径以 `db_config.json` 所在目录为基准解析。正式发布时配置文件位于 `MeyerScan.exe` 同级 `config/` 目录，因此示例中的 `../MySQL/...` 和 `../Data/...` 指向安装根目录下的对应文件夹。SQLite 首次连接前会自动创建数据库文件父目录。测试宿主会生成自己的 `bin/Release/config/db_config_test.json`，避免复用正式发布配置时出现路径语义混淆。
 
 ### 3. 构建项目
 
@@ -135,7 +135,7 @@ MSBuild MeyerScan_Database.sln /p:Configuration=Release /p:Platform=x64
 ### 4. 运行测试
 
 ```cmd
-cd bin\Debug
+cd bin\Release
 DatabaseTest.exe
 ```
 
@@ -264,9 +264,9 @@ Test 9: 线程安全测试
 ============================================
 测试汇总
 ============================================
-通过测试数: 18
+通过测试数: 23
 失败测试数: 0
-总测试数: 18
+总测试数: 23
 所有测试通过 ✓
 ============================================
 ```
@@ -291,6 +291,7 @@ Test 9: 线程安全测试
 ```
 
 **注意**：MySQL 连接使用硬编码账号密码（admin/123456），后续会改为通过 ConfigCenter 加密存储。MySQL 备份源目录当前从 `mysql.dataDir` 读取，支持相对 `db_config.json` 所在目录解析；后续迁入 ConfigCenter，并结合安装目录生成默认值。
+当前产品默认链路为 SQLite，只有客户部署或兼容旧库需要时才切换到 MySQL。
 
 ### SQLite 配置
 

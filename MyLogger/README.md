@@ -91,3 +91,4 @@ m_logger->Write(LogLevel::Info,
 - 当前 `Logger.dll` 版本为 `MeyerScan_Logger v1.1.0 (2026-06-24)`。
 - 旧版 `LogBuffer.*` 已删除；现在没有后台缓冲线程。
 - 新增日志字段时优先通过 `content` 写稳定 key/value 文本，避免频繁改 DLL ABI。
+- `LoggerTest.exe` 的测试日志目录必须从测试 exe 所在目录推导到同级 `logs`，不得写死 `F:\MeyerScan` 或其它开发机绝对路径。

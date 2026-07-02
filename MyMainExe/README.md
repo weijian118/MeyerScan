@@ -8,17 +8,19 @@
 3. 显示启动等待页。
 4. 初始化 Logger、ConfigCenter、Permission、UIComponents、Database，并由 MainExe 内部生成版本清单。
 5. 根据 ConfigCenter 的 `database.type` 设置数据库类型，并执行数据库健康检查。
-6. 写出 `logs/versionList/versionList_时间戳.json`。
-7. 调用既有 `MeyerLoginWidget.dll` 显示登录界面。
-8. 登录成功后加载 `MyHomeUI` 首页模块。
-9. HomeUI 发出入口点击事件，MainExe 集中切换到 `MyCaseUI` 案例管理模块。
-10. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
+6. 初始化 `MeyerScan_RuntimeDataCenter.dll` 并预热本地/云端运行时快照。
+7. 写出 `logs/versionList/versionList_时间戳.json`。
+8. 调用既有 `MeyerLoginWidget.dll` 显示登录界面。
+9. 登录成功后加载 `MyHomeUI` 首页模块。
+10. HomeUI 发出入口点击事件，MainExe 集中切换到 `MyCaseUI` 案例管理模块。
+11. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
 
 ## 当前边界
 
 - MainExe 只做启动、模块编排和窗口容器。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
 - 当前 MainExe 直接调用 Database 只做启动健康检查，不做业务查询；正式病例、订单和扫描方案必须走 Service/Workflow。
+- RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
 - 所有运行路径基于 `QCoreApplication::applicationDirPath()`，不使用 `QDir::currentPath()`，避免第三方软件拉起时工作目录错误。
 - 日志目录固定为 `MeyerScan.exe` 同级 `logs/`，版本清单写入 `logs/versionList/`。
 - ConfigCenter 当前读取 `config/runtime_config.json`；Permission 当前读取 `config/permission_rules.json`，先用于首页“设置”和浏览“返回首页”的显隐控制。
@@ -42,6 +44,7 @@
 - 客户可触发的导航、按钮、页签、查询等操作必须写结构化日志；MainExe 记录跨模块导航和页面切换，UI 模块记录模块内操作。
 - 登录离线许可文件统一放在 `Resources/license.lic`；后续 `Resources` 还会放图标、图片、多语言等资源。
 - Release 输出目录会复制登录、首页、案例、数据库、日志模块及 Qt/VC/UCRT/OpenSSL/AWS 等运行依赖，作为后续安装包依赖清单参考。
+- 聚合根目录 `F:\MeyerScan\bin\Release` 和单模块目录 `MyMainExe\bin\Release` 都应能运行 `MeyerScan.exe --smoke-main`；自研 Qt DLL 和插件必须从编译所用 Qt 5.6.3 目录复制，避免混用 Qt 5.6.2 / 5.6.3。
 
 ## 构建
 

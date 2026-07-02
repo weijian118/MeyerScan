@@ -9,6 +9,7 @@
 #include "HomeUI.h"
 #include "MeyerLoginWidget.h"
 #include "Permission.h"
+#include "RuntimeDataCenter.h"
 #include "SettingsUI.h"
 #include "UIComponents.h"
 
@@ -180,6 +181,7 @@ private:
     ISettingsUI* m_settings = nullptr;
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
+    IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
     IUIComponents* m_uiComponents = nullptr;
     ILogger* m_logger = nullptr;
     QWidget* m_homeWidget = nullptr;

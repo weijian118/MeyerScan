@@ -1,5 +1,25 @@
 # MeyerScan Database 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，同时声明 `DatabaseTest.exe`，支持 VSCode/CMake Tools 与 VS2015 生成器构建。
+- 按评审结论修正非界面模块 Qt 边界：Database 当前继续使用 QtSql 维持已跑通的 MySQL/SQLite 链路，但 Qt 只作为内部实现细节，公共接口继续保持 POD、UTF-8、调用方缓冲区和 Result 结构。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试项目和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求继续补强 `DatabaseTest.cpp`：补充 VS2015 不使用 `std::filesystem` 的路径处理、`GetModuleFileNameA`、`CreateDirectoryA`、测试配置写入、测试日志兜底和重复调用验证说明。
+- 前一轮已补强 `DatabaseImpl.cpp` 中 `QMutexLocker` RAII、UTF-8 路径、JSON 默认值、POD ABI、Qt SQL 驱动分支、SQL UTF-8 和 UI 不应直接传业务 SQL 等说明。
+- 本轮只补充注释和文档记录，不改变数据库连接、事务、备份或 SQLite 默认链路。
+
+## 2026-06-30
+
+- 默认数据库配置切换为 SQLite：`config/db_config.json` 中 `databaseType` 改为 `sqlite`。
+- SQLite 连接前自动创建数据库文件父目录，避免首次安装或首次运行时 `Data` 目录不存在导致连接失败。
+- `DatabaseTest.exe` 默认生成 SQLite 测试配置，并按当前数据库类型选择列出表 SQL，避免日常验证依赖本机 MySQL 服务状态。
+- VS2015 Release PostBuild 的 Qt DLL、SQL 驱动复制来源统一到编译所用 `C:\Qt\Qt5.6.3\5.6.3\msvc2015_64`，避免输出目录混用 Qt 5.6.2 / 5.6.3。
+- `DatabaseTest.exe` 入口创建 `QCoreApplication`，确保 Qt Core/Sql 和 SQL 驱动加载环境初始化后再调用 Database 单例。
+
 ## 2026-06-25
 
 - 修正 `DatabaseTest` PostBuild 中 `libmysql.dll` 的复制来源，改为从既有安装目录 `C:\Program Files (x86)\MeyerScan\libmysql.dll` 复制，避免构建时继续访问不存在的 `F:\MeyerScan\MySQL\lib`。

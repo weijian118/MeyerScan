@@ -1,5 +1,16 @@
 # MeyerScan CaseOrderService 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
+- 按评审结论修正非界面模块 Qt 边界：当前 Qt JSON 只作为 `.cpp` 内部字段映射实现，公共头文件继续使用 UTF-8 JSON 和调用方缓冲区，后续可替换内部实现而不影响 UI/主程序。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake 和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求继续补强 `CaseOrderServiceImpl.cpp`：补充 C ABI 固定结构体返回、`QByteArray::constData()` 生命周期、JSON compact 存储、调用方缓冲区、静态数组脚本计数、SQL 白名单和骨架期 SQL 转义限制说明。
+- 本轮只补充注释和文档记录，不改变患者/订单 JSON 保存、参考数据查询或 schema 占位逻辑。
+
 ## 2026-06-25
 
 - 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；服务层日志 `[Mod:]` 字段和 `GetModuleVersion()` 均从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。
@@ -27,4 +38,4 @@
 - `ListReferenceDataJson()` 统一读取医生、诊所、技工所等分类主数据，避免 UI 直接拼业务 SQL。
 - 新增 `QueryJson()` 统一查询入口，当前支持 `patientOrder.byOrderId` 和 `referenceData.list` 两个查询名。
 - 当前仍属于服务边界与轻量 schema 骨架；正式字段表、迁移脚本、DAO、权限复核和完整 CRUD 后续实现。
-- 补充模块规则：CaseOrderService 可以优先使用 Qt Core/JSON/SQL 能力；边界控制职责和所有权，不刻意去 Qt 化。
+- 历史口径曾允许 CaseOrderService 优先使用 Qt Core/JSON/SQL；2026-07-02 评审后修正为非界面模块优先评估非 Qt 实现，当前 Qt JSON 仅作为内部实现细节，公共 ABI 不暴露 Qt 类型。

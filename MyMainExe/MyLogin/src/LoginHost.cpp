@@ -17,6 +17,7 @@ LoginHost::LoginHost(QObject* parent)
     : QObject(parent) {
     // 使用 Qt 信号槽连接登录模块返回值。
     // MainExe 集成时也必须接这个信号，否则登录成功后无法进入首页。
+    // connect 的发送者是登录控件，接收者是本测试宿主对象；Qt 会在对象析构时自动断开。
     connect(&m_loginWidget,
             &CBLMeyerLoginWidget::loginStatusReturn,
             this,
@@ -27,6 +28,7 @@ LoginHost::LoginHost(QObject* parent)
 // initLoginWidgetAndShow 是登录模块对外给出的主入口，参数必须一次性传完整。
 void LoginHost::Start() {
     // 参数通过函数单独构造，便于后续对比 MainExe 里真实集成参数。
+    // 登录模块内部会创建并显示自己的窗口，测试宿主不再额外包一层 QWidget。
     m_loginWidget.initLoginWidgetAndShow(BuildLoginParameters());
 }
 
@@ -42,6 +44,7 @@ UserLoginParameters LoginHost::BuildLoginParameters() const {
 
     // UserLoginParameters 是外部登录模块定义的结构体。
     // 这里逐项赋值，避免 memset 破坏 QString 成员的构造状态。
+    // QString 是非 POD 类型，不能像 C 结构体那样整块清零。
     UserLoginParameters params;
 
     // 测试宿主先固定缩放系数为 1。MainExe 后续会根据统一 UI/DPI 策略计算。
@@ -49,6 +52,7 @@ UserLoginParameters LoginHost::BuildLoginParameters() const {
     params.nfaktoH = 1.0;
 
     // 离线许可文件统一放在 Resources 目录，避免运行时依赖 D:\wj 开发路径。
+    // QDir(appDir).filePath 会正确处理路径分隔符。
     params.dataPath = QDir(appDir).filePath("Resources/license.lic");
 
     // 语言索引使用登录模块既有枚举，登录模块内部会加载对应 qm。
@@ -56,6 +60,7 @@ UserLoginParameters LoginHost::BuildLoginParameters() const {
 
     // AppPath 必须是口扫主程序所在目录。测试宿主用自身目录模拟正式安装目录。
     params.AppPath = appDir;
+    // fromUtf8 明确 URL 字节编码；URL 当前是 ASCII，但保持统一写法。
     params.loginUrl = QString::fromUtf8(kDefaultLoginUrl);
     params.registerUrl = QString::fromUtf8(kDefaultLoginUrl);
 
@@ -75,6 +80,8 @@ void LoginHost::OnLoginStatusReturn(const LoginReturnParameters& result) {
     if (result.currentStatus == LOGIN_SUCCESS ||
         result.currentStatus == WRITECLOUDMSG_SUCCESS ||
         result.currentStatus == USER_CANCEL_LOGIN) {
+        // singleShot(0) 表示等当前信号槽调用栈返回后再退出事件循环，
+        // 避免登录模块还在发信号时 QApplication 立即退出导致内部清理顺序异常。
         QTimer::singleShot(0, qApp, SLOT(quit()));
     }
 }

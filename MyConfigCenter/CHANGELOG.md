@@ -1,5 +1,21 @@
 # MeyerScan ConfigCenter 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
+- 按评审结论修正非界面模块 Qt 边界：当前 Qt JSON/文件读取只作为内部实现细节，公共接口不暴露 Qt 类型；后续新增能力优先评估非 Qt 实现。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、配置说明和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `ConfigCenterImpl.cpp`：补充 UTF-8 路径转换、`QDir::mkpath/filePath`、JSON 解析、点号 key 解析、调用方缓冲区、默认配置生成和旧配置迁移写回等内部机制说明。
+- 本轮只补充注释和文档记录，不改变配置读取、默认值或迁移逻辑。
+
+## 2026-06-30
+
+- `runtime_config.json` 默认数据库类型切换为 `sqlite`，MainExe 启动后默认调用 Database 的 SQLite 链路。
+- README 明确当前默认值为 SQLite，MySQL 仅作为可切换能力保留。
+
 ## 2026-06-25
 
 - 新增 `config/runtime_config.json` 默认模板，并在 VS2015 PostBuild 中复制到 Release `config/`；字段说明继续放在同级 `runtime_config.md`，JSON 内部不写注释。

@@ -2,6 +2,8 @@
 
 `MyPermission` 是权限模块的第一版骨架，当前用于打通功能显隐流程。
 
+2026-07-02 评审后，Permission 按非界面模块管理：后续新增能力优先评估非 Qt 实现。当前 Qt JSON 读取规则文件只作为内部实现细节，公共接口保持 `const char*` / `bool`。
+
 - 从 `MeyerScan.exe` 同级 `config/permission_rules.json` 读取权限规则。
 - 权限字段说明写在同级 `config/permission_rules.md`，JSON 内部不写注释。
 - 当前只提供 `IsFeatureVisible()` 和 `IsFeatureEnabled()`。

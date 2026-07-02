@@ -1,5 +1,35 @@
 # MeyerScan CaseUI 变更记录
 
+## 2026-07-02
+
+- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents、RuntimeDataCenter、Database 等当前依赖。
+- 按评审结论同步 UI/业务分离规则：CaseUI 继续作为 Qt 界面模块，只展示列表、记录操作和上报动作；业务保存、删除、加载订单规则不得回到 UI 内。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试宿主和自研产物。
+- 继续按“实现技巧型注释”要求补强 `CaseUITest.exe`：说明患者/订单/参考数据最小旧表分别服务哪个 RuntimeDataCenter domain，测试宿主为什么可以造数据而正式 CaseUI 不能造数据，患者/订单演示字段如何支撑两个 Tab 的表格显示，以及 `--smoke` 如何通过表格行数验证真实链路。
+- 本轮只补充测试宿主注释和文档记录，不改变 CaseUI 列表读取、动作上报或页面切换逻辑。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `CaseUITest.exe` 测试宿主：补充屏幕居中、多显示器坐标、模块根目录推导、SQLite 演示数据准备、测试造数据与正式 UI 边界、`findChildren<QTableWidget*>` 冒烟检查和事件循环等待说明。
+- 前一轮已补强 `CaseUIImpl.cpp` 中 RuntimeDataCenter 动态加载、跨 DLL 缓冲区、JSON items 解析、`QTableWidget` 所有权、字段兼容读取和 UI 不拼业务 SQL 的说明。
+- 根据文档规则与代码复核结果，CaseUI 不再主动调用 `RuntimeDataCenter.ReloadAll()`；MainExe 启动期负责全域刷新，CaseUI 只初始化 RuntimeDataCenter，并在读取患者/订单 domain 时按需懒加载。
+- 复核需求与代码后调整 CaseUI 初始化顺序：先完成 Database 健康检查，再加载 RuntimeDataCenter，避免独立测试时先刷新缓存产生无意义的数据库未就绪日志。
+- 修正患者/订单表格附近的旧注释：当前列表展示读取 RuntimeDataCenter 只读快照；复杂搜索、分页、编辑、删除、状态变化和打开订单仍归 CaseOrderService / OrderWorkflowService。
+- `CaseUITest.exe --smoke` 的 SQLite 演示库补齐 `meyer_scan`、`soft_init`、`user_tbl`、`user_tbl2`、`device_info_tbl2` 等轻量表。
+- 演示库现在覆盖 RuntimeDataCenter 当前声明的全部本地 domain，避免 MainExe 集成测试日志被预期缺表 Warning 干扰。
+- 正式 `MeyerScan_CaseUI.dll` 仍只负责 UI 展示和动作上报，不负责建表、迁移或业务写入；正式 schema 初始化仍归后续 migration / CaseOrderService。
+- 验证：`MeyerScan_AllModules.sln` Release x64 构建通过；`RuntimeDataCenterTest.exe`、`CaseUITest.exe --smoke`、`SettingsUITest.exe --smoke`、MainExe 单模块和根聚合目录 `MeyerScan.exe --smoke-main` 均返回 0。
+
+## 2026-06-30
+
+- 动态加载 `MeyerScan_RuntimeDataCenter.dll`，从 `local.patients` 和 `local.orders` 读取运行时 JSON 快照填充患者/订单表格。
+- CaseUI 仍只负责 UI 展示、客户操作日志和动作 ID 上报；RuntimeDataCenter 只提供只读快照，新增/编辑/删除和状态变化仍归 CaseOrderService/Workflow。
+- Release PostBuild 增加 `MeyerScan_RuntimeDataCenter.dll` 复制，保证单模块测试宿主和 MainExe 运行目录都能加载快照模块。
+- RuntimeDataCenter 读取缓冲改为 512KB 起步、倍增到 32MB 的有限重试，防止字段扩展后固定缓冲区不足导致患者/订单列表误显示为空。
+- `CaseUITest.exe --smoke` 增加 SQLite 演示数据准备：空库时创建最小旧表并写入患者、订单、诊所、技工所、医生各一条数据。
+- `CaseUITest.exe --smoke` 从只验证窗口创建升级为检查患者表和订单表均有数据行。
+- 验证：`MeyerScan_CaseUI.sln` Release x64 构建通过，`CaseUITest.exe --smoke` 返回 0。
+
 ## 2026-06-26
 
 - 顶部“返回首页”和“设置”按钮接入 `MeyerScan_UIComponents.dll` 的 Secondary 标准样式。

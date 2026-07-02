@@ -1,0 +1,97 @@
+# 本文件用于 F:\MeyerScan-Reposit 本地备份仓库。
+# 与 F:\MeyerScan\.gitignore 不同，本地备份仓库需要保留自研 DLL/EXE/LIB。
+# 但 Qt、VC/UCRT、OpenSSL、AWS、MySQL、SQLiteStudio、SQL 驱动等第三方运行文件不进入备份。
+
+.git/
+.vs/
+**/.vs/
+
+# 编译中间目录和 CMake 临时文件仍不备份。
+**/obj/
+**/build/
+**/build_vs2015/
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+*.cmake.user
+
+# 运行期现场数据不进入工程备份。
+**/logs/
+**/backup/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.frm
+*.MYD
+*.MYI
+
+# VS 用户私有文件不进入备份。
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.vcxproj.filters.user
+*.vc.db
+*.VC.db
+
+# 保留自研 DLL/EXE/LIB，但过滤常见链接/增量编译中间文件。
+*.exp
+*.ilk
+*.iobj
+*.ipdb
+
+# Qt 运行库、插件和常见第三方运行库不进入本地仓库。
+Qt5*.dll
+q*.dll
+api-ms-win-*.dll
+msvcp*.dll
+msvcr*.dll
+vcruntime*.dll
+ucrtbase.dll
+ucrtbased.dll
+concrt*.dll
+libcrypto*.dll
+libssl*.dll
+libeay32.dll
+ssleay32.dll
+libcurl.dll
+libmysql.dll
+libmysqld.dll
+sqlite.dll
+sqlite3.dll
+aws-*.dll
+zlib*.dll
+zlib1.dll
+zlibwapi.dll
+tcl86.dll
+windowsprintersupport.dll
+
+# SQLiteStudio、MySQL 插件等第三方工具 DLL 不进入本地仓库。
+adt_null.dll
+auth.dll
+auth_test_plugin.dll
+ConfigMigration.dll
+coreSQLiteStudio.dll
+CsvExport.dll
+CsvImport.dll
+DbAndroid.dll
+DbSqlite*.dll
+guiSQLiteStudio.dll
+HtmlExport.dll
+JsonExport.dll
+mysql_no_login.dll
+PdfExport.dll
+Printing.dll
+RegExpImport.dll
+ScriptingTcl.dll
+semisync_*.dll
+Sql*.dll
+validate_password.dll
+XmlExport.dll
+
+# 压缩包和系统缩略图不进入备份。
+*.zip
+.DS_Store
+Thumbs.db

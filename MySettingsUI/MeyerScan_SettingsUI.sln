@@ -5,6 +5,9 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_SettingsUI", "MeyerScan_SettingsUI.vcxproj", "{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SettingsUITest", "SettingsUITest.vcxproj", "{4D15F038-7C1D-4EAA-9C44-E8C3135E306A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E} = {690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

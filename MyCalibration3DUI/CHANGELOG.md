@@ -1,5 +1,16 @@
 # MeyerScan Calibration3DUI 变更记录
 
+## 2026-07-02
+
+- 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
+- 按评审结论同步工程规则：本模块是 Qt 界面模块，可以继续使用 Qt Widgets；校准 UI 与流程入口保持独立，但后续算法/设备重资源仍通过清晰接口调用，不把病例/订单业务写入校准模块。
+- 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake 和自研产物。
+
+## 2026-07-01
+
+- 按“实现技巧型注释”要求补强 `Calibration3DUIImpl.cpp`：补充 Qt 父子对象、布局容器、占位采集区、Start/Cancel 占位按钮、多语言 `tr()`、日志 UTF-8 ABI 和未来算法/设备资源释放边界说明。
+- 本轮只补充注释和文档记录，不改变三维校准 UI 骨架逻辑。
+
 ## 2026-06-25
 
 - 新增 `ModuleInfo::Name` / `ModuleInfo::Version` 统一模块信息来源；三维校准日志 `[Mod:]` 字段和 `GetModuleVersion()` 均从该结构读取，要求与 `MEYER_MODULE_NAME`、`Version.rc` 保持一致。

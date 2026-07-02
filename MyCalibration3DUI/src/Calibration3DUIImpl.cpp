@@ -19,6 +19,7 @@ const char* Version = "MeyerScan_Calibration3DUI v0.1.0 (2026-06-24)";
 // 返回三维校准模块单例。
 // C++11 保证局部静态变量初始化线程安全。
 Calibration3DUIImpl& Calibration3DUIImpl::Instance() {
+    // 校准模块内部会缓存日志和根页面弱引用，使用单例保证同进程只维护一份状态。
     static Calibration3DUIImpl instance;
     return instance;
 }
@@ -27,6 +28,7 @@ Calibration3DUIImpl& Calibration3DUIImpl::Instance() {
 // 当前骨架只缓存安装目录和日志目录；后续接入算法/设备库时也应放在此处完成。
 bool Calibration3DUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // 保存为 QByteArray，保证 const char* 生命周期不依赖调用方传入的临时对象。
+    // 这在 MainExe 使用 QDir::fromNativeSeparators(...).toUtf8().constData() 调用时尤其重要。
     m_appDir = QByteArray(appDirUtf8 ? appDirUtf8 : "");
     m_logDir = QByteArray(logDirUtf8 ? logDirUtf8 : "");
 
@@ -44,33 +46,40 @@ bool Calibration3DUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
 QWidget* Calibration3DUIImpl::CreateWidget(QWidget* parent) {
     // root 挂到 parent 下，由调用方页面容器管理销毁。
     auto* root = new QWidget(parent);
+    // objectName 用于样式表和自动化测试定位，避免只能靠控件类型查找。
     root->setObjectName("MeyerScanCalibration3DUIRoot");
+    // 最小尺寸先保护未来采集预览区域，不让窗口过小导致控件挤压。
     root->setMinimumSize(980, 620);
 
     // 全部使用 Qt Layout，不使用绝对坐标，后续真实控件增删时更容易维护。
     auto* layout = new QVBoxLayout(root);
+    // 边距和间距由本模块统一控制，避免子控件各自写固定位置。
     layout->setContentsMargins(24, 22, 24, 22);
     layout->setSpacing(16);
 
     // UI 源文案保持英文并使用 tr()，中文由 qm 文件提供。
     auto* title = new QLabel(tr("3D Calibration"), root);
     QFont titleFont = title->font();
+    // 复用系统字体，只调整字号和粗细，避免多语言字体回退出问题。
     titleFont.setPointSize(18);
     titleFont.setBold(true);
     title->setFont(titleFont);
     layout->addWidget(title);
 
     auto* intro = new QLabel(tr("Prepare the calibration board and follow the capture sequence."), root);
+    // WordWrap 允许长英文或其它语言翻译自动换行，不需要写语言 if/else 调宽度。
     intro->setWordWrap(true);
     intro->setStyleSheet("QLabel{color:#52616f;}");
     layout->addWidget(intro);
 
     auto* content = new QFrame(root);
+    // QFrame 用作内容容器，后续可以把采集预览、步骤状态和结果页都放进这里。
     content->setObjectName("Calibration3DContent");
     content->setStyleSheet("QFrame#Calibration3DContent{border:1px solid #cfd8dc;border-radius:4px;background:#ffffff;}");
 
     // 内容区先保留为一个稳定容器，后续真实采集预览、步骤提示和结果视图都放在这里扩展。
     auto* contentLayout = new QVBoxLayout(content);
+    // contentLayout 的 parent 是 content，Qt 会自动把 layout 绑定到该 frame。
     contentLayout->setContentsMargins(18, 18, 18, 18);
     contentLayout->setSpacing(12);
 
@@ -82,11 +91,13 @@ QWidget* Calibration3DUIImpl::CreateWidget(QWidget* parent) {
     contentLayout->addWidget(step, 1);
 
     auto* buttonRow = new QHBoxLayout();
+    // addStretch 把按钮推到右侧，符合设置/向导页常见操作区布局。
     buttonRow->addStretch();
 
     // 当前按钮只占位，不连接算法流程；真实 Start/Cancel 后续应在本模块内部接入。
     auto* startButton = new QPushButton(tr("Start"), content);
     auto* cancelButton = new QPushButton(tr("Cancel"), content);
+    // 宽度只设最小值，给多语言翻译留出自然扩展空间。
     startButton->setMinimumWidth(120);
     cancelButton->setMinimumWidth(120);
     buttonRow->addWidget(startButton);
@@ -116,6 +127,7 @@ void Calibration3DUIImpl::Shutdown() {
     }
 
     // 只清空弱引用和缓存路径。root 的真实释放由 Qt 父子关系或调用方 deleteLater 负责。
+    // 未来接入算法/设备句柄时，应在这里释放本模块明确拥有的资源。
     m_root = nullptr;
     m_logger = nullptr;
     m_appDir.clear();
@@ -131,11 +143,13 @@ void Calibration3DUIImpl::WriteLog(LogLevel level, const char* operation, const 
 
     // Logger 公共 ABI 使用 UTF-8 const char*，这里在调用前转换。
     const QByteArray bytes = content.toUtf8();
+    // QByteArray 局部变量保证 bytes.constData() 在 Write 调用期间有效。
     // 标定页当前没有真实操作员上下文，传空字符串让 Logger 省略 Op 字段。
     m_logger->Write(level, ModuleInfo::Name, operation, "", "", "", bytes.constData());
 }
 
 // 导出三维校准 UI 模块实例。
 extern "C" MEYERSCAN_CALIBRATION3DUI_API ICalibration3DUI* GetCalibration3DUI() {
+    // 对外只暴露接口指针，后续内部页面和算法接入不会影响调用方头文件。
     return &Calibration3DUIImpl::Instance();
 }

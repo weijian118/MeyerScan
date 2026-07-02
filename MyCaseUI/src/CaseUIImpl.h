@@ -3,13 +3,21 @@
 #include "CaseUI.h"
 #include "Database.h"
 #include "Logger.h"
+#include "RuntimeDataCenter.h"
 #include "UIComponents.h"
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLibrary>
 #include <QString>
+#include <QStringList>
 
 using GetLoggerFunc = ILogger* (*)();
+using GetRuntimeDataCenterFunc = IRuntimeDataCenter* (*)();
 using GetUIComponentsFunc = IUIComponents* (*)();
+
+class QTableWidget;
 
 // CaseUIImpl 是案例管理 UI 模块的实现。
 // 它只负责列表/按钮/页签等界面框架和动作上报，不直接做患者/订单 CRUD。
@@ -53,6 +61,9 @@ private:
     // 动态加载共享 UI 组件模块。
     void LoadUIComponents();
 
+    // 动态加载运行时数据中心模块。
+    void LoadRuntimeDataCenter();
+
     // 做数据库健康检查；正式业务数据读取后续迁到 CaseOrderService。
     void InitDatabase(const char* databaseConfigPath);
 
@@ -74,6 +85,18 @@ private:
     // 创建订单管理 Tab 的框架页面。
     QWidget* CreateOrderTab(QWidget* parent);
 
+    // 从 RuntimeDataCenter 读取某个 domain 的 items 数组。
+    QJsonArray LoadRuntimeItems(const char* domain);
+
+    // 用患者快照填充患者表。
+    void FillPatientTable(QTableWidget* table, const QJsonArray& items);
+
+    // 用订单快照填充订单表。
+    void FillOrderTable(QTableWidget* table, const QJsonArray& items);
+
+    // 从 JSON 对象读取第一个非空字段。
+    QString FirstText(const QJsonObject& object, const QStringList& keys) const;
+
 private:
     // Logger DLL 句柄使用 PreventUnloadHint，避免退出时卸载顺序破坏日志对象。
     QLibrary m_loggerLibrary;
@@ -81,11 +104,17 @@ private:
     // UIComponents DLL 句柄；CaseUI 只借用控件工厂统一样式。
     QLibrary m_uiComponentsLibrary;
 
+    // RuntimeDataCenter DLL 句柄；CaseUI 只借用快照读取接口。
+    QLibrary m_runtimeDataCenterLibrary;
+
     // 缓存后的日志接口指针。
     ILogger* m_logger = nullptr;
 
     // 缓存后的共享 UI 接口；不可用时降级为本地 Qt 控件。
     IUIComponents* m_uiComponents = nullptr;
+
+    // 缓存后的运行时数据中心接口；用于读取本地/云端信息快照。
+    IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
 
     // 框架期借用数据库实例做健康检查；正式列表/搜索不应直接用它。
     IDatabase* m_database = nullptr;
