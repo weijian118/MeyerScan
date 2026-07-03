@@ -9,6 +9,7 @@
 #include "DatabaseQtAdapter.h"
 
 #include "Database.h"
+#include "Logger.h"
 
 #include <QJsonObject>
 #include <QtGlobal>
@@ -16,6 +17,11 @@
 #include <vector>
 
 namespace {
+
+namespace ModuleInfo {
+// 模块名用于日志 [Mod:] 字段，必须与 vcxproj/CMake 中的 MEYER_MODULE_NAME 保持一致。
+const char* Name = "MeyerScan_DatabaseQtAdapter";
+}
 
 // 获取底层 Database 单例。
 // 这个函数只存在于 cpp 内部，头文件不暴露 IDatabase，防止 UI/Service 绕过适配层。
@@ -74,6 +80,7 @@ extern "C" MEYERSCAN_DATABASEQTADAPTER_API DatabaseQtAdapter* GetDatabaseQtAdapt
 bool DatabaseQtAdapter::EnsureConnected(const QString& configPath, QString* errorMessage) {
     IDatabase* database = RawDatabase(errorMessage);
     if (!database) {
+        WriteError("EnsureConnected", errorMessage ? *errorMessage : "Database instance unavailable");
         return false;
     }
 
@@ -87,21 +94,26 @@ bool DatabaseQtAdapter::EnsureConnected(const QString& configPath, QString* erro
     const QByteArray configBytes = configPath.toUtf8();
     VoidResult initResult = database->Init(configBytes.constData());
     if (initResult.IsError()) {
+        const QString message = ResultMessage(initResult.message, "Database init failed");
         if (errorMessage) {
-            *errorMessage = ResultMessage(initResult.message, "Database init failed");
+            *errorMessage = message;
         }
+        WriteError("EnsureConnected", message);
         return false;
     }
 
     // Connect 只返回结果结构，不抛异常；失败原因通过 message 取回。
     VoidResult connectResult = database->Connect();
     if (connectResult.IsError()) {
+        const QString message = ResultMessage(connectResult.message, "Database connect failed");
         if (errorMessage) {
-            *errorMessage = ResultMessage(connectResult.message, "Database connect failed");
+            *errorMessage = message;
         }
+        WriteError("EnsureConnected", message);
         return false;
     }
 
+    WriteInfo("EnsureConnected", "Database connected through Qt adapter");
     return database->IsConnected();
 }
 
@@ -111,6 +123,7 @@ bool DatabaseQtAdapter::EnsureConnected(const QString& configPath,
                                         QString* errorMessage) {
     IDatabase* database = RawDatabase(errorMessage);
     if (!database) {
+        WriteError("EnsureConnected", errorMessage ? *errorMessage : "Database instance unavailable");
         return false;
     }
 
@@ -123,9 +136,11 @@ bool DatabaseQtAdapter::EnsureConnected(const QString& configPath,
     const QByteArray configBytes = configPath.toUtf8();
     VoidResult initResult = database->Init(configBytes.constData());
     if (initResult.IsError()) {
+        const QString message = ResultMessage(initResult.message, "Database init failed");
         if (errorMessage) {
-            *errorMessage = ResultMessage(initResult.message, "Database init failed");
+            *errorMessage = message;
         }
+        WriteError("EnsureConnected", message);
         return false;
     }
 
@@ -137,9 +152,11 @@ bool DatabaseQtAdapter::EnsureConnected(const QString& configPath,
             : DatabaseType::SQLite;
         VoidResult typeResult = database->SetDatabaseType(targetType);
         if (typeResult.IsError()) {
+            const QString message = ResultMessage(typeResult.message, "Database type switch failed");
             if (errorMessage) {
-                *errorMessage = ResultMessage(typeResult.message, "Database type switch failed");
+                *errorMessage = message;
             }
+            WriteError("EnsureConnected", message);
             return false;
         }
     }
@@ -147,12 +164,17 @@ bool DatabaseQtAdapter::EnsureConnected(const QString& configPath,
     // SetDatabaseType 当前会尝试连接；这里再调用 Connect 作为幂等确认。
     VoidResult connectResult = database->Connect();
     if (connectResult.IsError()) {
+        const QString message = ResultMessage(connectResult.message, "Database connect failed");
         if (errorMessage) {
-            *errorMessage = ResultMessage(connectResult.message, "Database connect failed");
+            *errorMessage = message;
         }
+        WriteError("EnsureConnected", message);
         return false;
     }
 
+    WriteInfo("EnsureConnected", normalizedType.isEmpty()
+        ? "Database connected through Qt adapter"
+        : QString("Database connected through Qt adapter, requested type=%1").arg(normalizedType));
     return database->IsConnected();
 }
 
@@ -161,15 +183,31 @@ bool DatabaseQtAdapter::SetDatabaseTypeName(const QString& databaseType, QString
     // 配置中心通常返回字符串，所以这里做大小写和空白归一化。
     const QString normalizedType = databaseType.trimmed().toLower();
     if (normalizedType == "sqlite") {
-        return SetRawDatabaseType(DatabaseType::SQLite, errorMessage);
+        const bool ok = SetRawDatabaseType(DatabaseType::SQLite, errorMessage);
+        if (ok) {
+            WriteInfo("SetDatabaseTypeName", "Database type switched to sqlite");
+        } else {
+            WriteError("SetDatabaseTypeName",
+                       errorMessage ? *errorMessage : "Database type switch failed");
+        }
+        return ok;
     }
     if (normalizedType == "mysql") {
-        return SetRawDatabaseType(DatabaseType::MySQL, errorMessage);
+        const bool ok = SetRawDatabaseType(DatabaseType::MySQL, errorMessage);
+        if (ok) {
+            WriteInfo("SetDatabaseTypeName", "Database type switched to mysql");
+        } else {
+            WriteError("SetDatabaseTypeName",
+                       errorMessage ? *errorMessage : "Database type switch failed");
+        }
+        return ok;
     }
 
+    const QString message = QString("Unsupported database type: %1").arg(databaseType);
     if (errorMessage) {
-        *errorMessage = QString("Unsupported database type: %1").arg(databaseType);
+        *errorMessage = message;
     }
+    WriteWarning("SetDatabaseTypeName", message);
     return false;
 }
 
@@ -184,6 +222,7 @@ void DatabaseQtAdapter::Disconnect() {
     IDatabase* database = RawDatabase();
     if (database) {
         database->Disconnect();
+        WriteInfo("Disconnect", "Database disconnected through Qt adapter");
     }
 }
 
@@ -192,6 +231,7 @@ void DatabaseQtAdapter::Shutdown() {
     IDatabase* database = RawDatabase();
     if (database) {
         database->Shutdown();
+        WriteInfo("Shutdown", "Database module shut down through Qt adapter");
     }
 }
 
@@ -205,6 +245,7 @@ QString DatabaseQtAdapter::DatabaseModuleVersion() const {
 bool DatabaseQtAdapter::ExecuteUpdate(const QString& sql, QString* errorMessage) {
     IDatabase* database = RawDatabase(errorMessage);
     if (!database) {
+        WriteError("ExecuteUpdate", errorMessage ? *errorMessage : "Database instance unavailable");
         return false;
     }
 
@@ -212,9 +253,11 @@ bool DatabaseQtAdapter::ExecuteUpdate(const QString& sql, QString* errorMessage)
     const QByteArray sqlBytes = sql.toUtf8();
     Result<DbResult> result = database->ExecuteUpdate(sqlBytes.constData());
     if (result.IsError()) {
+        const QString message = ResultMessage(result.message, "SQL update failed");
         if (errorMessage) {
-            *errorMessage = ResultMessage(result.message, "SQL update failed");
+            *errorMessage = message;
         }
+        WriteError("ExecuteUpdate", QString("%1; sqlLength=%2").arg(message).arg(sqlBytes.size()));
         return false;
     }
 
@@ -225,6 +268,9 @@ bool DatabaseQtAdapter::ExecuteUpdate(const QString& sql, QString* errorMessage)
 int DatabaseQtAdapter::ExecuteScript(const QList<QByteArray>& scripts) {
     IDatabase* database = RawDatabase();
     if (!database || scripts.isEmpty()) {
+        WriteWarning("ExecuteScript", !database
+            ? "Database instance unavailable"
+            : "Script list is empty");
         return 0;
     }
 
@@ -261,11 +307,13 @@ bool DatabaseQtAdapter::ExecuteQueryJson(const QString& sql,
         if (errorMessage) {
             *errorMessage = "Output JSON buffer is invalid";
         }
+        WriteError("ExecuteQueryJson", "Output JSON buffer is invalid");
         return false;
     }
 
     IDatabase* database = RawDatabase(errorMessage);
     if (!database) {
+        WriteError("ExecuteQueryJson", errorMessage ? *errorMessage : "Database instance unavailable");
         return false;
     }
 
@@ -290,13 +338,17 @@ bool DatabaseQtAdapter::ExecuteQueryJson(const QString& sql,
             if (errorMessage) {
                 *errorMessage = message;
             }
+            WriteError("ExecuteQueryJson",
+                       QString("%1; sqlLength=%2").arg(message).arg(sqlBytes.size()));
             return false;
         }
 
         if (bufferSize == bufferLimit) {
+            const QString message = QString("JSON output is larger than %1 bytes").arg(bufferLimit);
             if (errorMessage) {
-                *errorMessage = QString("JSON output is larger than %1 bytes").arg(bufferLimit);
+                *errorMessage = message;
             }
+            WriteError("ExecuteQueryJson", message);
             return false;
         }
 
@@ -307,6 +359,7 @@ bool DatabaseQtAdapter::ExecuteQueryJson(const QString& sql,
     if (errorMessage) {
         *errorMessage = "SQL query failed";
     }
+    WriteError("ExecuteQueryJson", "SQL query failed");
     return false;
 }
 
@@ -318,6 +371,7 @@ bool DatabaseQtAdapter::ExecuteQueryJsonDocument(const QString& sql,
         if (errorMessage) {
             *errorMessage = "Output JSON document is invalid";
         }
+        WriteError("ExecuteQueryJsonDocument", "Output JSON document is invalid");
         return false;
     }
 
@@ -332,6 +386,8 @@ bool DatabaseQtAdapter::ExecuteQueryJsonDocument(const QString& sql,
         if (errorMessage) {
             *errorMessage = parseError.errorString();
         }
+        WriteError("ExecuteQueryJsonDocument",
+                   QString("JSON parse failed: %1").arg(parseError.errorString()));
         return false;
     }
 
@@ -359,4 +415,40 @@ QString DatabaseQtAdapter::EscapeSqlText(const QString& text) {
 // 转换 Database 结果消息。
 QString DatabaseQtAdapter::ResultMessage(const char* message, const QString& fallback) {
     return DatabaseResultMessage(message, fallback);
+}
+
+// 获取并缓存 Logger 单例。
+ILogger* DatabaseQtAdapter::Logger() const {
+    if (!m_logger) {
+        // GetLogger() 来自 Logger.dll；Adapter 只保存指针，不拥有 Logger 生命周期。
+        m_logger = GetLogger();
+    }
+    return m_logger;
+}
+
+// 写 Info 级别边界日志。
+void DatabaseQtAdapter::WriteInfo(const QString& operation, const QString& content) const {
+    ILogger* logger = Logger();
+    if (!logger) {
+        return;
+    }
+    logger->Write(LogLevel::Info, ModuleInfo::Name, operation, "", "", "", content);
+}
+
+// 写 Warning 级别边界日志。
+void DatabaseQtAdapter::WriteWarning(const QString& operation, const QString& content) const {
+    ILogger* logger = Logger();
+    if (!logger) {
+        return;
+    }
+    logger->Write(LogLevel::Warning, ModuleInfo::Name, operation, "", "", "", content);
+}
+
+// 写 Error 级别边界日志。
+void DatabaseQtAdapter::WriteError(const QString& operation, const QString& content) const {
+    ILogger* logger = Logger();
+    if (!logger) {
+        return;
+    }
+    logger->Write(LogLevel::Error, ModuleInfo::Name, operation, "", "", "", content);
 }

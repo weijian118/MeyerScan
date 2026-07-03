@@ -45,3 +45,8 @@
 - 新增 `QueryJson()` 统一查询入口，当前支持 `patientOrder.byOrderId` 和 `referenceData.list` 两个查询名。
 - 当前仍属于服务边界与轻量 schema 骨架；正式字段表、迁移脚本、DAO、权限复核和完整 CRUD 后续实现。
 - 历史口径曾允许 CaseOrderService 优先使用 Qt Core/JSON/SQL；2026-07-02 评审后修正为非界面模块优先评估非 Qt 实现，当前 Qt JSON 仅作为内部实现细节，公共 ABI 不暴露 Qt 类型。
+
+## 2026-07-03
+- 新增 `CaseOrderServiceTest.exe` 最小自动测试宿主，覆盖模块初始化、核心接口、关闭流程和关键边界。
+- 同步 VS2015 `.vcxproj/.sln` 与 CMake 测试入口，便于单模块调试和聚合构建。
+- 测试配置和测试数据写入测试 EXE 输出目录，避免污染源码目录和正式发布配置。

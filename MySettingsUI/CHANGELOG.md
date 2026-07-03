@@ -1,5 +1,12 @@
 # MeyerScan SettingsUI 变更记录
 
+## 2026-07-03
+
+- 修复 `SettingsUITest.exe --smoke` 在根聚合输出目录 `F:\MeyerScan\bin\Release` 运行时的路径推导问题：测试宿主现在从 EXE 所在目录向上查找 `MeyerScan_AllModules.sln` 作为仓库根，不再假设 EXE 一定在 `MySettingsUI\bin\Release`。
+- 测试宿主改为生成 `config/SettingsUITest/db_config.json` 和独立 SQLite 测试库，不再复用公共 `config/db_config.json` 指向的数据库，避免不同测试旧表结构互相污染。
+- 测试日志目录按运行形态区分：根聚合输出写入仓库 `logs`，单模块输出写入 `MySettingsUI\logs`，便于批量测试和单模块调试分别排查。
+- 重新验证根输出目录 `SettingsUITest.exe --smoke`，数据库演示数据、RuntimeDataCenter 快照和 Information 页医生/诊所/技工所表格链路返回 0。
+
 ## 2026-07-02
 
 - 2026-07-03 复查补充：单模块 `MeyerScan_SettingsUI.sln` 已重新构建，输出目录同步 RuntimeDataCenter、DatabaseQtAdapter、Database 和 x64 `sqlite3.dll`；`SettingsUITest.exe --smoke` 返回 0。

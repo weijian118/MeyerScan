@@ -36,3 +36,8 @@
 - HomeUI 首页入口按钮已接入 `MeyerButtonRoleEntry`。
 - CaseUI 顶部返回/设置按钮和患者/订单工具栏按钮已接入 Primary / Secondary / Danger 样式。
 - SettingsUI 当前保留设置页内部专用样式，后续按页面逐步迁移通用按钮和表格样式；截图还原类布局仍属于 SettingsUI 自身职责。
+
+## 测试入口
+- VS2015：打开 `MeyerScan_UIComponents.sln`，构建并运行 `UIComponentsTest.exe`。
+- CMake/VSCode：默认开启 `UIComponentsTest` 测试目标，可通过 `MEYER_BUILD_UICOMPONENTSTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

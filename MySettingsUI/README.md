@@ -33,6 +33,10 @@
 
 测试宿主在空 SQLite 库中会创建最小演示表并写入医生、诊所、技工所、患者、订单各一条数据，用于验证“数据库 -> RuntimeDataCenter -> SettingsUI 表格”的链路。正式 `MeyerScan_SettingsUI.dll` 不负责建表、迁移或写入业务数据。
 
+测试宿主从 exe 所在目录向上查找 `MeyerScan_AllModules.sln` 作为仓库根，因此同时兼容单模块输出目录 `MySettingsUI\bin\Release` 和根聚合输出目录 `F:\MeyerScan\bin\Release`。
+
+测试宿主会在输出目录生成 `config/SettingsUITest/db_config.json` 和独立 SQLite 测试库，不复用公共 `config/db_config.json`，避免和 RuntimeDataCenterTest、CaseUITest 等测试互相污染表结构。
+
 ### 云端设置（Cloud，v0.2.0 新增）
 
 | 字段 | 类型 | 默认值 | 说明 |

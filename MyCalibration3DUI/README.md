@@ -22,3 +22,8 @@
 ```powershell
 & 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_Calibration3DUI.sln /p:Configuration=Release /p:Platform=x64
 ```
+
+## 测试入口
+- VS2015：打开 `MeyerScan_Calibration3DUI.sln`，构建并运行 `Calibration3DUITest.exe`。
+- CMake/VSCode：默认开启 `Calibration3DUITest` 测试目标，可通过 `MEYER_BUILD_CALIBRATION3DUITEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

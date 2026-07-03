@@ -20,6 +20,8 @@ CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 - RuntimeDataCenter 只用于读取上下文快照；新增/编辑/删除患者订单、状态变化、保存扫描方案等动作仍必须走 CaseOrderService / ScanSchemaService / Workflow。
 - CaseUI 必须可被 MainExe 随时释放并重建；后续从案例管理进入扫描重建前，MainExe 必须销毁 CaseUI widget，CaseUI 不保留必须跨页面存活的大缓存。
 - 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
+- 测试宿主从 exe 所在目录向上查找 `MeyerScan_AllModules.sln` 作为仓库根，因此同时兼容单模块输出目录 `MyCaseUI\bin\Release` 和根聚合输出目录 `F:\MeyerScan\bin\Release`。
+- 测试宿主会在输出目录生成 `config/CaseUITest/db_config.json` 和独立 SQLite 测试库，不复用公共 `config/db_config.json`，避免和 RuntimeDataCenterTest、SettingsUITest 等测试互相污染表结构。
 - `CaseUITest.exe --smoke` 会在空 SQLite 库中创建最小演示表并写入患者、订单、诊所、技工所、医生各一条数据，用于验证“数据库 -> RuntimeDataCenter -> CaseUI 患者/订单表格”的链路；正式 CaseUI 不负责建表、迁移或业务写入。
 - 模块变更记录维护在 `CHANGELOG.md`。
 

@@ -13,3 +13,8 @@
 - 作为后续版本管理重新独立化的参考实现。
 - 如果版本管理扩展到算法 DLL 哈希、签名校验、云端版本比对、自动更新策略，再恢复为独立 DLL。
 - 当前不要在 MainExe 中继续扩展复杂版本策略；MainExe 只保留“启动生成运行目录版本清单”的轻逻辑。
+
+## 测试入口
+- VS2015：打开 `MeyerScan_VersionManager.sln`，构建并运行 `VersionManagerTest.exe`。
+- CMake/VSCode：默认开启 `VersionManagerTest` 测试目标，可通过 `MEYER_BUILD_VERSIONMANAGERTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

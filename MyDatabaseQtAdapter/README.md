@@ -9,6 +9,7 @@
 - 不写业务规则，不决定患者、订单、诊所、医生等字段含义。
 - 不被 `MeyerScan_Database.dll` 依赖，依赖方向只能是 `Qt Service/UI -> DatabaseQtAdapter -> Database`。
 - 不依赖 QtSql，不使用 `QSqlDatabase`、`QSqlQuery`。
+- 可以直接使用 `MeyerScan_Logger.dll` 记录适配层边界日志，但只记录生命周期、输入非法、连接失败、SQL 失败、JSON 解析失败、缓冲区超限等关键事件，不逐条记录正常查询成功，避免日志噪声。
 
 ## 当前接口
 
@@ -24,5 +25,11 @@
 
 - 本模块是适配层，不是业务服务层。
 - 新增 Qt 便利方法前，先确认它是否只是类型转换；如果包含业务字段判断，应放到 `CaseOrderService`、`RuntimeDataCenter` 或对应领域服务。
-- 运行目录必须同时存在 `MeyerScan_Database.dll` 和 x64 `sqlite3.dll`；VS2015 PostBuild 与 CMake 统一从 `ThirdParty/SQLite/win-x64/sqlite3.dll` 复制，不使用旧 SQLiteStudio 32 位 DLL。
+- 运行目录必须同时存在 `MeyerScan_Database.dll`、`MeyerScan_Logger.dll` 和 x64 `sqlite3.dll`；VS2015 PostBuild 与 CMake 统一从 `ThirdParty/SQLite/win-x64/sqlite3.dll` 复制，不使用旧 SQLiteStudio 32 位 DLL。
+- 日志入口在 Adapter 单例内缓存为一份 `ILogger*`，不要在每个执行函数内重复获取 Logger。
 - 修改记录写入 `CHANGELOG.md`，中文记录。
+
+## 测试入口
+- VS2015：打开 `MeyerScan_DatabaseQtAdapter.sln`，构建并运行 `DatabaseQtAdapterTest.exe`。
+- CMake/VSCode：默认开启 `DatabaseQtAdapterTest` 测试目标，可通过 `MEYER_BUILD_DATABASEQTADAPTERTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

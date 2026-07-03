@@ -22,3 +22,8 @@
 ```powershell
 & 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_CalibrationColorUI.sln /p:Configuration=Release /p:Platform=x64
 ```
+
+## 测试入口
+- VS2015：打开 `MeyerScan_CalibrationColorUI.sln`，构建并运行 `CalibrationColorUITest.exe`。
+- CMake/VSCode：默认开启 `CalibrationColorUITest` 测试目标，可通过 `MEYER_BUILD_CALIBRATIONCOLORUITEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

@@ -28,6 +28,8 @@
 #include <QString>
 #include <QStringList>
 
+class ILogger;
+
 // DatabaseQtAdapter 是 Qt 模块调用纯 C++ Database 的转换门面。
 // 它不暴露 IDatabase 指针，目的是从编译期阻止 UI/Service 绕过适配层直连底层 Database。
 class MEYERSCAN_DATABASEQTADAPTER_API DatabaseQtAdapter {
@@ -106,6 +108,19 @@ private:
 
     // 将 Database 返回的 const char* 消息复制成 QString，避免调用方关心底层消息生命周期。
     static QString ResultMessage(const char* message, const QString& fallback);
+
+    // 获取 Logger 单例并缓存到 Adapter 单例中。
+    // 这里只在私有区前向声明 ILogger，避免让公共头文件强迫调用方包含 Logger.h。
+    ILogger* Logger() const;
+
+    // 写入 Adapter 边界日志。
+    // Adapter 只记录生命周期和失败/异常边界，不记录每条正常 SQL 成功，避免日志噪声。
+    void WriteInfo(const QString& operation, const QString& content) const;
+    void WriteWarning(const QString& operation, const QString& content) const;
+    void WriteError(const QString& operation, const QString& content) const;
+
+    // 适配器是进程级单例，缓存 ILogger* 可以避免每次写日志都重新 GetLogger()。
+    mutable ILogger* m_logger = nullptr;
 };
 
 // C ABI 工厂函数，便于 QLibrary 或普通 C++ 调用方动态获取适配器。

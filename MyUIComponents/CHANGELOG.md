@@ -45,3 +45,8 @@
 - 复查优化：补充次按钮、输入框、下拉框基础工厂接口，并设置多语言友好的 `QSizePolicy`、最小高度和标题换行策略；仍不承载业务规则和页面跳转。
 - 补充 UI 文案规则：控件工厂只接收调用方已通过 `tr("English source text")` 翻译后的文本，不在 UIComponents 内写中文 source text。
 - 复查验证：`MeyerScan_UIComponents.sln` Release x64 构建通过。
+
+## 2026-07-03
+- 新增 `UIComponentsTest.exe` 最小自动测试宿主，覆盖模块初始化、核心接口、关闭流程和关键边界。
+- 同步 VS2015 `.vcxproj/.sln` 与 CMake 测试入口，便于单模块调试和聚合构建。
+- 测试配置和测试数据写入测试 EXE 输出目录，避免污染源码目录和正式发布配置。

@@ -39,3 +39,8 @@
 - 后续 Workflow / Service / IPC 需要继续判断 `enabled`，不能只依赖 UI 是否隐藏。
 
 注意：UI 隐藏不是安全边界。正式功能必须在 Workflow、Service、IPC 接收端继续复核权限。
+
+## 测试入口
+- VS2015：打开 `MeyerScan_Permission.sln`，构建并运行 `PermissionTest.exe`。
+- CMake/VSCode：默认开启 `PermissionTest` 测试目标，可通过 `MEYER_BUILD_PERMISSIONTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

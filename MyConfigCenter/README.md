@@ -34,3 +34,8 @@
 - 等待页固定显示，由 MeyerScan.exe 启动流程控制。
 - 单实例固定启用，由 MeyerScan.exe 启动入口控制。
 - 旧配置中如果残留 `startup.showWaitPage` 或 `startup.singleInstance`，ConfigCenter 初始化时会自动迁移清理该 `startup` 段，避免维护人员误以为可以配置关闭。
+
+## 测试入口
+- VS2015：打开 `MeyerScan_ConfigCenter.sln`，构建并运行 `ConfigCenterTest.exe`。
+- CMake/VSCode：默认开启 `ConfigCenterTest` 测试目标，可通过 `MEYER_BUILD_CONFIGCENTERTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

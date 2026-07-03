@@ -31,3 +31,8 @@
 - 新增 `IOrderScanWorkspaceShell` 接口，提供初始化、创建工作台 widget、设置步骤、挂载步骤 widget 和关闭接口。
 - 当前提供 Order / Scan / Process / Send 四步占位容器，后续接入 OrderCreateUI 和 ScanReconstructStudio 窗口/进程容器。
 - 补充模块规则：本模块是 Qt Widgets UI 容器，可以使用 Qt 控件、布局、信号槽和 Qt 容器组织界面；业务保存、扫描采集和数据处理不进入本模块，跨进程同步时使用 IPC/POD/UTF-8 JSON。
+
+## 2026-07-03
+- 新增 `OrderScanWorkspaceShellTest.exe` 最小自动测试宿主，覆盖模块初始化、核心接口、关闭流程和关键边界。
+- 同步 VS2015 `.vcxproj/.sln` 与 CMake 测试入口，便于单模块调试和聚合构建。
+- 测试配置和测试数据写入测试 EXE 输出目录，避免污染源码目录和正式发布配置。

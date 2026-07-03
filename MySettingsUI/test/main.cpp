@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QList>
 #include <QStringList>
@@ -12,45 +13,113 @@
 #include <QTimer>
 #include <QWidget>
 
-// 解析模块根目录。
-// Release 结构通常是 MySettingsUI/bin/Release/SettingsUITest.exe，
-// 因此向上两级回到 MySettingsUI，用于独立测试时生成 logs。
-QString ResolveModuleRoot() {
-    // applicationDirPath 指向 MySettingsUI/bin/Release。
+// 从测试 EXE 所在目录向上寻找仓库根目录。
+// 技术实现：仓库根目录下固定存在 MeyerScan_AllModules.sln，
+// 所以该逻辑同时适配单模块输出和根聚合输出。
+QString ResolveRepoRoot() {
+    // applicationDirPath() 指向 EXE 实际所在目录，不受 VS 调试工作目录影响。
     QDir dir(QCoreApplication::applicationDirPath());
-    // Release -> bin。
-    dir.cdUp();
-    // bin -> MySettingsUI。
-    dir.cdUp();
-    return dir.absolutePath();
+    // 逐级向上搜索根方案文件，命中后就是 F:/MeyerScan。
+    while (!dir.isRoot()) {
+        if (QFileInfo::exists(dir.filePath("MeyerScan_AllModules.sln"))) {
+            return dir.absolutePath();
+        }
+        dir.cdUp();
+    }
+
+    // 保底返回 EXE 目录，避免异常环境下返回空路径。
+    return QDir(QCoreApplication::applicationDirPath()).absolutePath();
 }
 
-// 从模块根目录推导仓库根目录。
-// SettingsUITest.exe 位于 MySettingsUI/bin/Release，因此模块根目录的上级就是 F:/MeyerScan。
-QString ResolveRepoRoot() {
-    QDir dir(ResolveModuleRoot());
-    // MySettingsUI 的上级就是 F:/MeyerScan 仓库根目录。
+// 解析模块根目录。
+// 根聚合输出时 EXE 在 F:/MeyerScan/bin/Release，不能再简单向上两级。
+QString ResolveModuleRoot() {
+    // 优先通过仓库根目录拼出模块目录，保证总方案和单模块方案行为一致。
+    QDir moduleDir(QDir(ResolveRepoRoot()).filePath("MySettingsUI"));
+    if (moduleDir.exists()) {
+        return moduleDir.absolutePath();
+    }
+
+    // 保留旧推导作为兜底，兼容临时拷贝出来的单模块测试目录。
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
     dir.cdUp();
     return dir.absolutePath();
 }
 
 // 解析测试宿主应使用的数据库配置。
-// 优先使用 SettingsUITest.exe 同级发布目录下的 config/db_config.json；
-// 如果该文件不存在，再回退到仓库 MyDatabase/config/db_config.json。
+// 技术实现：测试宿主在 EXE 输出目录下生成自己的配置文件，
+// 并让 sqlitePath 指向独立的 SettingsUITest_<pid>.db。
+// 这样做的原因是根输出目录会同时运行多个测试程序，如果大家共用
+// config/db_config.json 和同一个 SQLite 文件，旧表结构会互相污染。
 QString ResolveDatabaseConfigPath() {
-    // 发布目录优先，便于 SettingsUITest.exe 拷贝到独立 Release 包后运行。
-    const QString deployedPath = QDir(QCoreApplication::applicationDirPath()).filePath("config/db_config.json");
-    if (QFileInfo::exists(deployedPath)) {
-        return deployedPath;
+    // applicationDirPath() 指向测试 EXE 所在目录；测试配置只写在这个输出目录下。
+    QDir appDir(QCoreApplication::applicationDirPath());
+    // config/SettingsUITest 用来放测试专用 db_config.json，避免覆盖正式配置模板。
+    if (!appDir.mkpath("config/SettingsUITest")) {
+        return QString();
+    }
+    // Data 用来放测试专用 SQLite 文件，所有测试现场数据都留在输出目录。
+    if (!appDir.mkpath("Data")) {
+        return QString();
     }
 
-    // 开发环境回退到仓库 MyDatabase/config，减少测试配置重复维护。
-    return QDir(ResolveRepoRoot()).filePath("MyDatabase/config/db_config.json");
+    // PID 让每次测试使用独立数据库文件，即使上一次异常退出留下文件也不会影响本轮。
+    const QString databaseFileName = QString("SettingsUITest_%1.db").arg(QCoreApplication::applicationPid());
+    const QString configPath = appDir.filePath("config/SettingsUITest/db_config.json");
+
+    // sqlitePath 是相对配置文件所在目录解析的路径：
+    // Release/config/SettingsUITest/../../Data/SettingsUITest_<pid>.db -> Release/Data/...
+    QByteArray configJson;
+    configJson += "{\n";
+    configJson += "  \"databaseType\": \"sqlite\",\n";
+    configJson += "  \"mysql\": {\n";
+    configJson += "    \"host\": \"127.0.0.1\",\n";
+    configJson += "    \"port\": 3308,\n";
+    configJson += "    \"service\": \"MSCANDB\",\n";
+    configJson += "    \"database\": \"mscan\",\n";
+    configJson += "    \"dataDir\": \"../MySQL/data/mscan\"\n";
+    configJson += "  },\n";
+    configJson += "  \"sqlitePath\": \"../../Data/";
+    configJson += databaseFileName.toUtf8();
+    configJson += "\"\n";
+    configJson += "}\n";
+
+    QFile configFile(configPath);
+    if (!configFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        // 配置无法写入时直接让调用方失败，不能回退到公共配置造成交叉污染。
+        return QString();
+    }
+
+    // QFile::write 写入 UTF-8 字节；配置中没有中文，所以不需要额外 BOM。
+    configFile.write(configJson);
+    configFile.close();
+    return configPath;
+}
+
+// 解析测试日志目录。
+// 单模块运行时写模块 logs；根聚合运行时写仓库 logs，便于批量测试集中排查。
+QString ResolveTestLogDir() {
+    // 根聚合输出目录形如 F:/MeyerScan/bin/Release，向上两级后就是仓库根。
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
+    dir.cdUp();
+    if (QFileInfo::exists(dir.filePath("MeyerScan_AllModules.sln"))) {
+        return dir.filePath("logs");
+    }
+
+    // 单模块输出目录形如 F:/MeyerScan/MySettingsUI/bin/Release。
+    return QDir(ResolveModuleRoot()).filePath("logs");
 }
 
 // 准备设置页 Information 标签需要的最小演示数据。
 // 测试宿主造数据只用于链路验证，正式 SettingsUI 仍通过 RuntimeDataCenter 读取快照。
 bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
+    if (databaseConfigPath.isEmpty()) {
+        // 测试配置创建失败时直接失败，避免误连公共数据库或开发机配置。
+        return false;
+    }
+
     // 测试宿主也通过 DatabaseQtAdapter 准备数据，保持和正式 Qt 模块一致的调用边界。
     DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
     if (!databaseAdapter) {
@@ -258,9 +327,8 @@ int main(int argc, char* argv[]) {
     // SettingsUI 是 QWidget 模块，测试宿主必须创建 QApplication 而不是 QCoreApplication。
     QApplication app(argc, argv);
 
-    const QString moduleRoot = ResolveModuleRoot();
     const QString databaseConfigPath = ResolveDatabaseConfigPath();
-    const QString logDir = QDir(moduleRoot).filePath("logs");
+    const QString logDir = ResolveTestLogDir();
     // 测试日志目录不存在时主动创建，避免 Logger 初始化失败干扰 UI 冒烟。
     QDir().mkpath(logDir);
 

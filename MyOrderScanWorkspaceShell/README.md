@@ -23,3 +23,8 @@
 ```powershell
 & 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_OrderScanWorkspaceShell.sln /p:Configuration=Release /p:Platform=x64
 ```
+
+## 测试入口
+- VS2015：打开 `MeyerScan_OrderScanWorkspaceShell.sln`，构建并运行 `OrderScanWorkspaceShellTest.exe`。
+- CMake/VSCode：默认开启 `OrderScanWorkspaceShellTest` 测试目标，可通过 `MEYER_BUILD_ORDERSCANWORKSPACESHELLTEST` 控制。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。
