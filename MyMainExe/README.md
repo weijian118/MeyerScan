@@ -6,7 +6,7 @@
 1. 启动 Qt 主程序。
 2. 执行单实例检查，重复启动时尝试激活已打开窗口。
 3. 显示启动等待页。
-4. 初始化 Logger、ConfigCenter、Permission、UIComponents、Database，并由 MainExe 内部生成版本清单。
+4. 初始化 Logger、ConfigCenter、Permission、UIComponents，并通过 DatabaseQtAdapter 初始化 Database；由 MainExe 内部生成版本清单。
 5. 根据 ConfigCenter 的 `database.type` 设置数据库类型，并执行数据库健康检查。
 6. 初始化 `MeyerScan_RuntimeDataCenter.dll` 并预热本地/云端运行时快照。
 7. 写出 `logs/versionList/versionList_时间戳.json`。
@@ -19,7 +19,7 @@
 
 - MainExe 只做启动、模块编排和窗口容器。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
-- 当前 MainExe 直接调用 Database 只做启动健康检查，不做业务查询；正式病例、订单和扫描方案必须走 Service/Workflow。
+- 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
 - 所有运行路径基于 `QCoreApplication::applicationDirPath()`，不使用 `QDir::currentPath()`，避免第三方软件拉起时工作目录错误。
 - 日志目录固定为 `MeyerScan.exe` 同级 `logs/`，版本清单写入 `logs/versionList/`。

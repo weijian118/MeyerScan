@@ -61,27 +61,20 @@ bool CaseOrderServiceImpl::Init(const char* databaseConfigPathUtf8, const char* 
         m_logger->Init(m_logDir.constData(), LogLevel::Info);
     }
 
-    // 服务层通过 Database 模块访问数据库，不让 UI 或外部适配器直接拼 SQL。
-    m_database = GetDatabase();
-    if (!m_database) {
-        WriteLog(LogLevel::Error, "Init", "Database instance unavailable");
+    // 服务层通过 DatabaseQtAdapter 访问纯 C++ Database。
+    // 这样 QString/QJson 与 UTF-8/POD 的转换集中在适配层，Database 本身不依赖 Qt。
+    m_databaseAdapter = GetDatabaseQtAdapter();
+    if (!m_databaseAdapter) {
+        WriteLog(LogLevel::Error, "Init", "DatabaseQtAdapter instance unavailable");
         return false;
     }
 
     // MainExe 已经完成数据库连接时，服务层直接复用连接。
     // 独立测试宿主运行时，Database 可能尚未初始化，所以这里保留 Init/Connect。
-    if (!m_database->IsConnected()) {
-        VoidResult initResult = m_database->Init(m_databaseConfigPath.constData());
-        if (initResult.IsError()) {
-            // Database 返回的是固定结构体结果，message 指向模块内短消息，立刻写入日志即可。
-            WriteLog(LogLevel::Error, "Init", initResult.message ? initResult.message : "Database init failed");
-            return false;
-        }
-        VoidResult connectResult = m_database->Connect();
-        if (connectResult.IsError()) {
-            WriteLog(LogLevel::Error, "Init", connectResult.message ? connectResult.message : "Database connect failed");
-            return false;
-        }
+    QString databaseError;
+    if (!m_databaseAdapter->EnsureConnected(QString::fromUtf8(m_databaseConfigPath), &databaseError)) {
+        WriteLog(LogLevel::Error, "Init", databaseError);
+        return false;
     }
 
     // m_initialized 只表示服务层基础设施可用，不代表业务表一定已经创建。
@@ -94,8 +87,8 @@ bool CaseOrderServiceImpl::Init(const char* databaseConfigPathUtf8, const char* 
 // 检查并创建当前骨架所需 schema。
 // 正式版本后续应迁移到版本化 migration，Database 只负责执行 SQL。
 CaseOrderServiceResult CaseOrderServiceImpl::EnsureSchema() {
-    if (!m_initialized || !m_database) {
-        // 防止调用方跳过 Init 直接建表，避免 m_database 为空时崩溃。
+    if (!m_initialized || !m_databaseAdapter) {
+        // 防止调用方跳过 Init 直接建表，避免适配层为空时崩溃。
         return Fail(5, "CaseOrderService is not initialized");
     }
 
@@ -128,8 +121,13 @@ CaseOrderServiceResult CaseOrderServiceImpl::EnsureSchema() {
     // ExecuteScript 返回成功执行数量，不抛异常。
     // 这里要求所有 schema SQL 都成功，否则认为服务层 schema 未准备好。
     // sizeof(scripts) / sizeof(scripts[0]) 是 C/C++ 里计算静态数组元素个数的常用写法。
-    const int successCount = m_database->ExecuteScript(scripts, sizeof(scripts) / sizeof(scripts[0]));
-    if (successCount != static_cast<int>(sizeof(scripts) / sizeof(scripts[0]))) {
+    QList<QByteArray> scriptList;
+    const int scriptTotal = static_cast<int>(sizeof(scripts) / sizeof(scripts[0]));
+    for (int i = 0; i < scriptTotal; ++i) {
+        scriptList.append(QByteArray(scripts[i]));
+    }
+    const int successCount = m_databaseAdapter->ExecuteScript(scriptList);
+    if (successCount != scriptTotal) {
         WriteLog(LogLevel::Error, "EnsureSchema", "Case/order schema creation failed");
         return Fail(10002, "Case/order schema creation failed");
     }
@@ -141,7 +139,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::EnsureSchema() {
 // 保存患者/订单组合 JSON。
 // 当前用 orderId 作为主键保存完整 payload，后续再逐步拆正式字段和扩展字段。
 CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* patientOrderJsonUtf8) {
-    if (!m_initialized || !m_database) {
+    if (!m_initialized || !m_databaseAdapter) {
         // Save 依赖数据库连接，必须先 Init。
         return Fail(5, "CaseOrderService is not initialized");
     }
@@ -174,7 +172,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
     const QString status = root.value("status").toString("created").trimmed();
     // Compact 保留完整 JSON 语义但去掉空白，适合存库和跨模块传输。
     const QString payload = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
-    const QString escapedPayload = EscapeSqlText(payload);
+    const QString escapedPayload = DatabaseQtAdapter::EscapeSqlText(payload);
     // 时间统一用 UTC，避免多时区/系统时区变化导致排序和同步混乱。
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
@@ -184,19 +182,18 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
         "REPLACE INTO ms_patient_order "
         "(order_id, patient_id, case_id, status, payload_json, schema_version, created_at, updated_at) "
         "VALUES ('%1', '%2', '%3', '%4', '%5', 1, '%6', '%6')")
-        .arg(EscapeSqlText(orderId))
-        .arg(EscapeSqlText(patientId))
-        .arg(EscapeSqlText(caseId))
-        .arg(EscapeSqlText(status))
+        .arg(DatabaseQtAdapter::EscapeSqlText(orderId))
+        .arg(DatabaseQtAdapter::EscapeSqlText(patientId))
+        .arg(DatabaseQtAdapter::EscapeSqlText(caseId))
+        .arg(DatabaseQtAdapter::EscapeSqlText(status))
         .arg(escapedPayload)
-        .arg(EscapeSqlText(now));
+        .arg(DatabaseQtAdapter::EscapeSqlText(now));
 
-    // sql.toUtf8() 返回临时 QByteArray；constData() 在本完整表达式内有效，ExecuteUpdate 会立即读取。
-    Result<DbResult> updateResult = m_database->ExecuteUpdate(sql.toUtf8().constData());
-    if (updateResult.IsError()) {
-        // 返回 Database 的错误码和消息，让调用方能区分参数错误与数据库错误。
-        WriteLog(LogLevel::Error, "SavePatientOrderJson", updateResult.message ? updateResult.message : "Save failed");
-        return Fail(static_cast<int>(updateResult.error), updateResult.message ? updateResult.message : "Save failed");
+    QString updateError;
+    if (!m_databaseAdapter->ExecuteUpdate(sql, &updateError)) {
+        // 返回适配层整理后的错误消息，让调用方能定位数据库写入失败原因。
+        WriteLog(LogLevel::Error, "SavePatientOrderJson", updateError);
+        return Fail(10004, updateError.toUtf8().constData());
     }
 
     WriteLog(LogLevel::Info, "SavePatientOrderJson", QString("orderId=%1").arg(orderId));
@@ -206,8 +203,8 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
 // 按订单 ID 读取患者/订单组合 JSON。
 // 调用方不需要知道数据库表结构，只拿到稳定 JSON 字符串。
 CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* orderIdUtf8, char* buffer, int bufferSize) {
-    if (!m_initialized || !m_database) {
-        // 未初始化时不访问 m_database，防止空指针。
+    if (!m_initialized || !m_databaseAdapter) {
+        // 未初始化时不访问适配层，防止空指针。
         return Fail(5, "CaseOrderService is not initialized");
     }
     if (!orderIdUtf8 || !orderIdUtf8[0]) {
@@ -218,25 +215,21 @@ CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* ord
     // orderId 来自外部输入，拼 SQL 前必须转义单引号。
     // 这仍是骨架期方案，正式 DAO 层应改为参数绑定。
     const QString sql = QString("SELECT payload_json FROM ms_patient_order WHERE order_id='%1'")
-        .arg(EscapeSqlText(orderId));
+        .arg(DatabaseQtAdapter::EscapeSqlText(orderId));
 
-    // Database 当前通过调用方缓冲区返回 JSON。
-    // 256KB 足够当前患者/订单组合骨架测试，后续大附件不能放在这里传递。
-    QByteArray jsonBuffer(1024 * 256, '\0');
-    // ExecuteQueryJson 写入的是通用表格 JSON，不直接返回单个 payload。
-    Result<DbJsonResult> queryResult = m_database->ExecuteQueryJson(sql.toUtf8().constData(),
-                                                                    jsonBuffer.data(),
-                                                                    jsonBuffer.size());
-    if (queryResult.IsError()) {
-        WriteLog(LogLevel::Error, "GetPatientOrderJson", queryResult.message ? queryResult.message : "Query failed");
-        return Fail(static_cast<int>(queryResult.error), queryResult.message ? queryResult.message : "Query failed");
+    // Adapter 负责分配和扩大调用方缓冲区，服务层只拿到完整 UTF-8 JSON。
+    QByteArray jsonBuffer;
+    QString queryError;
+    if (!m_databaseAdapter->ExecuteQueryJson(sql, &jsonBuffer, &queryError, 1024 * 256, 1024 * 1024)) {
+        WriteLog(LogLevel::Error, "GetPatientOrderJson", queryError);
+        return Fail(10002, queryError.toUtf8().constData());
     }
 
     // ExecuteQueryJson 返回统一表格 JSON：{ columns:[], rows:[] }。
     // 服务层只从 rows[0].payload_json 取回业务 JSON，隐藏数据库表结构。
     // QByteArray 的 constData() 是以 '\0' 结尾的缓冲区，可直接给 fromJson 解析。
-    QJsonDocument tableDocument = QJsonDocument::fromJson(jsonBuffer.constData());
-    const QJsonArray rows = tableDocument.object().value("rows").toArray();
+    QJsonDocument tableDocument = QJsonDocument::fromJson(jsonBuffer);
+    const QJsonArray rows = DatabaseQtAdapter::RowsFromTableJson(tableDocument);
     if (rows.isEmpty()) {
         return Fail(10006, "Patient/order record not found");
     }
@@ -250,7 +243,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* ord
 // 读取医生、诊所、技工所、操作人等参考数据。
 // category 经过白名单映射，避免 UI 传任意表名或任意 SQL。
 CaseOrderServiceResult CaseOrderServiceImpl::ListReferenceDataJson(const char* categoryUtf8, char* buffer, int bufferSize) {
-    if (!m_initialized || !m_database) {
+    if (!m_initialized || !m_databaseAdapter) {
         return Fail(5, "CaseOrderService is not initialized");
     }
 
@@ -267,18 +260,16 @@ CaseOrderServiceResult CaseOrderServiceImpl::ListReferenceDataJson(const char* c
     QString sql = "SELECT id, category, display_name, payload_json, enabled, sort_index "
                   "FROM ms_reference_data WHERE enabled=1";
     if (!tableCategory.isEmpty()) {
-        sql += QString(" AND category='%1'").arg(EscapeSqlText(tableCategory));
+        sql += QString(" AND category='%1'").arg(DatabaseQtAdapter::EscapeSqlText(tableCategory));
     }
     sql += " ORDER BY category, sort_index, display_name";
 
     // 与患者/订单查询一样，Database 返回通用表格 JSON，服务层再包一层业务语义。
-    QByteArray jsonBuffer(1024 * 256, '\0');
-    Result<DbJsonResult> queryResult = m_database->ExecuteQueryJson(sql.toUtf8().constData(),
-                                                                    jsonBuffer.data(),
-                                                                    jsonBuffer.size());
-    if (queryResult.IsError()) {
-        WriteLog(LogLevel::Error, "ListReferenceDataJson", queryResult.message ? queryResult.message : "Query failed");
-        return Fail(static_cast<int>(queryResult.error), queryResult.message ? queryResult.message : "Query failed");
+    QByteArray jsonBuffer;
+    QString queryError;
+    if (!m_databaseAdapter->ExecuteQueryJson(sql, &jsonBuffer, &queryError, 1024 * 256, 1024 * 1024)) {
+        WriteLog(LogLevel::Error, "ListReferenceDataJson", queryError);
+        return Fail(10002, queryError.toUtf8().constData());
     }
 
     // 输出统一结构，方便 UI 只关心 items，不关心底层表名和 SQL。
@@ -287,7 +278,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::ListReferenceDataJson(const char* c
     root.insert("schemaVersion", 1);
     root.insert("category", category.isEmpty() ? "all" : category);
     root.insert("source", "CaseOrderService");
-    root.insert("items", QJsonDocument::fromJson(jsonBuffer.constData()).object().value("rows").toArray());
+    root.insert("items", DatabaseQtAdapter::RowsFromTableJson(jsonBuffer));
 
     WriteLog(LogLevel::Info, "ListReferenceDataJson", QString("category=%1").arg(category.isEmpty() ? "all" : category));
     // 最终输出依然是紧凑 JSON，调用方只需解析 items 数组。
@@ -300,7 +291,7 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
                                                        const char* queryArgsJsonUtf8,
                                                        char* buffer,
                                                        int bufferSize) {
-    if (!m_initialized || !m_database) {
+    if (!m_initialized || !m_databaseAdapter) {
         return Fail(5, "CaseOrderService is not initialized");
     }
 
@@ -349,7 +340,7 @@ void CaseOrderServiceImpl::Shutdown() {
         m_logger->Flush();
     }
     // Database/Logger 都不是本服务创建的对象，这里只清空引用。
-    m_database = nullptr;
+    m_databaseAdapter = nullptr;
     m_logger = nullptr;
     m_databaseConfigPath.clear();
     m_logDir.clear();
@@ -395,17 +386,6 @@ CaseOrderServiceResult CaseOrderServiceImpl::CopyToBuffer(const QString& text, c
     }
     // 如果 copySize 小于原始大小，说明结果被截断，必须返回失败。
     return copySize == bytes.size() ? Ok() : Fail(2, "Output buffer is too small");
-}
-
-// 转义 SQL 文本中的单引号。
-// 这是骨架期临时保护，正式 DAO 层应使用 QSqlQuery 参数绑定。
-QString CaseOrderServiceImpl::EscapeSqlText(const QString& text) const {
-    QString escaped = text;
-    // SQL 字符串中的单引号用两个单引号表示。
-    // 这只能解决基础字符串拼接问题，不能替代参数绑定。
-    // QString::replace 会原地替换所有匹配项。
-    escaped.replace("'", "''");
-    return escaped;
 }
 
 // 将外部传入的参考数据分类统一成内部分类名。

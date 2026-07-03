@@ -28,14 +28,17 @@ HomeUIImpl& HomeUIImpl::Instance() {
 // 初始化首页模块。
 // 这里只做日志加载和数据库健康检查；正式患者/订单数据必须由服务层提供。
 bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
-    // 首页模块本身不保存业务数据，只在启动时确认日志和数据库是否可用。
+    // 首页模块本身不保存业务数据，也不直接确认数据库是否可用。
     // 这样首页既能独立测试，也能在 MainExe 中复用已经初始化好的基础设施。
-    // 初始化顺序先日志、再 UIComponents、再数据库，确保后续异常能尽量写日志。
+    // 初始化顺序先日志、再 UIComponents，确保后续异常能尽量写日志。
+    (void)databaseConfigPath;
     LoadLogger(logDir);
     LoadUIComponents();
-    InitDatabase(databaseConfigPath);
+    if (m_lastStatus == "Not initialized") {
+        m_lastStatus = "HomeUI initialized";
+    }
 
-    // m_lastStatus 在 LoadLogger/InitDatabase 内部会被更新，
+    // m_lastStatus 在 LoadLogger/LoadUIComponents 内部可能被更新，
     // 这里统一写一次 Init 结果，方便排查模块初始化卡在哪一步。
     WriteLog(LogLevel::Info, "Init", m_lastStatus);
     return true;
@@ -144,45 +147,6 @@ void HomeUIImpl::LoadUIComponents() {
     }
 }
 
-// 初始化数据库健康检查。
-// 如果 MainExe 已经完成数据库连接，本模块只借用已有连接，不重复 Init/Connect。
-void HomeUIImpl::InitDatabase(const char* databaseConfigPath) {
-    // Database 模块也是进程级单例，HomeUI 只保存裸指针引用。
-    // 数据库连接的真实生命周期由 MainExe 统一管理。
-    m_database = GetDatabase();
-    if (!m_database) {
-        m_lastStatus = "Database instance unavailable";
-        return;
-    }
-
-    // 如果 MainExe 已经连好数据库，UI 模块直接复用连接。
-    // 这样可以避免多个模块重复 Connect，减少 Qt connectionName 和事务状态问题。
-    if (m_database->IsConnected()) {
-        m_databaseConnected = true;
-        m_lastStatus = QString("Database already connected, %1").arg(m_database->GetModuleVersion());
-        return;
-    }
-
-    // 独立测试宿主运行时 MainExe 不存在，所以这里保留自初始化能力。
-    // databaseConfigPath 仍必须由测试宿主从 EXE 目录推导后传入。
-    VoidResult initResult = m_database->Init(databaseConfigPath ? databaseConfigPath : "");
-    if (initResult.IsError()) {
-        // message 是 DatabaseResult 的短文本，直接拼入状态标签和日志即可。
-        m_lastStatus = QString("Database init failed: %1").arg(initResult.message ? initResult.message : "unknown");
-        return;
-    }
-
-    VoidResult connectResult = m_database->Connect();
-    if (connectResult.IsError()) {
-        // 独立测试时 SQLite/MySQL 连接失败不会阻止首页创建，只在状态区显示降级原因。
-        m_lastStatus = QString("Database connect failed: %1").arg(connectResult.message ? connectResult.message : "unknown");
-        return;
-    }
-
-    m_databaseConnected = true;
-    m_lastStatus = QString("Database connected, %1").arg(m_database->GetModuleVersion());
-}
-
 // 创建首页主界面。
 // 当前是框架页：保留四个入口和状态展示，后续视觉细节继续迁入 UIComponents。
 QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
@@ -280,9 +244,9 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     layout->addStretch();
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
-    // 状态标签只用于开发期快速看数据库是否连通。
-    // 绿色表示可用，棕色表示降级运行，正式 UI 后续可换成统一状态组件。
-    status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
+    // 状态标签只用于开发期快速看首页初始化状态。
+    // 数据库状态由 MainExe/RuntimeDataCenter 写日志，首页不直接探测 Database。
+    status->setStyleSheet("color:#1f7a3a;");
     layout->addWidget(status);
 
     WriteLog(LogLevel::Info, "CreateWidget", "Home widget created");
@@ -296,7 +260,7 @@ const char* HomeUIImpl::GetModuleVersion() const {
 }
 
 // 释放首页模块状态。
-// 不调用 Logger::Shutdown 或 Database::Shutdown，因为这些进程级单例由 MainExe 统一管理。
+// 不调用 Logger::Shutdown，因为进程级单例由 MainExe 统一管理。
 void HomeUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "HomeUI shutdown");
     if (m_logger) {
@@ -304,9 +268,7 @@ void HomeUIImpl::Shutdown() {
         // Logger 是进程级资源，关闭动作必须留给 MainExe。
         m_logger->Flush();
     }
-    // m_database/m_logger 都是外部单例裸指针，这里只清空引用，不释放对象。
-    m_database = nullptr;
-    m_databaseConnected = false;
+    // m_logger 是外部单例裸指针，这里只清空引用，不释放对象。
     m_logger = nullptr;
     m_uiComponents = nullptr;
     // QLibrary 使用 PreventUnloadHint，进程退出前尽量不卸载 DLL，避免退出阶段函数指针悬空。

@@ -8,11 +8,11 @@ CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。
 - 顶部按钮和患者/订单工具栏按钮优先使用 `MeyerScan_UIComponents.dll` 的标准按钮样式；UIComponents 不可用时降级为本地按钮样式。
 - 点击返回、导入、导出、删除、新建、打开、搜索、页签切换等客户操作时写入结构化日志。
-- 临时调用 `MeyerScan_Database.dll` 只用于框架 smoke 健康检查，不代表正式业务调用方式。
+- 正式 `CaseUI` 不直接调用 `MeyerScan_Database.dll`；列表展示读取 `RuntimeDataCenter` 快照，测试宿主造数才允许经 `MyDatabaseQtAdapter` 准备最小 SQLite 演示数据。
 - 当前已动态加载 `MeyerScan_RuntimeDataCenter.dll`，患者页读取 `local.patients`，订单页读取 `local.orders`，用于展示运行时只读快照。
 - CaseUI 只初始化 RuntimeDataCenter，不主动 `ReloadAll()`；MainExe 启动期负责全域刷新，独立测试或缓存为空时由 `GetDomainJson()` 按需懒加载当前 domain。
 - 读取 RuntimeDataCenter domain 时采用有限扩容重试，避免字段扩展或列表稍大时固定缓冲区不足；超过上限后显示空列表并写 Warning，后续应改为分页/服务查询。
-- 如果进程级 Database 已由 MainExe 初始化并连接，CaseUI 只借用现有连接，不重复 Init/Connect。
+- 如果进程级 Database 已由 MainExe 通过 DatabaseQtAdapter 初始化并连接，CaseUI 只读取 RuntimeDataCenter 快照，不重复 Init/Connect。
 - 运行时用 `QLibrary` 加载 `MeyerScan_Logger.dll`；CaseUI 只借用进程级 Logger，`Shutdown()` 只 Flush，不关闭全局日志会话。
 - 测试宿主在创建 `QApplication` 前启用 High DPI 属性，并按当前屏幕可用区域居中显示。
 - 界面可见文字统一使用 `tr("English source text")` 包装；即使需求写中文按钮名，源码 source text 也写英文，中文显示由 `.qm` 翻译文件提供。

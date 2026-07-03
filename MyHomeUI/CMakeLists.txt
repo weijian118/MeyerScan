@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 project(MeyerScan_HomeUI VERSION 0.2.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Sql)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
 
 meyer_add_qt_widgets_library(MeyerScan_HomeUI MEYERSCAN_HOMEUI_EXPORTS
     src/HomeUIImpl.cpp
@@ -13,12 +13,9 @@ target_include_directories(MeyerScan_HomeUI
     PUBLIC include
     PRIVATE
         src
-        ../MyDatabase/include
         ../MyLogger/include
         ../MyUIComponents/include
 )
-target_link_libraries(MeyerScan_HomeUI PRIVATE Qt5::Sql)
-meyer_link_sibling_module(MeyerScan_HomeUI MyDatabase MeyerScan_Database)
 meyer_link_sibling_module(MeyerScan_HomeUI MyLogger MeyerScan_Logger)
 meyer_link_sibling_module(MeyerScan_HomeUI MyUIComponents MeyerScan_UIComponents)
 

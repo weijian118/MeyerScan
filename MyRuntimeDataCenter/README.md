@@ -6,7 +6,7 @@
 
 ## 当前定位
 
-- 默认配合 SQLite 运行，也继续复用 `MyDatabase` 的 MySQL/SQLite 双数据库能力。
+- 默认配合 SQLite 运行，通过 `MyDatabaseQtAdapter` 复用纯 C++ `MyDatabase` 的基础 SQL 能力；MySQL 原生链路待 `MyDatabase` 接入 MySQL C API SDK 后恢复。
 - 本模块是运行时读模型/缓存中心，适合放“多个模块都要读取、字段又经常扩展”的上下文数据。
 - 从旧数据库表读取本地诊所、技工所、软件信息、医生、设置、账号、患者、订单、设备信息。
 - 云端诊所信息暂不联网读取，由登录/云端同步模块拿到 JSON 后调用 `UpdateCloudClinicJson()` 注入。
@@ -42,7 +42,7 @@
 | 首页、案例管理、建单页需要读取当前诊所、医生、技工所、患者列表、订单列表、设备列表等上下文 | `RuntimeDataCenter` 返回 domain JSON 快照 |
 | 新建患者/订单、编辑患者/订单、删除患者/订单、订单状态变化、医生/诊所/技工所主数据维护 | `CaseOrderService` |
 | 读取一条订单后判断是否能继续扫描、进入处理或发送 | `OrderWorkflowService` 读取 `CaseOrderService`、`ScanSchemaService`、`Permission` 的结果后决策 |
-| 直接执行 SQL、事务、备份、数据库类型切换 | `Database` |
+| 直接执行 SQL、事务、备份、数据库类型切换 | `Database`；Qt 模块必须经 `DatabaseQtAdapter` 转换 |
 
 ## 边界
 

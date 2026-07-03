@@ -25,6 +25,9 @@
 *.sqlite
 *.sqlite3
 MySQL/
+ThirdParty/SQLite/win-x64/sqlite3.dll
+ThirdParty/SQLite/win-x64/sqlite3.def
+ThirdParty/SQLite/win-x64/*.zip
 MyCaseManager/MySQL/
 MyCaseManager/SQLite/
 MyCaseManager/*.db

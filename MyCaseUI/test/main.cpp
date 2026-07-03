@@ -1,11 +1,12 @@
 ﻿#include "CaseUI.h"
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDesktopWidget>
 #include <QDir>
+#include <QList>
 #include <QRect>
 #include <QSize>
 #include <QTableWidget>
@@ -50,22 +51,20 @@ QString ResolveModuleRoot() {
 // 使用数据库模块准备最小演示数据。
 // 测试宿主负责造数据，正式 CaseUI 仍只读 RuntimeDataCenter 快照，不在 UI 模块内建表/插表。
 bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
-    // 测试宿主直接调用 Database 是为了准备演示数据；
-    // 正式 CaseUI 不能这样做，正式界面应通过 RuntimeDataCenter/服务层读取数据。
-    IDatabase* database = GetDatabase();
-    if (!database) {
-        // 数据库模块导出失败或依赖 DLL 缺失时，无法继续造数据。
+    // 测试宿主也走 DatabaseQtAdapter，避免给后续开发者示范 UI/测试直接包含 Database.h 的旧写法。
+    // Adapter 内部负责 QString 路径、SQL 脚本和纯 C++ Database 接口之间的转换。
+    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    if (!databaseAdapter) {
+        // 适配器导出失败或依赖 DLL 缺失时，无法继续造数据。
         return false;
     }
 
-    // Database 接口使用 UTF-8 路径；配置文件内的 SQLite 相对路径由 Database 按配置目录解析。
-    const QByteArray configBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
-    if (database->Init(configBytes.constData()).IsError()) {
-        // Init 失败通常是配置文件不存在、JSON 错误或路径编码问题。
-        return false;
-    }
-    if (database->Connect().IsError()) {
-        // Connect 失败通常是 SQLite 驱动缺失、文件路径无权限或 MySQL 服务不可用。
+    // 测试链路固定使用 SQLite，确保离线机器也能跑通 UI 和 RuntimeDataCenter。
+    QString databaseError;
+    if (!databaseAdapter->EnsureConnected(QDir::fromNativeSeparators(databaseConfigPath),
+                                          "sqlite",
+                                          &databaseError)) {
+        // 连接失败通常是 sqlite3.dll 缺失、配置文件路径错误或数据库目录无权限。
         return false;
     }
 
@@ -211,8 +210,14 @@ bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
     };
 
     const int scriptCount = static_cast<int>(sizeof(scripts) / sizeof(scripts[0]));
+    QList<QByteArray> scriptList;
+    scriptList.reserve(scriptCount);
+    for (int i = 0; i < scriptCount; ++i) {
+        // QByteArray 保存脚本文本的 UTF-8 字节，确保 ExecuteScript 调用期间 constData() 有效。
+        scriptList.append(QByteArray(scripts[i]));
+    }
     // ExecuteScript 返回成功执行条数；只有全部成功才认为测试数据准备完成。
-    return database->ExecuteScript(scripts, scriptCount) == scriptCount;
+    return databaseAdapter->ExecuteScript(scriptList) == scriptCount;
 }
 
 // 冒烟测试检查案例管理表格是否已经显示患者和订单数据。

@@ -6,6 +6,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Logger", "MyLogge
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Database", "MyDatabase\MeyerScan_Database.vcxproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_DatabaseQtAdapter", "MyDatabaseQtAdapter\MeyerScan_DatabaseQtAdapter.vcxproj", "{A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012} = {C3D4E5F6-A7B8-9012-CDEF-123456789012}
+	EndProjectSection
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_ConfigCenter", "MyConfigCenter\MeyerScan_ConfigCenter.vcxproj", "{7F22A561-4626-4A7F-9A70-CA44E347C231}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Permission", "MyPermission\MeyerScan_Permission.vcxproj", "{D9856F84-5574-4E76-9E14-569D9E55121E}"
@@ -15,22 +20,27 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_HomeUI", "MyHomeUI\MeyerScan_HomeUI.vcxproj", "{D4E5F6A7-B8C9-0123-DEF1-234567890123}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseUI", "MyCaseUI\MeyerScan_CaseUI.vcxproj", "{E4F5A6B7-C8D9-0123-EF12-345678901235}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9C0C2F57-0B42-4A11-A441-6E0AF9E10031} = {9C0C2F57-0B42-4A11-A441-6E0AF9E10031}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_SettingsUI", "MySettingsUI\MeyerScan_SettingsUI.vcxproj", "{690B98C5-4C5E-4E64-BC9A-63B65B1C0B2E}"
 	ProjectSection(ProjectDependencies) = postProject
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012} = {C3D4E5F6-A7B8-9012-CDEF-123456789012}
 		{9C0C2F57-0B42-4A11-A441-6E0AF9E10031} = {9C0C2F57-0B42-4A11-A441-6E0AF9E10031}
 		{C86833B8-B1E6-4F3A-9A4A-D48549D0B5BA} = {C86833B8-B1E6-4F3A-9A4A-D48549D0B5BA}
 		{8F618D5B-7A93-4F32-BD70-F8872B37C7CD} = {8F618D5B-7A93-4F32-BD70-F8872B37C7CD}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CaseOrderService", "MyCaseOrderService\MeyerScan_CaseOrderService.vcxproj", "{D8D36509-23F9-4BEA-8E7C-4E9154E52A90}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21} = {A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_RuntimeDataCenter", "MyRuntimeDataCenter\MeyerScan_RuntimeDataCenter.vcxproj", "{9C0C2F57-0B42-4A11-A441-6E0AF9E10031}"
 	ProjectSection(ProjectDependencies) = postProject
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
-		{C3D4E5F6-A7B8-9012-CDEF-123456789012} = {C3D4E5F6-A7B8-9012-CDEF-123456789012}
+		{A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21} = {A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_OrderScanWorkspaceShell", "MyOrderScanWorkspaceShell\MeyerScan_OrderScanWorkspaceShell.vcxproj", "{66105806-C77C-4E7A-9B62-556919C26D39}"
@@ -52,6 +62,8 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.Build.0 = Release|x64
 		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.ActiveCfg = Release|x64
 		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.Build.0 = Release|x64
+		{A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21}.Release|x64.ActiveCfg = Release|x64
+		{A5E7F3B1-7A22-4A35-B0F1-68B4E8B94C21}.Release|x64.Build.0 = Release|x64
 		{7F22A561-4626-4A7F-9A70-CA44E347C231}.Release|x64.ActiveCfg = Release|x64
 		{7F22A561-4626-4A7F-9A70-CA44E347C231}.Release|x64.Build.0 = Release|x64
 		{D9856F84-5574-4E76-9E14-569D9E55121E}.Release|x64.ActiveCfg = Release|x64

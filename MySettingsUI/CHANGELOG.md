@@ -2,6 +2,7 @@
 
 ## 2026-07-02
 
+- 2026-07-03 复查补充：单模块 `MeyerScan_SettingsUI.sln` 已重新构建，输出目录同步 RuntimeDataCenter、DatabaseQtAdapter、Database 和 x64 `sqlite3.dll`；`SettingsUITest.exe --smoke` 返回 0。
 - 新增模块 `CMakeLists.txt`，同时声明 `SettingsUITest.exe`，支持 VSCode/CMake Tools 与 VS2015 生成器构建。
 - 按评审结论同步 UI/业务分离规则：SettingsUI 继续作为 Qt 设置界面模块，设置保存、权限判断、业务数据维护和校准算法/设备重资源不写入设置 UI 主流程。
 - 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试项目和自研产物。
@@ -22,7 +23,7 @@
 ## 2026-06-30
 
 - Information 页面接入 `MeyerScan_RuntimeDataCenter.dll`，医生读取 `local.doctors`，诊所读取 `local.clinics`，技工所读取 `local.labs`，不再使用硬编码占位数据。
-- `MeyerScan_SettingsUI.vcxproj` 补齐 RuntimeDataCenter、Database、QtSql、SQLite/MySQL SQL 驱动和 `db_config.json` 发布目录复制，保证独立测试宿主可完整运行。
+- `MeyerScan_SettingsUI.vcxproj` 补齐 RuntimeDataCenter、DatabaseQtAdapter、Database、sqlite3.dll 和 `db_config.json` 发布目录复制，保证独立测试宿主可完整运行；SettingsUI 正式代码只读 RuntimeDataCenter 快照，不直接访问 Database。
 - `SettingsUITest.exe --smoke` 增加 SQLite 演示数据准备：空库时创建最小旧表并写入医生、诊所、技工所、患者、订单各一条数据。
 - `SettingsUITest.exe --smoke` 从只验证窗口创建升级为检查 Information 页面三张表均有数据行。
 - 修复 RuntimeDataCenter JSON 快照解析问题：调用方按 C 字符串真实内容解析，避免预分配缓冲区尾部空字节导致 `QJsonDocument` 报 invalid JSON。

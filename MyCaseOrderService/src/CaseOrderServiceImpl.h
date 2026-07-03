@@ -5,7 +5,7 @@
 #include <QByteArray>
 #include <QString>
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 #include "Logger.h"
 
 // CaseOrderServiceImpl 是患者/订单组合数据和相关参考数据的服务层实现。
@@ -57,9 +57,6 @@ private:
     // 将 QString 结果复制到调用方缓冲区。
     CaseOrderServiceResult CopyToBuffer(const QString& text, char* buffer, int bufferSize) const;
 
-    // SQL 文本转义；当前骨架先做单引号转义，后续 DAO 应改为参数绑定。
-    QString EscapeSqlText(const QString& text) const;
-
     // 将外部 category 别名映射成内部稳定分类名。
     QString ReferenceCategoryToTable(const QString& category) const;
 
@@ -67,8 +64,8 @@ private:
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 
 private:
-    // 借用的数据库基础设施接口；生命周期由 MainExe 或数据库模块自身管理。
-    IDatabase* m_database = nullptr;
+    // 借用的 Qt 数据库适配层；生命周期由 DatabaseQtAdapter 模块内部单例管理。
+    DatabaseQtAdapter* m_databaseAdapter = nullptr;
 
     // 缓存后的日志接口指针。
     ILogger* m_logger = nullptr;

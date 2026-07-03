@@ -2,8 +2,10 @@
 
 ## 2026-07-02
 
-- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents、RuntimeDataCenter、Database 等当前依赖。
+- 2026-07-03 复查补充：单模块 `MeyerScan_CaseUI.sln` 已重新构建，输出目录同步 RuntimeDataCenter、DatabaseQtAdapter、Database 和 x64 `sqlite3.dll`；`CaseUITest.exe --smoke` 返回 0。
+- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents、RuntimeDataCenter 等当前依赖；正式 CaseUI DLL 不再依赖 Database，测试宿主造数经 DatabaseQtAdapter 完成。
 - 按评审结论同步 UI/业务分离规则：CaseUI 继续作为 Qt 界面模块，只展示列表、记录操作和上报动作；业务保存、删除、加载订单规则不得回到 UI 内。
+- 正式 CaseUI 不再直连 Database；测试宿主需要造最小演示数据时，也统一通过 `MyDatabaseQtAdapter` 访问纯 C++ Database。
 - 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试宿主和自研产物。
 - 继续按“实现技巧型注释”要求补强 `CaseUITest.exe`：说明患者/订单/参考数据最小旧表分别服务哪个 RuntimeDataCenter domain，测试宿主为什么可以造数据而正式 CaseUI 不能造数据，患者/订单演示字段如何支撑两个 Tab 的表格显示，以及 `--smoke` 如何通过表格行数验证真实链路。
 - 本轮只补充测试宿主注释和文档记录，不改变 CaseUI 列表读取、动作上报或页面切换逻辑。
@@ -13,7 +15,7 @@
 - 按“实现技巧型注释”要求补强 `CaseUITest.exe` 测试宿主：补充屏幕居中、多显示器坐标、模块根目录推导、SQLite 演示数据准备、测试造数据与正式 UI 边界、`findChildren<QTableWidget*>` 冒烟检查和事件循环等待说明。
 - 前一轮已补强 `CaseUIImpl.cpp` 中 RuntimeDataCenter 动态加载、跨 DLL 缓冲区、JSON items 解析、`QTableWidget` 所有权、字段兼容读取和 UI 不拼业务 SQL 的说明。
 - 根据文档规则与代码复核结果，CaseUI 不再主动调用 `RuntimeDataCenter.ReloadAll()`；MainExe 启动期负责全域刷新，CaseUI 只初始化 RuntimeDataCenter，并在读取患者/订单 domain 时按需懒加载。
-- 复核需求与代码后调整 CaseUI 初始化顺序：先完成 Database 健康检查，再加载 RuntimeDataCenter，避免独立测试时先刷新缓存产生无意义的数据库未就绪日志。
+- 复核需求与代码后调整 CaseUI 初始化顺序：正式 DLL 只初始化 RuntimeDataCenter 并读取快照；独立测试宿主先经 DatabaseQtAdapter 完成测试库准备，再加载 RuntimeDataCenter，避免产生无意义的数据库未就绪日志。
 - 修正患者/订单表格附近的旧注释：当前列表展示读取 RuntimeDataCenter 只读快照；复杂搜索、分页、编辑、删除、状态变化和打开订单仍归 CaseOrderService / OrderWorkflowService。
 - `CaseUITest.exe --smoke` 的 SQLite 演示库补齐 `meyer_scan`、`soft_init`、`user_tbl`、`user_tbl2`、`device_info_tbl2` 等轻量表。
 - 演示库现在覆盖 RuntimeDataCenter 当前声明的全部本地 domain，避免 MainExe 集成测试日志被预期缺表 Warning 干扰。
@@ -67,7 +69,7 @@
 - 患者页和订单页的工具按钮、搜索回车、页签切换均写入 `UserAction` 日志。
 - MainExe 已接入返回首页操作，可从 CaseUI 丝滑切回 HomeUI。
 - 2026-06-23 再次补充：测试宿主不再硬编码 `F:/MeyerScan/...`，改为根据 exe 所在目录推导模块日志目录和 MyDatabase 配置路径。
-- 2026-06-23 再次补充：CaseUI 只借用进程级 Logger/Database 做框架期健康检查，`Shutdown()` 不再关闭 Logger/Database 单例，避免影响 MainExe 和其他模块。
+- 2026-06-23 历史口径：CaseUI 当时曾借用进程级 Logger/Database 做框架期健康检查；2026-07-03 起正式 DLL 不接入 Database，测试宿主造数统一通过 DatabaseQtAdapter。
 - 2026-06-23 再次补充：按钮源文案改为稳定英文 `Back Home`，中文显示后续由模块 qm 提供，避免源码文案混用语言。
 - 2026-06-23 复查优化：初始化数据库前优先检查进程级 Database 是否已连接；MainExe 已完成数据库健康检查时，CaseUI 只借用现有连接，不重复 Init/Connect。
 - 2026-06-23 复查补充：明确 CaseUI 必须支持被 MainExe 释放并重建；后续进入扫描重建前由 MainExe 销毁 CaseUI widget，避免案例管理界面长期占用资源。
@@ -75,10 +77,10 @@
 - 2026-06-23 复查验证：`MeyerScan_CaseUI.sln` Release x64 构建通过，`CaseUITest.exe --smoke` 返回 0。
 - 重新验证：VS2015 Release x64 构建通过，`CaseUITest.exe --smoke` 返回 0。
 - 新增模块级变更记录文件。
-- 重新确认当前 Database 调用只用于框架 smoke 健康检查，即验证 `Init()` / `Connect()` 链路，不代表正式业务调用方式。
+- 历史记录：当时 Database 调用只用于框架 smoke 健康检查；当前正式 CaseUI 已移除 Database 直连。
 - CaseUI 正式业务行为应调用 CaseOrderService、DataExport 和 OrderWorkflowService，不直接执行业务 SQL。
 - 修正 Logger 生命周期边界：使用 `QLibrary::PreventUnloadHint` 避免退出阶段 DLL 卸载顺序问题。
-- 当前框架期 Database 调用只用于健康检查，正式业务后续迁入 Service/Workflow。
+- 当前 CaseUI 不做 Database 健康检查；正式业务后续迁入 Service/Workflow。
 - 调整 `CaseUITest.exe` 生命周期：退出前先关闭并删除顶层 widget，再执行模块 `Shutdown()`。
 
 ## 2026-06-18
@@ -92,5 +94,5 @@
 
 - 创建 Qt Widgets DLL 框架和 `CaseUITest.exe`。
 - 新增患者和订单两个页签框架。
-- 接入 Logger 和 Database，用于启动链路验证。
+- 历史记录：初始框架曾接入 Logger 和 Database 用于启动链路验证；当前正式 DLL 接入 Logger、UIComponents 和 RuntimeDataCenter，不直连 Database。
 - 在 PostBuild 中加入 Qt 5.6.3 运行库复制规则。

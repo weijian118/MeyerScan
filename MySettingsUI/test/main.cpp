@@ -1,6 +1,6 @@
 ﻿#include "SettingsUI.h"
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -51,21 +51,19 @@ QString ResolveDatabaseConfigPath() {
 // 准备设置页 Information 标签需要的最小演示数据。
 // 测试宿主造数据只用于链路验证，正式 SettingsUI 仍通过 RuntimeDataCenter 读取快照。
 bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
-    // 测试宿主可以直接准备数据库；正式 SettingsUI 不允许自己建表/插演示数据。
-    IDatabase* database = GetDatabase();
-    if (!database) {
-        // GetDatabase 返回空通常表示 Database DLL 没有正确加载，或者依赖的 Qt SQL DLL 缺失。
+    // 测试宿主也通过 DatabaseQtAdapter 准备数据，保持和正式 Qt 模块一致的调用边界。
+    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    if (!databaseAdapter) {
+        // 适配器返回空通常表示 Adapter DLL 没有正确加载，或者底层 Database 依赖缺失。
         return false;
     }
 
-    // Database 公共接口接收 UTF-8 char*，这里先把 Qt 路径统一转为 UTF-8 字节。
-    const QByteArray configBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
-    if (database->Init(configBytes.constData()).IsError()) {
-        // 配置加载失败时，后续 Connect/ExecuteScript 都没有意义。
-        return false;
-    }
-    if (database->Connect().IsError()) {
-        // 连接失败通常说明 SQLite 驱动、路径或权限异常。
+    // 设置页独立测试固定使用 SQLite，避免离线环境依赖 MySQL 服务。
+    QString databaseError;
+    if (!databaseAdapter->EnsureConnected(QDir::fromNativeSeparators(databaseConfigPath),
+                                          "sqlite",
+                                          &databaseError)) {
+        // 连接失败通常说明 sqlite3.dll、配置路径或数据库目录权限异常。
         return false;
     }
 
@@ -217,8 +215,14 @@ bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
     };
 
     const int scriptCount = static_cast<int>(sizeof(scripts) / sizeof(scripts[0]));
+    QList<QByteArray> scriptList;
+    scriptList.reserve(scriptCount);
+    for (int i = 0; i < scriptCount; ++i) {
+        // QByteArray 保存 SQL 脚本字节，确保 Adapter 调用底层 ExecuteScript 时指针仍有效。
+        scriptList.append(QByteArray(scripts[i]));
+    }
     // 静态数组元素个数由 sizeof 计算，避免手工维护脚本数量。
-    return database->ExecuteScript(scripts, scriptCount) == scriptCount;
+    return databaseAdapter->ExecuteScript(scriptList) == scriptCount;
 }
 
 // 冒烟测试检查 Information 页面三张表是否都有数据。
@@ -305,4 +309,3 @@ int main(int argc, char* argv[]) {
 
     return app.exec();
 }
-

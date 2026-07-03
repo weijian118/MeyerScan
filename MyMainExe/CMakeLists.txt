@@ -27,7 +27,7 @@ target_include_directories(MeyerScan PRIVATE
     ../MyPermission/include
     ../MyUIComponents/include
     ../MyRuntimeDataCenter/include
-    ../MyDatabase/include
+    ../MyDatabaseQtAdapter/include
     ../MyLogger/include
 )
 
@@ -47,5 +47,6 @@ meyer_link_sibling_module(MeyerScan MyConfigCenter MeyerScan_ConfigCenter)
 meyer_link_sibling_module(MeyerScan MyPermission MeyerScan_Permission)
 meyer_link_sibling_module(MeyerScan MyUIComponents MeyerScan_UIComponents)
 meyer_link_sibling_module(MeyerScan MyRuntimeDataCenter MeyerScan_RuntimeDataCenter)
-meyer_link_sibling_module(MeyerScan MyDatabase MeyerScan_Database)
+meyer_link_sibling_module(MeyerScan MyDatabaseQtAdapter MeyerScan_DatabaseQtAdapter)
 meyer_link_sibling_module(MeyerScan MyLogger MeyerScan_Logger)
+meyer_copy_sqlite_runtime(MeyerScan)

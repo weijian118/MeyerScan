@@ -24,6 +24,7 @@ include(cmake/MeyerScanCommon.cmake)
 # 基础设施层。Logger 不依赖 Qt，必须最先可构建。
 add_subdirectory(MyLogger)
 add_subdirectory(MyDatabase)
+add_subdirectory(MyDatabaseQtAdapter)
 add_subdirectory(MyConfigCenter)
 add_subdirectory(MyPermission)
 add_subdirectory(MyUIComponents)

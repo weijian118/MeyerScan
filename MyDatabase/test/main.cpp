@@ -34,7 +34,6 @@
 #include <fstream>
 #include <string>
 #include <windows.h>
-#include <QCoreApplication>
 #include "../include/Database.h"
 
 // =============================================================================
@@ -118,6 +117,8 @@ static void TestConfig(IDatabase* db, const char* configPath) {
     const DbConfig& config = db->GetConfig();
     TEST_ASSERT(config.version == 1, "配置版本号正确");
     TEST_ASSERT(config.dbType == 0 || config.dbType == 1, "数据库类型有效");
+    TEST_ASSERT(config.dbType == static_cast<int32_t>(DatabaseType::SQLite),
+                "测试配置明确使用 SQLite");
 
     // 验证 MySQL 配置参数
     TEST_ASSERT(strlen(config.mysqlHost) > 0, "MySQL 主机地址已配置");
@@ -158,8 +159,13 @@ static void TestConnection(IDatabase* db) {
         fprintf(s_logFile, "  数据库连接成功\n");
         printf("  数据库连接成功\n");
     } else {
-        fprintf(s_logFile, "  连接失败 - MySQL 可能未运行（单元测试可接受）\n");
-        printf("  连接失败 - MySQL 可能未运行（单元测试可接受）\n");
+        // 当前测试配置固定为 SQLite，本机不需要数据库服务。
+        // 因此 SQLite 连接失败通常表示 sqlite3.dll 缺失、DLL 位数不匹配、
+        // 数据库文件目录不可写或配置路径解析错误，必须计入失败。
+        const char* message = connectResult.message ? connectResult.message : "unknown error";
+        fprintf(s_logFile, "  SQLite 连接失败: %s\n", message);
+        printf("  SQLite 连接失败: %s\n", message);
+        TEST_ASSERT(false, "SQLite Connect() 必须成功");
     }
 }
 
@@ -474,9 +480,10 @@ static void TestThreadSafety(IDatabase* db) {
 //   5. 返回测试结果状态码
 // =============================================================================
 int main(int argc, char* argv[]) {
-    // Database.dll 使用 Qt Core/Sql。
-    // 测试宿主先创建 QCoreApplication，确保 Qt 插件路径、全局对象和 SQL 驱动加载环境完成初始化。
-    QCoreApplication app(argc, argv);
+    // Database.dll 已去除 Qt 依赖，测试宿主也保持纯 C++。
+    // argc/argv 当前只保留给未来命令行开关使用，本轮不需要解析。
+    (void)argc;
+    (void)argv;
 
     s_moduleRoot = ResolveModuleRoot();
 

@@ -16,5 +16,6 @@ target_include_directories(MeyerScan_CaseOrderService
     PUBLIC include
     PRIVATE src
 )
-meyer_link_sibling_module(MeyerScan_CaseOrderService MyDatabase MeyerScan_Database)
+meyer_link_sibling_module(MeyerScan_CaseOrderService MyDatabaseQtAdapter MeyerScan_DatabaseQtAdapter)
 meyer_link_sibling_module(MeyerScan_CaseOrderService MyLogger MeyerScan_Logger)
+meyer_copy_sqlite_runtime(MeyerScan_CaseOrderService)

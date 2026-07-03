@@ -11,7 +11,8 @@
 // 架构角色:
 //   本模块属于架构分层中的"数据/设备层"（第二层），作为通用数据库基础设施，
 //   供上层所有模块（CaseOrderService、ScanSchemaService、Permission、Statistics 等）执行 SQL 操作。
-//   本模块允许使用 Qt SQL 作为实现依赖，但不承载任何业务逻辑。
+//   本模块不依赖 Qt，连接/查询由纯 C++ 实现承担；Qt 模块需要 QString/QJson 便利能力时
+//   应通过 MyDatabaseQtAdapter.dll 转换后再访问本模块。
 //   业务逻辑统一在各模块的 Service 层处理。
 //
 // 接口规范:
@@ -28,7 +29,7 @@
 //   2. 单一入口：通过 GetDatabase() 工厂函数获取唯一实例（单例模式）
 //   3. 线程安全：所有操作均受互斥锁保护，支持多模块并发访问
 //   4. 配置驱动：数据库连接参数通过 JSON 配置文件管理，便于部署和维护
-//   5. 边界优先：允许 Qt SQL 作为实现手段，但禁止把 UI 或业务逻辑放入本模块
+//   5. 边界优先：Database 保持纯 C++，禁止把 Qt 类型、UI 或业务逻辑放入本模块
 //
 // 使用方法:
 //   1. 包含此头文件并链接 MeyerScan_Database.lib
@@ -41,12 +42,11 @@
 // 注意事项:
 //   - MySQL 账号密码当前硬编码在 DLL 内部，后续会改为通过 ConfigCenter 加密存储
 //   - 配置文件必须为有效的 JSON 格式
-//   - 多线程环境下线程安全（通过 QMutex 保护）
+//   - 多线程环境下线程安全（通过 std::mutex 保护）
 //   - 备份功能会复制整个数据库目录/文件，确保有足够的磁盘空间
 //
 // 依赖项:
-//   - Qt5Core: 基础类型支持
-//   - Qt5Sql: 数据库访问支持
+//   - sqlite3.dll: SQLite 运行时（当前通过 LoadLibrary 动态加载）
 //   - MeyerScan_Logger.dll: 结构化日志记录（可选依赖，通过动态加载引入）
 //
 // 作者:      MeyerScan Team

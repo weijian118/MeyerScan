@@ -22,7 +22,7 @@
 #include <windows.h>
 #include <cstring>
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 #include "Logger.h"
 
 namespace {
@@ -41,6 +41,7 @@ const char* kDefaultVersionModules[] = {
     "MeyerLoginWidget.dll",
     "MeyerScan_Logger.dll",
     "MeyerScan_Database.dll",
+    "MeyerScan_DatabaseQtAdapter.dll",
     "MeyerScan_ConfigCenter.dll",
     "MeyerScan_Permission.dll",
     "MeyerScan_UIComponents.dll",
@@ -118,11 +119,11 @@ MainWindow::~MainWindow() {
         m_uiComponents->Shutdown();
     }
 
-    // Database 是进程级基础设施，必须在所有可能使用数据库的 UI/服务模块之后关闭。
-    IDatabase* database = GetDatabase();
-    if (database) {
-        database->Disconnect();
-        database->Shutdown();
+    // Database 通过 QtAdapter 收尾，MainExe 不直接包含 Database.h。
+    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    if (databaseAdapter) {
+        databaseAdapter->Disconnect();
+        databaseAdapter->Shutdown();
     }
 
     // Logger 最后关闭。这样析构阶段其它模块如果写日志，仍然有日志对象可用。
@@ -278,29 +279,27 @@ void MainWindow::InitInfrastructure() {
         m_uiComponents->Init(m_appDirUtf8.constData());
     }
 
-    // Database 仍由 MainExe 统一初始化和连接，UI 模块只借用已有连接。
-    IDatabase* database = GetDatabase();
-    if (database && !m_databaseConfigPathUtf8.isEmpty()) {
-        const VoidResult initResult = database->Init(m_databaseConfigPathUtf8.constData());
-        if (initResult.IsSuccess()) {
-            char databaseType[32] = {0};
-            // database.type 由配置中心控制，当前支持 mysql/sqlite 两种。
-            // 这里先做最小字符串判断，后续可收敛成枚举配置接口。
-            if (m_config && m_config->GetString("database.type", "mysql", databaseType, sizeof(databaseType))) {
-                const QString databaseTypeText = QString::fromUtf8(databaseType).toLower();
-                database->SetDatabaseType(databaseTypeText == "sqlite" ? DatabaseType::SQLite : DatabaseType::MySQL);
-            }
-            // Connect 成功并且 Qt 实际连接打开，才把 m_databaseReady 置为 true。
-            const VoidResult connectResult = database->Connect();
-            m_databaseReady = connectResult.IsSuccess() && database->IsConnected();
+    // Database 仍由 MainExe 统一初始化和连接，但 Qt 侧只通过 DatabaseQtAdapter 访问。
+    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    QString databaseError;
+    if (databaseAdapter && !m_databaseConfigPathUtf8.isEmpty()) {
+        char databaseType[32] = {0};
+        // database.type 由配置中心控制，当前支持 mysql/sqlite 两种。
+        if (!m_config || !m_config->GetString("database.type", "sqlite", databaseType, sizeof(databaseType))) {
+            std::strncpy(databaseType, "sqlite", sizeof(databaseType) - 1);
         }
+        // EnsureConnected 内部负责 QString 路径到 UTF-8 的转换、底层 Init 和类型切换。
+        m_databaseReady = databaseAdapter->EnsureConnected(QString::fromUtf8(m_databaseConfigPathUtf8),
+                                                           QString::fromUtf8(databaseType),
+                                                           &databaseError);
     }
 
     if (m_logger) {
         // 数据库检查是当前启动准备阶段最重要的结果，必须写入日志。
+        const QByteArray databaseErrorBytes = databaseError.toUtf8();
         const char* databaseMessage = m_databaseConfigPathUtf8.isEmpty()
             ? "Database config not found"
-            : (m_databaseReady ? "Database connected" : "Database is not ready");
+            : (m_databaseReady ? "Database connected" : databaseErrorBytes.constData());
         m_logger->Write(m_databaseReady ? LogLevel::Info : LogLevel::Warning,
                         ModuleInfo::Name,
                         "DatabaseCheck",

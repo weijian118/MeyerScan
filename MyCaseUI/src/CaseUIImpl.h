@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "CaseUI.h"
-#include "Database.h"
 #include "Logger.h"
 #include "RuntimeDataCenter.h"
 #include "UIComponents.h"
@@ -28,7 +27,7 @@ public:
     // 返回进程内单例，避免多个案例 UI 实例重复抢占基础设施。
     static CaseUIImpl& Instance();
 
-    // 初始化案例 UI 的日志和数据库健康检查。
+    // 初始化案例 UI 的日志、共享 UI 和运行时数据中心引用。
     bool Init(const char* databaseConfigPath, const char* logDir) override;
 
     // 注册按钮/页签/打开订单等动作回调，由 MainExe 统一处理跨模块流程。
@@ -46,7 +45,7 @@ public:
     // 返回模块版本字符串。
     const char* GetModuleVersion() const override;
 
-    // 释放模块引用；不关闭全局 Logger / Database。
+    // 释放模块引用；不关闭全局 Logger / RuntimeDataCenter。
     void Shutdown() override;
 
 private:
@@ -63,9 +62,6 @@ private:
 
     // 动态加载运行时数据中心模块。
     void LoadRuntimeDataCenter();
-
-    // 做数据库健康检查；正式业务数据读取后续迁到 CaseOrderService。
-    void InitDatabase(const char* databaseConfigPath);
 
     // 写结构化日志；日志未初始化时静默返回。
     void WriteLog(LogLevel level, const char* operation, const QString& content);
@@ -116,11 +112,8 @@ private:
     // 缓存后的运行时数据中心接口；用于读取本地/云端信息快照。
     IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
 
-    // 框架期借用数据库实例做健康检查；正式列表/搜索不应直接用它。
-    IDatabase* m_database = nullptr;
-
-    // 数据库健康检查是否成功。
-    bool m_databaseConnected = false;
+    // 运行时数据中心是否可用。CaseUI 不直接访问 Database。
+    bool m_runtimeDataReady = false;
 
     // 最近一次状态文本，显示在页面底部。
     QString m_lastStatus = "Not initialized";

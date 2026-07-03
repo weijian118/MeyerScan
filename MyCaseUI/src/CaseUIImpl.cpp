@@ -37,12 +37,9 @@ CaseUIImpl& CaseUIImpl::Instance() {
 // 这里只做日志加载和数据库健康检查；正式患者/订单数据必须通过 CaseOrderService。
 bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     // 案例管理 UI 当前只负责界面框架和用户动作上报。
-    // 初始化时只确认日志和数据库健康状态，不直接读取业务列表数据。
+    // 初始化时只加载日志、共享 UI 和 RuntimeDataCenter，不直接读取或连接 Database。
     LoadLogger(logDir);
     LoadUIComponents();
-    // 先完成数据库健康检查，再刷新 RuntimeDataCenter。
-    // 这样日志顺序更符合真实启动流程：Database ready -> RuntimeDataCenter reload -> CaseUI ready。
-    InitDatabase(databaseConfigPath);
     LoadRuntimeDataCenter();
     if (m_runtimeDataCenter) {
         // CaseUI 只初始化 RuntimeDataCenter，不在 UI 模块里 ReloadAll。
@@ -55,9 +52,14 @@ bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
                  runtimeInitOk
                      ? "RuntimeDataCenter initialized for lazy domain reads"
                      : "RuntimeDataCenter init failed");
+        m_runtimeDataReady = runtimeInitOk;
+        m_lastStatus = runtimeInitOk ? "RuntimeDataCenter ready" : "RuntimeDataCenter init failed";
         if (!runtimeInitOk) {
             m_runtimeDataCenter = nullptr;
         }
+    } else {
+        m_runtimeDataReady = false;
+        m_lastStatus = "RuntimeDataCenter unavailable";
     }
 
     // m_lastStatus 会被日志/数据库初始化流程更新。
@@ -199,41 +201,6 @@ void CaseUIImpl::LoadRuntimeDataCenter() {
     m_runtimeDataCenter = getRuntimeDataCenter();
 }
 
-// 初始化数据库健康检查。
-// 如果 MainExe 已经连接数据库，本模块只借用现有连接，不重复初始化。
-void CaseUIImpl::InitDatabase(const char* databaseConfigPath) {
-    // Database 是进程级单例。CaseUI 只保存引用，用来做健康状态展示和后续服务层复用。
-    m_database = GetDatabase();
-    if (!m_database) {
-        m_lastStatus = "Database instance unavailable";
-        return;
-    }
-
-    // MainExe 已经连接数据库时直接复用，避免 CaseUI 独立重复连接。
-    if (m_database->IsConnected()) {
-        m_databaseConnected = true;
-        m_lastStatus = QString("Database already connected, %1").arg(m_database->GetModuleVersion());
-        return;
-    }
-
-    // 测试宿主没有 MainExe 基础设施，所以保留 Init/Connect 能力。
-    // 传空路径会让 Database 返回失败，失败信息只展示到状态栏，不让 UI 崩溃。
-    VoidResult initResult = m_database->Init(databaseConfigPath ? databaseConfigPath : "");
-    if (initResult.IsError()) {
-        m_lastStatus = QString("Database init failed: %1").arg(initResult.message ? initResult.message : "unknown");
-        return;
-    }
-
-    VoidResult connectResult = m_database->Connect();
-    if (connectResult.IsError()) {
-        m_lastStatus = QString("Database connect failed: %1").arg(connectResult.message ? connectResult.message : "unknown");
-        return;
-    }
-
-    m_databaseConnected = true;
-    m_lastStatus = QString("Database connected, %1").arg(m_database->GetModuleVersion());
-}
-
 // 创建案例管理主页面。
 // 页面只提供框架和动作入口；列表数据、搜索结果和打开订单规则后续由服务层提供。
 QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
@@ -308,9 +275,9 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     layout->addWidget(tabs, 1);
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
-    // 当前状态标签用于开发期确认数据库是否可用。
+    // 当前状态标签用于开发期确认只读快照链路是否可用。
     // 正式界面可由 UIComponents 提供统一状态提示样式。
-    status->setStyleSheet(m_databaseConnected ? "color:#1f7a3a;" : "color:#9a3412;");
+    status->setStyleSheet(m_runtimeDataReady ? "color:#1f7a3a;" : "color:#9a3412;");
     layout->addWidget(status);
 
     WriteLog(LogLevel::Info, "CreateWidget", "Case widget created");
@@ -477,7 +444,7 @@ const char* CaseUIImpl::GetModuleVersion() const {
 }
 
 // 释放案例 UI 模块状态。
-// 不关闭全局 Logger / Database；MainExe 会统一管理基础设施生命周期。
+// 不关闭全局 Logger / RuntimeDataCenter；MainExe 会统一管理基础设施生命周期。
 void CaseUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "CaseUI shutdown");
     if (m_logger) {
@@ -485,8 +452,7 @@ void CaseUIImpl::Shutdown() {
         m_logger->Flush();
     }
     // 这些指针都不是 CaseUI 创建的对象，Shutdown 只清引用，避免误删进程级单例。
-    m_database = nullptr;
-    m_databaseConnected = false;
+    m_runtimeDataReady = false;
     m_logger = nullptr;
     m_uiComponents = nullptr;
     m_runtimeDataCenter = nullptr;

@@ -57,10 +57,11 @@ bool RuntimeDataCenterImpl::Init(const char* databaseConfigPathUtf8, const char*
         m_logger->Init(m_logDir.constData(), LogLevel::Info);
     }
 
-    // Database 同样是进程级单例。MainExe 已连接时复用，测试宿主未连接时由本模块连接。
-    m_database = GetDatabase();
-    if (!m_database) {
-        WriteLog(LogLevel::Error, "Init", "Database instance unavailable");
+    // RuntimeDataCenter 通过 DatabaseQtAdapter 访问纯 C++ Database。
+    // QString SQL 和 UTF-8/POD Database 接口之间的转换集中在适配层。
+    m_databaseAdapter = GetDatabaseQtAdapter();
+    if (!m_databaseAdapter) {
+        WriteLog(LogLevel::Error, "Init", "DatabaseQtAdapter instance unavailable");
         return false;
     }
 
@@ -240,7 +241,7 @@ void RuntimeDataCenterImpl::Shutdown() {
     QMutexLocker locker(&m_mutex);
     // 清空缓存释放内存，尤其是订单/患者列表快照可能比配置类 domain 大得多。
     m_domainCache.clear();
-    m_database = nullptr;
+    m_databaseAdapter = nullptr;
     m_logger = nullptr;
     m_databaseConfigPath.clear();
     m_logDir.clear();
@@ -292,17 +293,17 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::CopyToBuffer(const QString& text,
 
 // 确保数据库可用。
 bool RuntimeDataCenterImpl::EnsureDatabaseReady() {
-    // RuntimeDataCenter 不拥有 Database，只从 Database.dll 获取进程级单例指针。
-    // 这样 MainExe、CaseUI、SettingsUI 和 RuntimeDataCenter 看到的是同一个数据库连接状态。
-    if (!m_database) {
-        // 允许 Init 时未拿到数据库、后续 Database.dll 可用后再次尝试。
-        m_database = GetDatabase();
+    // RuntimeDataCenter 不拥有 Database，只从 DatabaseQtAdapter 获取统一适配入口。
+    // 这样 Qt 类型转换不会散落到各个函数中。
+    if (!m_databaseAdapter) {
+        // 允许 Init 时未拿到适配层、后续 DLL 可用后再次尝试。
+        m_databaseAdapter = GetDatabaseQtAdapter();
     }
-    if (!m_database) {
+    if (!m_databaseAdapter) {
         return false;
     }
     // 如果 MainExe 已经完成连接，直接复用，避免重复 Init/Connect 改变连接状态。
-    if (m_database->IsConnected()) {
+    if (m_databaseAdapter->IsConnected()) {
         return true;
     }
     // 没有配置路径时不能猜测默认路径，防止第三方拉起时误读开发目录或当前工作目录。
@@ -311,24 +312,14 @@ bool RuntimeDataCenterImpl::EnsureDatabaseReady() {
     }
 
     // 测试宿主或独立模块运行时，MainExe 可能尚未初始化 Database。
-    // 这里保留最小 Init/Connect 能力，但不切换数据库类型，类型仍由 db_config.json 决定。
-    VoidResult initResult = m_database->Init(m_databaseConfigPath.constData());
-    if (initResult.IsError()) {
-        // 失败原因直接透传 Database 的 message，方便定位是配置不存在、JSON 错误还是 Qt SQL 驱动缺失。
-        WriteLog(LogLevel::Error, "EnsureDatabaseReady",
-                 initResult.message ? initResult.message : "Database init failed");
+    // 这里保留最小 Init/Connect 能力，但通过适配层完成 QString -> UTF-8 转换。
+    QString databaseError;
+    if (!m_databaseAdapter->EnsureConnected(QString::fromUtf8(m_databaseConfigPath), &databaseError)) {
+        WriteLog(LogLevel::Error, "EnsureDatabaseReady", databaseError);
         return false;
     }
-
-    VoidResult connectResult = m_database->Connect();
-    if (connectResult.IsError()) {
-        // Connect 阶段失败通常是 SQLite 文件路径、MySQL 服务或驱动问题，必须写日志保留现场。
-        WriteLog(LogLevel::Error, "EnsureDatabaseReady",
-                 connectResult.message ? connectResult.message : "Database connect failed");
-        return false;
-    }
-    // 再问一次 IsConnected，而不是只信 Connect 返回值，避免底层连接对象实际未打开但返回结构误判。
-    return m_database->IsConnected();
+    // 再问一次 IsConnected，而不是只信 EnsureConnected 返回值，避免底层连接对象实际未打开但返回结构误判。
+    return m_databaseAdapter->IsConnected();
 }
 
 // 判断是否为云端 domain。
@@ -426,9 +417,9 @@ bool RuntimeDataCenterImpl::QueryTableJson(const QString& tableName,
                                            QByteArray* output,
                                            QString* errorMessage) const {
     // output 由调用方传入，函数内部只负责填充；这样失败时调用方可以保留自己的上下文。
-    if (!m_database || !output) {
+    if (!m_databaseAdapter || !output) {
         if (errorMessage) {
-            *errorMessage = "Database or output buffer is invalid";
+            *errorMessage = "Database adapter or output buffer is invalid";
         }
         return false;
     }
@@ -442,32 +433,24 @@ bool RuntimeDataCenterImpl::QueryTableJson(const QString& tableName,
     for (int bufferSize = kInitialQueryJsonBufferSize;
          bufferSize <= kMaxQueryJsonBufferSize;
          bufferSize *= 2) {
-        // 每轮循环都重新查询一次，是因为 Database.dll 需要调用方提前给出完整输出缓冲区。
-        // 它不能把“还差多少字节”的内部 QByteArray 直接传出 DLL。
-        // QByteArray(bufferSize, '\0') 直接创建带初始值的缓冲区，避免旧内存残留影响 JSON 字符串结尾。
-        QByteArray jsonBuffer(bufferSize, '\0');
-        // Database 的 ExecuteQueryJson 也是调用方缓冲区模式，避免 Database.dll 分配、RuntimeDataCenter.dll 释放。
-        Result<DbJsonResult> queryResult = m_database->ExecuteQueryJson(sql.toUtf8().constData(),
-                                                                        jsonBuffer.data(),
-                                                                        jsonBuffer.size());
-        if (queryResult.IsSuccess()) {
-            // ExecuteQueryJson 写入的是 '\0' 结尾字符串，append(const char*) 会按真实字符串长度追加。
-            // 这样 output 不会包含尾部预分配的空字节，后续 QJsonDocument 解析更稳。
-            output->clear();
-            output->append(jsonBuffer.constData());
+        QByteArray jsonBuffer;
+        QString queryError;
+        if (m_databaseAdapter->ExecuteQueryJson(sql,
+                                                &jsonBuffer,
+                                                &queryError,
+                                                bufferSize,
+                                                bufferSize)) {
+            // Adapter 返回的是已经按真实长度截断后的 UTF-8 JSON，不包含尾部预分配空字节。
+            *output = jsonBuffer;
             return true;
         }
 
-        // message 是跨 DLL 返回的 const char*，立刻转成 QString，避免后续指针生命周期不清。
-        const QString message = queryResult.message
-            ? QString::fromUtf8(queryResult.message)
-            : QString("query failed");
-
         // 只有缓冲区不足才允许扩大后重试；缺表、字段不存在、SQL 错误等不能重复刷日志。
-        if (!message.contains("too small", Qt::CaseInsensitive)) {
+        if (!queryError.contains("too small", Qt::CaseInsensitive) &&
+            !queryError.contains("larger than", Qt::CaseInsensitive)) {
             if (errorMessage) {
                 // 错误消息带上表名，ReloadDomain 日志能直接定位是哪张候选表失败。
-                *errorMessage = QString("%1: %2").arg(tableName, message);
+                *errorMessage = QString("%1: %2").arg(tableName, queryError);
             }
             return false;
         }

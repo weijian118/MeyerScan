@@ -25,6 +25,7 @@ const char* kDefaultVersionModules[] = {
     "MeyerLoginWidget.dll",
     "MeyerScan_Logger.dll",
     "MeyerScan_Database.dll",
+    "MeyerScan_DatabaseQtAdapter.dll",
     "MeyerScan_ConfigCenter.dll",
     "MeyerScan_Permission.dll",
     "MeyerScan_UIComponents.dll",

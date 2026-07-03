@@ -2,8 +2,11 @@
 
 ## 2026-07-02
 
+- 2026-07-03 复查补充：单模块 `MeyerScan_MainExe.sln` 和根 `MeyerScan_AllModules.sln` 均重新构建；`MyMainExe\bin\Release` 与 `F:\MeyerScan\bin\Release` 均复制 x64 `sqlite3.dll`，`MeyerScan.exe --smoke-main` 在两个目录均返回 0。
 - 新增模块 `CMakeLists.txt`，作为 VSCode/CMake Tools 构建入口，同时继续保留 VS2015 `MeyerScan.vcxproj` 和聚合解决方案。
-- 新增根目录 CMake 聚合工程后，MainExe 作为最终主程序目标放在构建顺序末尾，链接 HomeUI、CaseUI、SettingsUI、ConfigCenter、Permission、RuntimeDataCenter、Database、Logger 和外部登录库。
+- 新增根目录 CMake 聚合工程后，MainExe 作为最终主程序目标放在构建顺序末尾，链接 HomeUI、CaseUI、SettingsUI、ConfigCenter、Permission、RuntimeDataCenter、DatabaseQtAdapter、Logger 和外部登录库。
+- 启动期数据库健康检查改为通过 `MyDatabaseQtAdapter` 访问纯 C++ Database，MainExe 不再直接包含 `Database.h`；版本清单 `version_modules.json` 同步新增 `MeyerScan_DatabaseQtAdapter.dll`。
+- VS2015 PostBuild 中 `sqlite3.dll` 复制来源改为仓库内相对路径；后续打包模块再统一纳入安装清单。
 - 按评审结论同步工程规则：GitHub 提交之外，MainExe 及其依赖产物需要随全部模块一起备份到 `F:\MeyerScan-Reposit`。
 - 继续按“实现技巧型注释”要求补强 `MainWindow.cpp`：补充 Home/Case/Settings 页面创建失败降级、UI 模块初始化边界、单内容区页面释放、`deleteLater()` 延迟析构、Layout stretch、配置/权限 visible 与 enabled 合并、版本 manifest 顺序、Windows 文件版本资源和 Logger 早期初始化的实现说明。
 - 本轮只补充注释和文档记录，不改变 MainExe 启动、登录、单实例、页面切换、RuntimeDataCenter 或版本清单行为。
@@ -84,8 +87,8 @@
 - 新增 `MyMainExe` 主程序入口模块。
 - 输出目标命名为 `MeyerScan.exe`。
 - 集成既有登录模块 `MeyerLoginWidget.dll`。
-- 启动流程调整为：Logger 初始化、Database 健康检查、Login、HomeUI、CaseUI。
-- 链接并调用 `MeyerScan_Logger.dll` 和 `MeyerScan_Database.dll`，数据库仅用于启动健康检查。
+- 历史记录：启动流程曾调整为 Logger 初始化、Database 健康检查、Login、HomeUI、CaseUI；2026-07-03 起数据库健康检查改为通过 `MyDatabaseQtAdapter` 访问纯 C++ `MeyerScan_Database.dll`。
+- 当前 MainExe 链接 Logger、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI 等模块；MainExe 不再直接包含 `Database.h`，数据库仅用于启动健康检查和运行时快照准备。
 - 登录成功后加载 HomeUI；HomeUI 通过入口回调通知 MainExe 切换到 CaseUI，CaseUI 通过操作回调通知 MainExe 返回首页。
 - MainExe 当前只做启动、模块编排和窗口容器，不承载业务规则和数据库 SQL。
 - 新增 `--smoke` 和 `--smoke-main` 两种自动退出验证模式。

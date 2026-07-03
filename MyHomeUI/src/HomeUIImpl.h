@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "HomeUI.h"
-#include "Database.h"
 #include "Logger.h"
 #include "UIComponents.h"
 #include <QCoreApplication>
@@ -20,7 +19,7 @@ public:
     // 返回进程内单例，保证首页模块状态集中管理。
     static HomeUIImpl& Instance();
 
-    // 初始化首页模块需要的日志和数据库健康检查信息。
+    // 初始化首页模块需要的日志和共享 UI。
     bool Init(const char* databaseConfigPath, const char* logDir) override;
 
     // 注册入口点击回调，由 MainExe 统一决定页面切换和后续流程。
@@ -38,16 +37,10 @@ public:
     // 返回模块版本字符串，用于版本清单和现场排查。
     const char* GetModuleVersion() const override;
 
-    // 释放本模块持有的轻量引用；不关闭进程级 Logger / Database 单例。
+    // 释放本模块持有的轻量引用；不关闭进程级 Logger 单例。
     void Shutdown() override;
 
-    // 返回当前借用的数据库实例，仅用于测试宿主和框架期诊断。
-    IDatabase* Database() const { return m_database; }
-
-    // 返回数据库健康检查结果，供测试宿主判断初始化状态。
-    bool IsDatabaseConnected() const { return m_databaseConnected; }
-
-    // 返回最后一次初始化/连接状态文本，供界面状态栏和测试输出使用。
+    // 返回最后一次初始化状态文本，供界面状态栏和测试输出使用。
     QString LastStatus() const { return m_lastStatus; }
 
 private:
@@ -64,9 +57,6 @@ private:
 
     // 动态加载 UIComponents，并把 IUIComponents 指针缓存到成员变量。
     void LoadUIComponents();
-
-    // 做数据库健康检查；正式业务数据读取后续必须迁移到 Service。
-    void InitDatabase(const char* databaseConfigPath);
 
     // 入口按钮点击后的统一上报函数。
     void NotifyEntryClicked(int entryId);
@@ -89,12 +79,6 @@ private:
 
     // 缓存后的共享 UI 接口；不可用时首页降级为本地 QPushButton。
     IUIComponents* m_uiComponents = nullptr;
-
-    // 框架期借用数据库实例做健康检查；正式业务读取不应直接使用它。
-    IDatabase* m_database = nullptr;
-
-    // 数据库健康检查是否成功。
-    bool m_databaseConnected = false;
 
     // 最近一次状态文本，显示在首页底部，也便于测试宿主检查。
     QString m_lastStatus = "Not initialized";

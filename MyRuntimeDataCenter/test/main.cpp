@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 #include "Logger.h"
 
 namespace {
@@ -49,12 +49,12 @@ QString WriteTestConfig(const QString& baseDir) {
 
 // 执行一条建表或写入 SQL。
 // 这里直接使用 Database 是测试准备步骤，不属于 UI 正式业务访问模式。
-bool ExecSql(IDatabase* database, const char* sql) {
+bool ExecSql(DatabaseQtAdapter* adapter, const char* sql) {
     // ExecuteUpdate 适合建表、插入、更新、删除这类不需要结果集的 SQL。
-    Result<DbResult> result = database->ExecuteUpdate(sql);
-    if (result.IsError()) {
+    QString errorMessage;
+    if (!adapter || !adapter->ExecuteUpdate(QString::fromUtf8(sql), &errorMessage)) {
         // stderr 让批量脚本能在失败日志里直接看到 SQL 错误。
-        std::fprintf(stderr, "SQL failed: %s\n", result.message ? result.message : "unknown");
+        std::fprintf(stderr, "SQL failed: %s\n", errorMessage.toUtf8().constData());
         return false;
     }
     return true;
@@ -62,7 +62,7 @@ bool ExecSql(IDatabase* database, const char* sql) {
 
 // 创建 RuntimeDataCenter 需要读取的最小旧表。
 // 每张表只放 smoke 验证所需字段，正式旧库字段仍以 MyCaseManager/mysql.sql 为参考。
-bool PrepareSchema(IDatabase* database) {
+bool PrepareSchema(DatabaseQtAdapter* adapter) {
     // RuntimeDataCenter 读取的是旧库表名；这里创建最小字段集合模拟旧库。
     const char* scripts[] = {
         // local.clinics domain 的候选表，测试只保留读取快照需要的最小字段。
@@ -87,7 +87,7 @@ bool PrepareSchema(IDatabase* database) {
 
     for (const char* sql : scripts) {
         // 建表逐条执行，失败时立即返回，便于定位是哪张表定义有问题。
-        if (!ExecSql(database, sql)) {
+        if (!ExecSql(adapter, sql)) {
             return false;
         }
     }
@@ -109,7 +109,7 @@ bool PrepareSchema(IDatabase* database) {
 
     for (const char* sql : inserts) {
         // REPLACE INTO 让测试可重复运行，不会因为主键已存在失败。
-        if (!ExecSql(database, sql)) {
+        if (!ExecSql(adapter, sql)) {
             return false;
         }
     }
@@ -149,19 +149,17 @@ int main(int argc, char* argv[]) {
         logger->Init(logDir.toUtf8().constData(), LogLevel::Info);
     }
 
-    IDatabase* database = GetDatabase();
-    if (!Check(database != nullptr, "Database instance exists")) {
-        // Database 是 RuntimeDataCenter 的下游依赖，拿不到数据库单例就无法继续。
+    DatabaseQtAdapter* adapter = GetDatabaseQtAdapter();
+    if (!Check(adapter != nullptr, "DatabaseQtAdapter instance exists")) {
+        // Adapter 是 RuntimeDataCenter 访问 Database 的统一入口，拿不到就无法继续。
         return 1;
     }
-    if (!Check(database->Init(configPath.toUtf8().constData()).IsSuccess(), "Database init succeeds")) {
+    QString databaseError;
+    if (!Check(adapter->EnsureConnected(configPath, &databaseError), "SQLite database connects through adapter")) {
+        std::fprintf(stderr, "Database error: %s\n", databaseError.toUtf8().constData());
         return 1;
     }
-    // Connect 会根据 db_config.json 里的 databaseType 选择 SQLite 驱动。
-    if (!Check(database->Connect().IsSuccess(), "SQLite database connects")) {
-        return 1;
-    }
-    if (!Check(PrepareSchema(database), "Test schema prepared")) {
+    if (!Check(PrepareSchema(adapter), "Test schema prepared")) {
         return 1;
     }
 
@@ -205,8 +203,9 @@ int main(int argc, char* argv[]) {
     }
 
     // 按依赖反向顺序关闭：先关闭数据中心，再关闭数据库，最后关闭日志。
+    // 测试宿主也只通过 DatabaseQtAdapter 收尾，避免再次示范 RawDatabase() 直连底层接口。
     dataCenter->Shutdown();
-    database->Shutdown();
+    adapter->Shutdown();
     if (logger) {
         logger->Shutdown();
     }

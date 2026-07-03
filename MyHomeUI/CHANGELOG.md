@@ -2,8 +2,9 @@
 
 ## 2026-07-02
 
-- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents、Database 等当前依赖。
+- 更新模块 `CMakeLists.txt`，改为复用根目录公共 CMake 规则，并补齐 Logger、UIComponents 等当前依赖；HomeUI 正式 DLL 不再依赖 Database。
 - 按评审结论同步 UI/业务分离规则：HomeUI 继续作为 Qt 入口 UI，只展示入口、记录操作和上报入口 ID；建单规则、加载订单规则、权限核心判断不得进入首页模块。
+- HomeUI 不再直接接入 Database 健康检查；启动期数据库检查由 MainExe 通过 `MyDatabaseQtAdapter` 统一完成。
 - 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试宿主和自研产物。
 
 ## 2026-07-01
@@ -45,15 +46,15 @@
 - 点击创建、浏览、练习、设置入口时写入 `EntryClicked` 日志。
 - “浏览”入口已接入 MainExe，可切换到 CaseUI；其他入口暂保留日志和状态提示。
 - 2026-06-23 再次补充：测试宿主不再硬编码 `F:/MeyerScan/...`，改为根据 exe 所在目录推导模块日志目录和 MyDatabase 配置路径。
-- 2026-06-23 再次补充：HomeUI 只借用进程级 Logger/Database 做框架期健康检查，`Shutdown()` 不再关闭 Logger/Database 单例，避免影响 MainExe 和其他模块。
-- 2026-06-23 复查优化：初始化数据库前优先检查进程级 Database 是否已连接；MainExe 已完成数据库健康检查时，HomeUI 只借用现有连接，不重复 Init/Connect。
+- 2026-06-23 历史口径：HomeUI 当时曾借用进程级 Logger/Database 做框架期健康检查；2026-07-03 起已改为正式 DLL 不接入 Database，数据库健康检查统一由 MainExe 通过 DatabaseQtAdapter 完成。
+- 2026-06-23 历史口径：当时曾检查进程级 Database 是否已连接；2026-07-03 起 HomeUI 不再重复 Init/Connect，也不再包含 Database 依赖。
 - 2026-06-23 复查补充：界面可见文字从 `QApplication::translate()` 统一改为 `tr("English source text")`；源码不写中文 UI 文案，中文显示后续由模块 `.qm` 提供。
 - 2026-06-23 复查验证：`MeyerScan_HomeUI.sln` Release x64 构建通过，`HomeUITest.exe --smoke` 返回 0。
 - 新增模块级变更记录文件。
-- 重新确认当前 Database 调用只用于框架 smoke 健康检查，即验证 `Init()` / `Connect()` 链路，不代表正式业务调用方式。
+- 历史记录：当时 Database 调用只用于框架 smoke 健康检查；当前 HomeUI 已移除 Database 调用。
 - HomeUI 正式业务行为应调用 Permission 和 OrderWorkflowService，不直接执行业务 SQL，也不直接承载病例/订单规则。
 - 修正 Logger 生命周期边界：使用 `QLibrary::PreventUnloadHint` 避免退出阶段 DLL 卸载顺序问题。
-- 当前框架期 Database 调用只用于健康检查，正式业务后续迁入 Service/Workflow。
+- 当前 HomeUI 不做 Database 健康检查；正式业务后续迁入 Service/Workflow。
 - 调整 `HomeUITest.exe` 生命周期：退出前先关闭并删除顶层 widget，再执行模块 `Shutdown()`。
 
 ## 2026-06-18
@@ -67,5 +68,5 @@
 
 - 创建 Qt Widgets DLL 框架和 `HomeUITest.exe`。
 - 新增首页四个入口框架：创建、浏览、练习、设置。
-- 接入 Logger 和 Database，用于启动链路验证。
+- 历史记录：初始框架曾接入 Logger 和 Database 用于启动链路验证；当前正式 DLL 仅接入 Logger/UIComponents，不直连 Database。
 - 在 PostBuild 中加入 Qt 5.6.3 运行库复制规则。

@@ -4,6 +4,7 @@
 
 - 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
 - 按评审结论修正非界面模块 Qt 边界：当前 Qt JSON 只作为 `.cpp` 内部字段映射实现，公共头文件继续使用 UTF-8 JSON 和调用方缓冲区，后续可替换内部实现而不影响 UI/主程序。
+- 数据库访问改为通过 `MyDatabaseQtAdapter` 进入纯 C++ `MyDatabase`，不再直接包含 `Database.h` 或链接 `MeyerScan_Database.lib`；调用方向固定为 `CaseOrderService -> DatabaseQtAdapter -> Database`。
 - 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake 和自研产物。
 
 ## 2026-07-01

@@ -1,68 +1,30 @@
 ﻿// =============================================================================
 // 文件:    DatabaseImpl.h
 // 模块:    MeyerScan_Database.dll
-// 版本号:  v1.1.0
+// 用途:
+//   Database 公共接口的纯 C++ 实现类声明。
 //
-// 用途说明:
-//   数据库接口的具体实现类头文件。继承 IDatabase 接口，
-//   提供完整的数据库操作功能实现，包括连接管理、SQL 执行、
-//   事务控制、备份功能等。
-//
-// 设计原则:
-//   1. 单例模式：整个进程只存在一个 DatabaseImpl 实例
-//   2. 线程安全：使用 QMutex 保护所有公共方法
-//   3. RAII 资源管理：利用 C++ 构造/析构函数管理资源生命周期
-//   4. Logger 动态加载：通过 LoadLibrary/GetProcAddress 在运行时
-//      获取 Logger 实例，无需编译时链接 Logger.lib，避免 CRT 冲突
-//
-// Logger 集成说明:
-//   MeyerScan_Logger.dll 使用 /MT（静态 CRT）编译，
-//   MeyerScan_Database.dll 使用 /MD（动态 CRT）编译。
-//   两者 CRT 不同，不能直接链接 Logger.lib。
-//   因此采用运行时动态加载方式：
-//   1. 在首次需要写日志时调用 LoadLibrary("MeyerScan_Logger.dll")
-//   2. 通过 GetProcAddress 获取 GetLogger() 函数指针
-//   3. 缓存 ILogger* 实例，后续直接使用
-//   4. 如果 Logger.dll 不存在或加载失败，日志操作静默跳过
-//
-// 内部结构:
-//   - m_config: 存储数据库配置信息
-//   - m_db: Qt SQL 数据库连接对象
-//   - m_mutex: 线程互斥锁，保护所有操作
-//   - m_connected: 连接状态标志
-//   - m_lastBackupTime: 上次备份时间戳
-//
-// 注意事项:
-//   - 此类为内部实现类，用户代码不应直接使用
-//   - 所有公共接口方法都加锁，确保线程安全
-//   - 内部方法不加锁，由调用者负责加锁
+// 设计说明:
+//   1. 本实现不包含 Qt 头文件，也不链接 QtCore/QtSql。
+//   2. SQLite 通过 LoadLibrary/GetProcAddress 动态加载 sqlite3.dll。
+//   3. MySQL 的公共配置和枚举继续保留；原生 MySQL C API 待 SDK 进入工程后接入。
+//   4. 对外 ABI 仍保持 Database.h 中的 POD / UTF-8 / 调用方缓冲区形式。
 // =============================================================================
 
 #pragma once
 
-#include "Database.h"           // IDatabase 接口和结构体定义
-#include <QSqlDatabase>         // Qt SQL 数据库类
-#include <QSqlQuery>            // Qt SQL 查询类
-#include <QSqlError>            // Qt SQL 错误类
-#include <QMutex>               // Qt 互斥锁类
-#include <QDateTime>            // Qt 日期时间类
-#include <QString>              // Qt 字符串类
-#include <memory>               // C++ 智能指针
+#include "Database.h"
+
+#include <mutex>
+#include <string>
 
 // =============================================================================
-// Logger 相关前向声明和类型定义
+// Logger 相关前向声明和函数指针
 // =============================================================================
 // 说明:
-//   不使用 Logger.h 中的 extern "C" ILogger* GetLogger() 声明
-//   （该声明使用 __declspec(dllimport) 需要链接 Logger.lib），
-//   而是通过 LoadLibrary/GetProcAddress 在运行时动态加载。
-//   因此这里手动声明 ILogger 的完整接口，以及定义函数指针类型。
+//   Database 不直接链接 Logger.lib，而是运行时动态加载 MeyerScan_Logger.dll。
+//   这样可以减少基础设施模块之间的编译期耦合。
 // =============================================================================
-
-// LogLevel 枚举定义（与 Logger.h 保持一致）
-// 注意: Logger.h 中 LogLevel 定义在 enum class 中，
-// 此处重复定义以确保 DatabaseImpl 中可用。
-// @todo 待 Core.lib 建好后，改为 #include "Core.h"
 enum class LogLevel : int {
     Debug   = 0,
     Info    = 1,
@@ -71,9 +33,6 @@ enum class LogLevel : int {
     Fatal   = 4
 };
 
-// ILogger 接口前向声明（完整接口在 Logger.h 中定义）
-// 这里只声明我们需要用到的 Write 方法。
-// 实际调用时通过函数指针，不需要完整的类定义。
 class ILogger {
 public:
     virtual ~ILogger() = default;
@@ -92,230 +51,172 @@ public:
     virtual const char* GetModuleVersion() const = 0;
 };
 
-// GetLogger 函数指针类型
 using GetLoggerFunc = ILogger* (*)();
 
 // =============================================================================
-// DatabaseImpl 类声明
+// DatabaseImpl 类
 // =============================================================================
 // 说明:
-//   数据库接口的具体实现类。
-//   采用单例模式，通过 Instance() 方法获取唯一实例。
-//   所有方法都是线程安全的，内部使用 QMutex 进行同步。
+//   进程内单例。所有公开方法内部加锁，避免多个模块同时访问同一个连接句柄。
 // =============================================================================
 class DatabaseImpl : public IDatabase {
 public:
-    // =========================================================================
-    // 获取单例实例
-    // =========================================================================
-    // 说明:
-    //   获取 DatabaseImpl 的唯一实例。使用局部静态变量实现线程安全的单例。
-    //   C++11 标准保证局部静态变量初始化的线程安全性。
-    //
-    // 返回值:
-    //   DatabaseImpl 引用，指向唯一实例
-    // =========================================================================
+    // 获取进程内唯一实例。
     static DatabaseImpl& Instance();
 
-    // =========================================================================
-    // IDatabase 接口实现
-    // =========================================================================
-    // 说明:
-    //   以下方法继承自 IDatabase 接口，每个方法都是线程安全的，
-    //   内部使用 QMutexLocker 自动加锁和解锁。
-    // =========================================================================
-
-    // 初始化：加载配置文件
+    // 加载数据库配置文件。
     VoidResult Init(const char* configPath) override;
 
-    // 连接管理：建立数据库连接
+    // 建立/断开连接。
     VoidResult Connect() override;
     VoidResult Disconnect() override;
     bool IsConnected() const override;
     DatabaseType GetDatabaseType() const override;
 
-    // 数据库备份
+    // 备份当前数据库。
     VoidResult Backup(const char* backupPath) override;
     const char* GetLastBackupTime() const override;
 
-    // SQL 执行
+    // 执行 SQL。
     Result<DbResult> ExecuteQuery(const char* sql) override;
     Result<DbResult> ExecuteUpdate(const char* sql) override;
     int32_t ExecuteScript(const char** sqlScripts, int32_t count) override;
-
-    // 事务管理
-    VoidResult BeginTransaction() override;
-    VoidResult Commit() override;
-    VoidResult Rollback() override;
-
-    // 配置管理
-    const DbConfig& GetConfig() const override;
-    VoidResult SetDatabaseType(DatabaseType dbType) override;
-
-    // 版本信息
-    const char* GetModuleVersion() const override;
-
-    // 关闭
-    VoidResult Shutdown() override;
-
-    // 追加接口：查询结果 JSON 化
     Result<DbJsonResult> ExecuteQueryJson(const char* sql,
                                           char* jsonBuffer,
                                           int32_t jsonBufferSize) override;
 
-private:
-    // =========================================================================
-    // 私有构造函数
-    // =========================================================================
-    // 说明:
-    //   私有构造函数，防止外部直接创建实例。
-    //   初始化成员变量为默认值。
-    // =========================================================================
-    DatabaseImpl();
+    // 事务控制。
+    VoidResult BeginTransaction() override;
+    VoidResult Commit() override;
+    VoidResult Rollback() override;
 
-    // =========================================================================
-    // 私有析构函数
-    // =========================================================================
-    // 说明:
-    //   私有析构函数，确保单例对象的生命周期由类自身管理。
-    //   析构时调用 Shutdown() 确保资源释放。
-    // =========================================================================
+    // 配置和版本信息。
+    const DbConfig& GetConfig() const override;
+    VoidResult SetDatabaseType(DatabaseType dbType) override;
+    const char* GetModuleVersion() const override;
+
+    // 释放连接和运行时资源。
+    VoidResult Shutdown() override;
+
+private:
+    // 私有构造/析构，外部只能通过 Instance/GetDatabase 使用。
+    DatabaseImpl();
     ~DatabaseImpl();
 
-    // =========================================================================
-    // 禁止拷贝和赋值
-    // =========================================================================
+    // 单例对象禁止复制，避免两个对象持有同一个数据库句柄。
     DatabaseImpl(const DatabaseImpl&) = delete;
     DatabaseImpl& operator=(const DatabaseImpl&) = delete;
 
-    // =========================================================================
-    // Logger 动态加载
-    // =========================================================================
-    // 说明:
-    //   运行时动态加载 Logger.dll 并缓存 ILogger* 指针。
-    //   通过 LoadLibrary/GetProcAddress 方式加载，避免编译时
-    //   链接 Logger.lib 带来的 CRT 冲突问题。
-    //
-    // 线程安全:
-    //   首次调用时执行 LoadLibrary（仅一次），后续直接返回缓存指针。
-    //   不需要额外加锁，因为 LoadLibrary 是线程安全的。
-    // =========================================================================
-
-    // -------------------------------------------------------------------------
-    // GetLogger - 获取 Logger 实例
-    // -------------------------------------------------------------------------
-    // 返回值:
-    //   ILogger* 指针（如果 Logger.dll 加载成功）
-    //   nullptr  （如果 Logger.dll 不存在或加载失败）
-    //
-    // 功能说明:
-    //   1. 检查 s_logger 是否已缓存，有则直接返回
-    //   2. 调用 LoadLibrary 加载 MeyerScan_Logger.dll
-    //   3. 通过 GetProcAddress 获取 GetLogger 函数指针
-    //   4. 调用 GetLogger() 获取 ILogger 实例并缓存
-    //   5. 后续调用直接返回缓存的指针
-    //
-    // 注意事项:
-    //   - 此方法可被多次调用，实际加载只执行一次
-    //   - 返回 nullptr 时调用方应静默跳过日志写入
-    // -------------------------------------------------------------------------
+    // 动态加载 Logger 单例。
     static ILogger* GetLogger();
 
-    // 缓存 Logger 实例指针和模块句柄
-    static ILogger* s_logger;
-    static void*    s_loggerModule;
-
-    // =========================================================================
-    // 内部方法（线程安全由调用者保证）
-    // =========================================================================
-
-    // -------------------------------------------------------------------------
-    // LoadConfig - 加载配置文件
-    // -------------------------------------------------------------------------
+    // 配置读取和路径处理。
     bool LoadConfig(const char* configPath);
+    std::string ResolvePathFromConfig(const std::string& configuredPath) const;
+    static std::string NormalizePath(const std::string& path);
+    static std::string DirectoryOf(const std::string& path);
+    static bool IsAbsolutePath(const std::string& path);
+    static bool EnsureDirectoryExists(const std::string& dirPath);
+    static bool EnsureParentDirectoryExists(const std::string& filePath);
 
-    // -------------------------------------------------------------------------
-    // ResolvePathFromConfig - 将配置中的相对路径解析为绝对路径
-    // -------------------------------------------------------------------------
-    // 说明:
-    //   配置文件中允许使用相对于 config/db_config.json 所在目录的路径。
-    //   运行时禁止回退到开发机绝对路径，也不依赖当前工作目录。
-    // -------------------------------------------------------------------------
-    QString ResolvePathFromConfig(const QString& configuredPath) const;
+    // 极简 JSON 读取工具，只读取 db_config.json 中当前需要的字段。
+    static std::string ExtractJsonString(const std::string& json,
+                                         const std::string& key,
+                                         const std::string& defaultValue);
+    static int ExtractJsonInt(const std::string& json,
+                              const std::string& key,
+                              int defaultValue);
+    static std::string ExtractObjectText(const std::string& json,
+                                         const std::string& key);
 
-    // -------------------------------------------------------------------------
-    // ConnectMySQL - 连接 MySQL 数据库
-    // -------------------------------------------------------------------------
-    bool ConnectMySQL();
-
-    // -------------------------------------------------------------------------
-    // ConnectSQLite - 连接 SQLite 数据库
-    // -------------------------------------------------------------------------
+    // SQLite 动态加载和连接。
+    bool LoadSqliteRuntime();
     bool ConnectSQLite();
+    bool ConnectMySQL();
+    void CloseSqlite();
+    const char* SqliteLastError() const;
+    void SetLastErrorMessage(const char* message);
+    void SetLastWin32ErrorMessage(const char* prefix, unsigned long errorCode);
 
-    // -------------------------------------------------------------------------
-    // BackupMySQL - 备份 MySQL 数据库
-    // -------------------------------------------------------------------------
-    bool BackupMySQL(const char* backupPath);
+    // SQL 执行内部方法。调用方必须已经持有 m_mutex。
+    Result<DbResult> ExecuteSqlLocked(const char* sql, bool expectRows);
+    Result<DbJsonResult> ExecuteQueryJsonLocked(const char* sql,
+                                                char* jsonBuffer,
+                                                int32_t jsonBufferSize);
 
-    // -------------------------------------------------------------------------
-    // BackupSQLite - 备份 SQLite 数据库
-    // -------------------------------------------------------------------------
+    // SQLite 结果 JSON 序列化。
+    static std::string EscapeJson(const char* text);
+    static bool LooksLikeNumber(const char* text);
+
+    // 备份实现。
     bool BackupSQLite(const char* backupPath);
+    bool BackupMySQL(const char* backupPath);
+    static std::string CurrentTimestamp();
 
-    // =========================================================================
-    // 日志辅助方法
-    // =========================================================================
-    // 说明:
-    //   统一通过 GetLogger() 获取动态加载后缓存的 Logger 实例输出日志。
-    //   GetLogger() 内部只在首次调用时 LoadLibrary/GetProcAddress，后续直接返回缓存指针。
-    //   如果 Logger.dll 不可用，日志操作静默跳过，不影响功能。
-    // =========================================================================
+    // 日志辅助。
+    void LogError(const char* operation, const char* message) const;
+    void LogInfo(const char* operation, const char* message) const;
 
-    // -------------------------------------------------------------------------
-    // LogError - 输出错误日志
-    // -------------------------------------------------------------------------
-    // 功能说明:
-    //   输出 Error 级别日志，包含模块名 "MeyerScan_Database"、
-    //   操作名和内容。
-    // -------------------------------------------------------------------------
-    void LogError(const char* operation, const char* message);
+private:
+    // SQLite C API 前向声明和函数指针。
+    struct sqlite3;
+    struct sqlite3_stmt;
+    using sqlite3_open_v2_fn = int (__cdecl *)(const char*, sqlite3**, int, const char*);
+    using sqlite3_close_fn = int (__cdecl *)(sqlite3*);
+    using sqlite3_exec_fn = int (__cdecl *)(sqlite3*, const char*, int (*)(void*, int, char**, char**), void*, char**);
+    using sqlite3_prepare_v2_fn = int (__cdecl *)(sqlite3*, const char*, int, sqlite3_stmt**, const char**);
+    using sqlite3_step_fn = int (__cdecl *)(sqlite3_stmt*);
+    using sqlite3_finalize_fn = int (__cdecl *)(sqlite3_stmt*);
+    using sqlite3_errmsg_fn = const char* (__cdecl *)(sqlite3*);
+    using sqlite3_column_count_fn = int (__cdecl *)(sqlite3_stmt*);
+    using sqlite3_column_name_fn = const char* (__cdecl *)(sqlite3_stmt*, int);
+    using sqlite3_column_text_fn = const unsigned char* (__cdecl *)(sqlite3_stmt*, int);
+    using sqlite3_column_type_fn = int (__cdecl *)(sqlite3_stmt*, int);
+    using sqlite3_changes_fn = int (__cdecl *)(sqlite3*);
+    using sqlite3_free_fn = void (__cdecl *)(void*);
 
-    // -------------------------------------------------------------------------
-    // LogInfo - 输出信息日志
-    // -------------------------------------------------------------------------
-    // 功能说明:
-    //   输出 Info 级别日志。
-    // -------------------------------------------------------------------------
-    void LogInfo(const char* operation, const char* message);
+    // Logger 动态加载状态。
+    static ILogger* s_logger;
+    static void* s_loggerModule;
 
-    // =========================================================================
-    // 成员变量
-    // =========================================================================
-
-    // 数据库配置信息
+    // 数据库配置快照。
     DbConfig m_config;
 
-    // Qt SQL 数据库对象
-    QSqlDatabase m_db;
+    // SQLite 运行时 DLL 句柄和数据库连接句柄。
+    void* m_sqliteModule;
+    sqlite3* m_sqliteDb;
 
-    // 当前 Qt SQL 连接名，用于 Disconnect 时从 Qt 全局连接池移除。
-    QString m_connectionName;
+    // SQLite 函数指针表。
+    sqlite3_open_v2_fn m_sqliteOpenV2;
+    sqlite3_close_fn m_sqliteClose;
+    sqlite3_exec_fn m_sqliteExec;
+    sqlite3_prepare_v2_fn m_sqlitePrepareV2;
+    sqlite3_step_fn m_sqliteStep;
+    sqlite3_finalize_fn m_sqliteFinalize;
+    sqlite3_errmsg_fn m_sqliteErrmsg;
+    sqlite3_column_count_fn m_sqliteColumnCount;
+    sqlite3_column_name_fn m_sqliteColumnName;
+    sqlite3_column_text_fn m_sqliteColumnText;
+    sqlite3_column_type_fn m_sqliteColumnType;
+    sqlite3_changes_fn m_sqliteChanges;
+    sqlite3_free_fn m_sqliteFree;
 
-    // 当前配置文件所在目录，用于解析相对路径。
-    QString m_configDir;
+    // 配置文件目录，用于解析配置中的相对路径。
+    std::string m_configDir;
 
-    // 线程互斥锁
-    mutable QMutex m_mutex;
-
-    // 连接状态标志
+    // 连接状态。
     bool m_connected;
 
-    // 上次备份时间
+    // 保护配置、连接句柄和事务状态。
+    mutable std::mutex m_mutex;
+
+    // 最近一次备份时间。
     char m_lastBackupTime[32];
+
+    // 最近一次底层错误描述。
+    // 对外 VoidResult::message 只能返回 const char*，因此用固定数组保存，
+    // 避免把 std::string 的跨 DLL 生命周期暴露给调用方。
+    char m_lastErrorMessage[512];
 };
 
-// =============================================================================
-// DLL 导出函数声明
-// =============================================================================
 extern "C" MEYERSCAN_DATABASE_API IDatabase* GetDatabase();

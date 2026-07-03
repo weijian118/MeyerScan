@@ -15,6 +15,9 @@ get_filename_component(MEYER_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(MEYER_QT_ROOT "C:/Qt/Qt5.6.3/5.6.3/msvc2015_64" CACHE PATH
     "Qt 5.6.3 MSVC2015 x64 install root")
 
+set(MEYER_SQLITE_RUNTIME_DLL "${MEYER_ROOT_DIR}/ThirdParty/SQLite/win-x64/sqlite3.dll" CACHE FILEPATH
+    "SQLite x64 runtime dll used by pure C++ Database module")
+
 if(MEYER_QT_ROOT)
     list(APPEND CMAKE_PREFIX_PATH "${MEYER_QT_ROOT}")
 endif()
@@ -56,6 +59,24 @@ endfunction()
 function(meyer_configure_module target module_name)
     meyer_set_module_output(${target})
     target_compile_definitions(${target} PRIVATE MEYER_MODULE_NAME="${module_name}")
+endfunction()
+
+# 复制 SQLite x64 运行时到目标输出目录。
+# Database 使用 LoadLibraryA("sqlite3.dll") 动态加载运行时，因此 EXE/DLL 所在目录
+# 必须能找到与编译平台一致的 sqlite3.dll。当前工程固定 x64，所以不能使用
+# SQLiteStudio 历史目录里的 32 位 DLL。
+function(meyer_copy_sqlite_runtime target)
+    if(EXISTS "${MEYER_SQLITE_RUNTIME_DLL}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MEYER_SQLITE_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:${target}>/sqlite3.dll"
+        )
+    else()
+        message(WARNING
+            "sqlite3.dll not found: ${MEYER_SQLITE_RUNTIME_DLL}. "
+            "Put x64 sqlite3.dll there before running Database/Adapter tests.")
+    endif()
 endfunction()
 
 # 链接同仓库兄弟模块。

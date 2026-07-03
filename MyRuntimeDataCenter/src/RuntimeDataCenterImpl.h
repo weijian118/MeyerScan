@@ -8,7 +8,7 @@
 #include <QString>
 #include <QStringList>
 
-#include "Database.h"
+#include "DatabaseQtAdapter.h"
 #include "Logger.h"
 
 /*
@@ -95,8 +95,8 @@ private:
     /* 所有缓存读写都用同一把锁保护，避免 UI 和刷新线程同时访问 QHash。 */
     QMutex m_mutex;
 
-    /* 借用的数据库单例，生命周期由 Database/MainExe 管理。 */
-    IDatabase* m_database = nullptr;
+    /* 借用的 Qt 数据库适配层单例，生命周期由 DatabaseQtAdapter 模块管理。 */
+    DatabaseQtAdapter* m_databaseAdapter = nullptr;
 
     /* 借用的日志单例，生命周期由 Logger/MainExe 管理。 */
     ILogger* m_logger = nullptr;

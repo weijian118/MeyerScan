@@ -2,8 +2,10 @@
 
 ## 2026-07-02
 
+- 2026-07-03 复查补充：单模块 `MeyerScan_RuntimeDataCenter.sln` 已重新构建，输出目录同步 `MeyerScan_DatabaseQtAdapter.dll`、`MeyerScan_Database.dll` 和 x64 `sqlite3.dll`；`RuntimeDataCenterTest.exe` 通过 Adapter 连接 SQLite 并返回 0。
 - 新增模块 `CMakeLists.txt`，同时声明 `RuntimeDataCenterTest.exe`，支持 VSCode/CMake Tools 与 VS2015 生成器构建。
 - 按评审结论修正非界面模块 Qt 边界：RuntimeDataCenter 当前 Qt JSON/容器只作为 `.cpp` 内部快照实现，公共 ABI 继续使用 UTF-8 JSON 和调用方缓冲区，后续可替换内部实现。
+- 数据库访问改为通过 `MyDatabaseQtAdapter` 进入纯 C++ `MyDatabase`，不再直接包含 `Database.h`；调用方向固定为 `RuntimeDataCenter -> DatabaseQtAdapter -> Database`。
 - 模块纳入 `F:\MeyerScan-Reposit` 本地整体备份规则，随所有模块一起备份源码、工程文件、CMake、测试项目和自研产物。
 - 继续按“实现技巧型注释”要求补强 `RuntimeDataCenterImpl.cpp`：补充 `ReloadAll()` 按 domain 独立失败计数、云端 domain `notLoaded` 空快照、旧表候选表选择、domain JSON envelope、调用方缓冲区、有限扩容重试、旧表白名单、订单摘要字段裁剪和快照一次性替换的实现说明。
 - 继续补强 `RuntimeDataCenterTest.exe`：说明临时 SQLite 配置为什么使用相对路径、每张最小旧表对应哪个 domain、`REPLACE` / `DELETE + INSERT` 的重复运行策略、调用方缓冲区为什么能规避跨 DLL 字符串释放问题，以及云端 JSON 注入链路的验证目的。
