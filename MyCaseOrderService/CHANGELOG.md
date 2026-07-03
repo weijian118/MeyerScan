@@ -1,5 +1,10 @@
 # MeyerScan CaseOrderService 变更记录
 
+## 2026-07-03
+
+- 复核所有模块落实“Database 去 Qt + DatabaseQtAdapter 中介链路”时，清理 `CaseOrderServiceImpl.cpp` 中残留的 `QSqlQuery` 参数绑定说明，改为描述后续应在 Database/DAO 层提供参数绑定能力。
+- 该调整只修正文档化注释，不改变当前 `CaseOrderService -> DatabaseQtAdapter -> Database` 的运行逻辑；目的是避免后续维护者误以为服务层可以重新引入 QtSql。
+
 ## 2026-07-02
 
 - 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。

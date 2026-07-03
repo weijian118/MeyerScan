@@ -177,7 +177,8 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
     // REPLACE INTO 是骨架期的简化 upsert。
-    // 正式实现应按数据库类型封装 DAO，并使用 QSqlQuery 参数绑定。
+    // 正式实现应按数据库类型封装 DAO，并在 Database/DAO 层提供参数绑定能力。
+    // 这里不能再写 QSqlQuery：Database 已经去 Qt，Qt 类型转换只允许集中在 MyDatabaseQtAdapter。
     const QString sql = QString(
         "REPLACE INTO ms_patient_order "
         "(order_id, patient_id, case_id, status, payload_json, schema_version, created_at, updated_at) "
