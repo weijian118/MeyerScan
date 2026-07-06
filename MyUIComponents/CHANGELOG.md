@@ -1,4 +1,24 @@
-# MeyerScan UIComponents 变更记录
+﻿# MeyerScan UIComponents 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+- 版本升级为 `v0.4.0`，新增通用 `CreateTableWidget()` 和 `ApplyTableStyle()` 接口，先统一基础表格外观、表头样式、隔行色、只读默认行为和整行选择规则。
+- 表格接口仍然只处理通用视觉和基础交互，不决定列名、数据来源、分页、排序、右键菜单、双击打开等业务行为。
+- 新增接口继续追加在 `IUIComponents` 末尾，保持“不插入旧虚函数中间”的 ABI 规则。
+- `UIComponentsTest.exe` 增加标准表格工厂验证。
+- 验证：`MeyerScan_UIComponents.sln` Release x64 构建通过；根输出目录 `UIComponentsTest.exe` 返回 0；根方案 `MeyerScan_AllModules.sln` Release x64 构建通过。
+
+## 2026-07-04
+
+- 版本升级为 `v0.3.0`，新增通用 `CreateDateEdit()`、`CreateTextEdit()`、`CreateFieldLabel()` 接口，服务建单、设置等表单类界面。
+- 新增输入类控件统一 QSS 生成函数，`QLineEdit`、`QComboBox`、`QDateEdit`、`QTextEdit` 复用同一套边框、背景、焦点态和 disabled/readOnly 规则。
+- 新增接口追加在 `IUIComponents` 末尾，避免破坏旧模块已编译代码的 vtable 顺序；后续扩展虚接口也必须遵守“只追加不插入”的 ABI 规则。
+- `UIComponentsTest.exe` 增加日期框、多行文本框和字段标签工厂验证。
+- 验证：`MeyerScan_UIComponents.sln` Release x64 构建通过；`UIComponentsTest.exe` 返回 0。
+- 补充 `UIComponentsTest.exe` 测试宿主中文注释，说明 UIComponents 初始化、缩放系数验证、常用控件工厂、等待页 objectName、`--show` 人工查看模式和 Shutdown 清理流程。
+- 本轮仅补充注释，不改变 UIComponents 控件创建和样式逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-02
 

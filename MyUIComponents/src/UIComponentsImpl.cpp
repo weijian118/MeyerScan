@@ -1,15 +1,20 @@
 ﻿#include "UIComponentsImpl.h"
 
 #include <QApplication>
+#include <QAbstractItemView>
 #include <QComboBox>
+#include <QDateEdit>
 #include <QDesktopWidget>
 #include <QFileInfo>
+#include <QHeaderView>
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QTableWidget>
+#include <QTextEdit>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -19,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIComponents";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_UIComponents v0.2.0 (2026-06-26)";
+const char* Version = "MeyerScan_UIComponents v0.4.0 (2026-07-05)";
 }
 
 const double kDesignWidth = 1920.0;
@@ -220,8 +225,7 @@ QLineEdit* UIComponentsImpl::CreateLineEdit(const char* placeholderUtf8, QWidget
     edit->setMinimumHeight(static_cast<int>(36 * m_scaleY));
     // 宽度交给父布局拉伸，高度固定，避免输入框因为文字变化上下跳动。
     edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    edit->setStyleSheet("QLineEdit{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:white;color:#23313f;}"
-                        "QLineEdit:focus{border-color:#007d68;}");
+    edit->setStyleSheet(InputStyleSheet("QLineEdit"));
     return edit;
 }
 
@@ -234,9 +238,91 @@ QComboBox* UIComponentsImpl::CreateComboBox(QWidget* parent) {
     combo->setMinimumHeight(static_cast<int>(36 * m_scaleY));
     // 下拉项不在这里添加，因为 UIComponents 不理解业务枚举。
     combo->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-    combo->setStyleSheet("QComboBox{border:1px solid #cfd8dc;border-radius:4px;padding:5px 10px;background:white;color:#23313f;}"
-                         "QComboBox:focus{border-color:#007d68;}");
+    combo->setStyleSheet(InputStyleSheet("QComboBox"));
     return combo;
+}
+
+// 创建通用日期输入框。
+// 这里只设置通用交互外观，具体日期、格式和是否允许为空由调用模块决定。
+QDateEdit* UIComponentsImpl::CreateDateEdit(QWidget* parent) {
+    auto* edit = new QDateEdit(parent);
+
+    // 日历弹窗是 Qt 原生能力，适合日期选择，不需要每个模块重复开启。
+    edit->setCalendarPopup(true);
+    edit->setMinimumHeight(static_cast<int>(36 * m_scaleY));
+    // 宽度交给布局处理，避免多语言环境下固定宽度导致挤压。
+    edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    edit->setStyleSheet(InputStyleSheet("QDateEdit"));
+    return edit;
+}
+
+// 创建通用多行文本框。
+// 备注类控件需要可扩展宽度，默认高度给出可读空间，但允许调用方再设置固定高度。
+QTextEdit* UIComponentsImpl::CreateTextEdit(QWidget* parent) {
+    auto* edit = new QTextEdit(parent);
+
+    // QTextEdit 默认高度偏大，这里用最小高度控制基础观感，具体高度由页面决定。
+    edit->setMinimumHeight(static_cast<int>(qMax(58.0, 64.0 * m_scaleY)));
+    // 备注区域通常横向填满父布局。
+    edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    edit->setStyleSheet(InputStyleSheet("QTextEdit"));
+    return edit;
+}
+
+// 创建通用字段标签。
+// 字段标签统一左对齐、允许换行，解决翻译文本变长后被截断的问题。
+QLabel* UIComponentsImpl::CreateFieldLabel(const char* textUtf8, QWidget* parent) {
+    auto* label = new QLabel(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
+
+    // 字段名使用中等字重和较深灰色，和输入值形成稳定层级。
+    label->setWordWrap(true);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    label->setStyleSheet("QLabel{color:#4f5f6f;font-size:13px;font-weight:500;}");
+    return label;
+}
+
+// 创建通用表格控件。
+// 调用方仍然负责设置列、表头、数据源、选择模式和双击/右键等业务行为。
+QTableWidget* UIComponentsImpl::CreateTableWidget(QWidget* parent) {
+    auto* table = new QTableWidget(parent);
+
+    // 表格样式和基础交互集中到 ApplyTableStyle，便于已有表格控件也能迁移复用。
+    ApplyTableStyle(table);
+    return table;
+}
+
+// 给已有表格套用统一基础样式。
+// 这里只做视觉和默认交互约束，不读权限、不绑定数据、不决定表格列含义。
+void UIComponentsImpl::ApplyTableStyle(QTableWidget* table) {
+    if (!table) {
+        return;
+    }
+
+    // 默认隐藏左侧行号，当前软件多数业务表格以业务列为主，不依赖 Qt 行号。
+    table->verticalHeader()->setVisible(false);
+    // 默认整行选择，便于病例、订单、医生等列表后续统一行为；特殊表格可在调用方覆盖。
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    // 默认只读，避免用户误以为直接编辑单元格就会保存到数据库。
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    // 隔行色让长表格更容易横向阅读。
+    table->setAlternatingRowColors(true);
+    // 关闭默认网格线，靠行背景和表头分隔形成更干净的工作台风格。
+    table->setShowGrid(false);
+    // 最后一列拉伸，减少右侧空白；调用方仍可按业务需要重新设置列宽策略。
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    // 高度使用最小值而不是固定值，父布局仍可以根据页面空间扩展。
+    table->setMinimumHeight(static_cast<int>(qMax(160.0, 180.0 * m_scaleY)));
+    table->setStyleSheet(
+        "QTableWidget{background:#ffffff;border:1px solid #d8e1e7;border-radius:4px;"
+        "gridline-color:#edf1f4;color:#23313f;alternate-background-color:#f8fafb;"
+        "selection-background-color:#dff1ec;selection-color:#23313f;}"
+        "QTableWidget::item{padding:6px;}"
+        "QHeaderView::section{background:#edf3f5;color:#23313f;border:0;"
+        "border-bottom:1px solid #d8e1e7;padding:7px;font-weight:600;}"
+        "QTableCornerButton::section{background:#edf3f5;border:0;border-bottom:1px solid #d8e1e7;}");
 }
 
 // 创建页面标题。
@@ -354,9 +440,25 @@ QIcon UIComponentsImpl::LoadIcon(const char* iconResourcePathUtf8) const {
     return QIcon();
 }
 
+// 生成普通输入控件统一样式。
+// selector 传入 QLineEdit/QComboBox/QDateEdit/QTextEdit，可以复用同一套颜色和焦点态。
+QString UIComponentsImpl::InputStyleSheet(const QString& selector) const {
+    return QString("%1{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;selection-background-color:#007d68;}"
+                   "%1:focus{border-color:#007d68;background:#ffffff;}"
+                   "%1:disabled{background:#f2f4f6;color:#8a96a3;border-color:#d8e1e7;}"
+                   "%1[readOnly=\"true\"]{background:#eef2f5;color:#23313f;}")
+        .arg(selector);
+}
+
 // C ABI 导出函数。
 // MainExe 和各 UI 测试宿主通过该函数获取共享控件工厂。
 extern "C" MEYERSCAN_UICOMPONENTS_API IUIComponents* GetUIComponents() {
     // C ABI 工厂函数保持导出名稳定，方便其它 DLL 用 QLibrary 动态获取。
     return &UIComponentsImpl::Instance();
+}
+
+// 统一版本导出函数。
+// 版本清单通过该函数读取代码版本，不需要创建任何 QWidget 或控件实例。
+extern "C" MEYERSCAN_UICOMPONENTS_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
 }

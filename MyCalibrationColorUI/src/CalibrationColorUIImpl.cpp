@@ -153,3 +153,9 @@ extern "C" MEYERSCAN_CALIBRATIONCOLORUI_API ICalibrationColorUI* GetCalibrationC
     // C ABI 工厂函数用于稳定动态加载，内部实现类不暴露给调用方。
     return &CalibrationColorUIImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单读取颜色校准 UI 代码版本时，不加载校准页面、算法 DLL 或设备资源。
+extern "C" MEYERSCAN_CALIBRATIONCOLORUI_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

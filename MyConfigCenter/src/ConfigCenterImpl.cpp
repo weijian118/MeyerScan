@@ -238,3 +238,10 @@ extern "C" MEYERSCAN_CONFIGCENTER_API IConfigCenter* GetConfigCenter() {
     // 返回接口基类指针，隐藏 ConfigCenterImpl 具体类，降低调用方编译依赖。
     return &ConfigCenterImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单模块只解析该 C ABI 函数即可获得代码版本，
+// 不需要创建配置中心业务接口或读取配置文件。
+extern "C" MEYERSCAN_CONFIGCENTER_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

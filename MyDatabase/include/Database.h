@@ -10,7 +10,8 @@
 //
 // 架构角色:
 //   本模块属于架构分层中的"数据/设备层"（第二层），作为通用数据库基础设施，
-//   供上层所有模块（CaseOrderService、ScanSchemaService、Permission、Statistics 等）执行 SQL 操作。
+//   只供 DatabaseQtAdapter、领域服务、迁移工具、统计/导出等明确的数据访问边界执行 SQL。
+//   Permission、UI 模块、MainExe 普通业务流程不得绕过服务层直接把 SQL 打到 Database。
 //   本模块不依赖 Qt，连接/查询由纯 C++ 实现承担；Qt 模块需要 QString/QJson 便利能力时
 //   应通过 MyDatabaseQtAdapter.dll 转换后再访问本模块。
 //   业务逻辑统一在各模块的 Service 层处理。

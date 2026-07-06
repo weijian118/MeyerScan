@@ -19,7 +19,8 @@ public:
     virtual ~ICaseUI() = default;
 
     // 初始化案例管理 UI。
-    // databaseConfigPath 当前用于骨架阶段验证数据库链路，后续应逐步切换到 CaseOrderService。
+    // databaseConfigPath 仅向 RuntimeDataCenter 透传，用于读取患者/订单只读快照；
+    // CaseUI 自身不连接 Database、不做数据库健康检查、不执行业务 SQL。
     virtual bool Init(const char* databaseConfigPath, const char* logDir) = 0;
 
     // 设置案例管理动作回调。

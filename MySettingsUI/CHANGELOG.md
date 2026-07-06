@@ -1,4 +1,14 @@
-# MeyerScan SettingsUI 变更记录
+﻿# MeyerScan SettingsUI 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `SettingsUIImpl.cpp` 和 `SettingsUITest.exe` 中文注释及文件级阅读说明，说明设置 UI 模块边界、RuntimeDataCenter 只读快照、校准 DLL 懒加载、扫描重建来源禁止校准、测试库 PID 隔离和 Information 页冒烟验证。
+- 本轮仅补充注释，不改变 SettingsUI 设置页结构、校准入口、数据读取或动作回调逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；`SettingsUITest.exe --smoke` 返回 0；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-03
 

@@ -1,4 +1,14 @@
-# MeyerScan ConfigCenter 变更记录
+﻿# MeyerScan ConfigCenter 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `ConfigCenterTest.exe` 测试宿主中文注释，说明独立测试运行目录、默认配置生成、缺失配置默认值、字符串 buffer 返回和 Shutdown 清理流程。
+- 本轮仅补充注释，不改变 ConfigCenter 配置读取逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-02
 

@@ -1,4 +1,16 @@
-# MeyerScan OrderScanWorkspaceShell 变更记录
+﻿# MeyerScan OrderScanWorkspaceShell 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- MainExe 已接入本工作台壳：首页点击“Create”和第三方自动拉起建单都会进入 `OrderScanWorkspaceShell`，并把 `OrderCreateUI` 挂载到 `WorkspaceStepOrderCreate`。
+- README 补充本模块当前与 MainExe、OrderCreateUI、ExternalLaunchAdapter 的集成关系，强调工作台壳不解析第三方字段、不保存建单数据。
+- 补充 `OrderScanWorkspaceShellTest.exe` 测试宿主中文注释，说明 QApplication 初始化、工作区壳根控件创建、步骤页面挂载、非法 step 防崩溃验证、`--show` 人工查看模式和资源释放流程。
+- 本轮仅补充注释，不改变工作区壳子模块页面挂载和步骤切换逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-02
 

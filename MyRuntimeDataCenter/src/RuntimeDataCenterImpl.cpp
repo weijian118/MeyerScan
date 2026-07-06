@@ -25,13 +25,16 @@ const char* Version = "MeyerScan_RuntimeDataCenter v0.1.0 (2026-06-30)";
 // 将短消息复制到固定长度返回结构中。
 // 这样调用方可以安全按 C 字符串读取，不涉及跨 DLL 字符串释放。
 void CopyMessage(char* target, int targetSize, const char* message) {
+    // target 是调用方传进来的 C 缓冲区，先做边界检查，避免 DLL 内部写越界。
     if (!target || targetSize <= 0) {
         return;
     }
+    // 清零后再复制，保证字符串总有 '\0' 结尾，也不会残留上一次的长消息尾巴。
     std::memset(target, 0, static_cast<size_t>(targetSize));
     if (!message) {
         return;
     }
+    // 只复制 targetSize - 1 个字符，最后一位留给 C 字符串结束符。
     std::strncpy(target, message, static_cast<size_t>(targetSize - 1));
 }
 }
@@ -44,6 +47,7 @@ RuntimeDataCenterImpl& RuntimeDataCenterImpl::Instance() {
 
 // 初始化运行时数据中心。
 bool RuntimeDataCenterImpl::Init(const char* databaseConfigPathUtf8, const char* logDirUtf8) {
+    // Init 会同时修改路径、Logger、DatabaseAdapter 和初始化标记，所以整个函数加锁。
     QMutexLocker locker(&m_mutex);
 
     // 保存路径字节，后续独立测试宿主或延迟连接数据库时可复用。
@@ -78,6 +82,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::ReloadAll() {
     }
 
     int failedCount = 0;
+    // KnownDomains 返回逻辑域名列表；这里不直接写旧表名，是为了隔离 UI 和数据库表结构。
     const QStringList domains = KnownDomains();
     for (const QString& domain : domains) {
         // 每个 domain 单独加载，避免某张旧表缺失导致全部缓存不可用。
@@ -112,6 +117,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::ReloadDomain(const char* domainUt
 
     if (IsCloudDomain(domain)) {
         // 云端 domain 由 UpdateCloudClinicJson 注入；ReloadDomain 只保证有默认空快照。
+        // 只在访问 m_domainCache 时加锁，避免把无关逻辑放到临界区里。
         QMutexLocker locker(&m_mutex);
         if (!m_domainCache.contains(domain)) {
             // notLoaded 与 queryFailed 区分开，调用方能判断这是“尚未同步云端”而不是数据库错误。
@@ -130,6 +136,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::ReloadDomain(const char* domainUt
     }
 
     QString lastError;
+    // 一个 domain 可以对应多个旧表名，循环尝试可兼容不同历史版本数据库。
     const QStringList tables = TablesForDomain(domain);
     for (const QString& tableName : tables) {
         QByteArray tableJson;
@@ -137,6 +144,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::ReloadDomain(const char* domainUt
             // 第一个可查询成功的旧表即作为该 domain 来源，用于兼容旧版本表名差异。
             const QString wrappedJson = WrapTableJson(domain, tableName, tableJson, "ok", QString());
             QMutexLocker locker(&m_mutex);
+            // QHash::insert 会覆盖同名 domain，保证刷新后读到的是最新快照。
             m_domainCache.insert(domain, wrappedJson);
             WriteLog(LogLevel::Info, "ReloadDomain",
                      QString("%1 loaded from %2").arg(domain, tableName));
@@ -207,6 +215,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::UpdateCloudClinicJson(const char*
 
     QJsonObject root;
     // root 是统一 envelope，profile 是原始云端诊所对象。
+    // 统一 envelope 让本地数据库快照和云端快照拥有同样的状态字段。
     root.insert("schemaVersion", 1);
     root.insert("domain", "cloud.clinicProfile");
     root.insert("source", ModuleInfo::Name);
@@ -232,6 +241,7 @@ const char* RuntimeDataCenterImpl::GetModuleVersion() const {
 
 // 关闭模块并释放缓存。
 void RuntimeDataCenterImpl::Shutdown() {
+    // 先写日志再清空 m_logger，便于排查模块关闭时机。
     WriteLog(LogLevel::Info, "Shutdown", "RuntimeDataCenter shutdown");
     if (m_logger) {
         // 只 Flush，不 Shutdown Logger；Logger 生命周期由 MainExe 管理。
@@ -284,6 +294,7 @@ RuntimeDataCenterResult RuntimeDataCenterImpl::CopyToBuffer(const QString& text,
     std::memset(buffer, 0, static_cast<size_t>(bufferSize));
     if (copySize > 0) {
         // memcpy 只复制 UTF-8 原始字节，不做字符级截断；如果缓冲区不足，返回错误让调用方扩容重试。
+        // 如果这里截断了多字节 UTF-8，下面会返回 buffer too small，调用方不应使用截断内容。
         std::memcpy(buffer, bytes.constData(), static_cast<size_t>(copySize));
     }
 
@@ -314,6 +325,7 @@ bool RuntimeDataCenterImpl::EnsureDatabaseReady() {
     // 测试宿主或独立模块运行时，MainExe 可能尚未初始化 Database。
     // 这里保留最小 Init/Connect 能力，但通过适配层完成 QString -> UTF-8 转换。
     QString databaseError;
+    // 把 Init 保存的 UTF-8 路径还原为 QString，再交给 Adapter 统一处理 Qt/C++ 类型转换。
     if (!m_databaseAdapter->EnsureConnected(QString::fromUtf8(m_databaseConfigPath), &databaseError)) {
         WriteLog(LogLevel::Error, "EnsureDatabaseReady", databaseError);
         return false;
@@ -409,6 +421,7 @@ QString RuntimeDataCenterImpl::SelectSqlForTable(const QString& tableName) const
     }
 
     // 其他旧表先读取全字段，字段新增后缓存 JSON 自动携带新字段，调用方按需读取。
+    // tableName 来自 TablesForDomain 白名单，不接受外部输入，因此这里拼 SQL 是可控的。
     return QString("SELECT * FROM `%1`").arg(tableName);
 }
 
@@ -433,6 +446,7 @@ bool RuntimeDataCenterImpl::QueryTableJson(const QString& tableName,
     for (int bufferSize = kInitialQueryJsonBufferSize;
          bufferSize <= kMaxQueryJsonBufferSize;
          bufferSize *= 2) {
+        // 每一轮重新创建缓冲区，避免失败重试时残留上一次内容。
         QByteArray jsonBuffer;
         QString queryError;
         if (m_databaseAdapter->ExecuteQueryJson(sql,
@@ -464,6 +478,8 @@ bool RuntimeDataCenterImpl::QueryTableJson(const QString& tableName,
             }
             return false;
         }
+
+        // 走到这里说明只是缓冲区太小，for 循环会把 bufferSize 翻倍后重试同一条查询。
     }
 
     if (errorMessage) {
@@ -519,6 +535,7 @@ QString RuntimeDataCenterImpl::BuildEmptyDomainJson(const QString& domain,
     root.insert("loadStatus", loadStatus);
     root.insert("lastError", lastError);
     root.insert("rowCount", 0);
+    // 空快照也返回数组字段，UI 可以始终按数组遍历，不用判空字段是否存在。
     root.insert("columns", QJsonArray());
     root.insert("items", QJsonArray());
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
@@ -543,4 +560,10 @@ void RuntimeDataCenterImpl::WriteLog(LogLevel level, const char* operation, cons
 // C ABI 工厂函数。
 extern "C" MEYERSCAN_RUNTIMEDATACENTER_API IRuntimeDataCenter* GetRuntimeDataCenter() {
     return &RuntimeDataCenterImpl::Instance();
+}
+
+// 统一版本导出函数。
+// 版本清单读取 RuntimeDataCenter 代码版本时不加载任何 domain 缓存。
+extern "C" MEYERSCAN_RUNTIMEDATACENTER_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
 }

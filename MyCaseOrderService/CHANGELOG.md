@@ -1,4 +1,20 @@
-# MeyerScan CaseOrderService 变更记录
+﻿# MeyerScan CaseOrderService 变更记录
+
+## 2026-07-06
+
+- 修复根聚合 CMake 构建中 `CaseOrderServiceTest` 依赖不完整的问题：测试目标补齐 `MyDatabaseQtAdapter` 依赖，保证测试宿主在 VSCode/CMake 和 VS2015 聚合构建中都能找到数据库适配层。
+- 复核当前服务链路仍保持 `CaseOrderService -> DatabaseQtAdapter -> Database`，公共接口继续使用 UTF-8 JSON 和调用方缓冲区，不把 Qt 类型暴露到跨 DLL 边界。
+- 已在根聚合 CMake `Release` 构建中验证本模块和测试宿主可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `CaseOrderServiceTest.exe` 测试宿主中文注释和文件级阅读说明，说明 SQLite 测试配置、服务层建表、患者/订单 JSON 保存读取、参考数据造数、`QueryJson` 扩展入口和跨 DLL buffer 返回策略。
+- 本轮仅补充注释，不改变 CaseOrderService 业务逻辑和数据库表结构。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；`CaseOrderServiceTest.exe` 返回 0；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-03
 

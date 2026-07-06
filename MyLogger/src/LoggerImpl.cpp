@@ -42,6 +42,13 @@ extern "C" MEYER_LOGGER_API ILogger* GetLogger() {
     return &LoggerImpl::Instance();
 }
 
+// 统一版本导出函数。
+// 版本清单模块通过 LoadLibrary/QLibrary + GetProcAddress/resolve 按名称读取它，
+// 不需要创建 ILogger 业务对象，也不需要链接 Logger.lib。
+extern "C" MEYER_LOGGER_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}
+
 // =========================================================================
 // 单例
 // =========================================================================

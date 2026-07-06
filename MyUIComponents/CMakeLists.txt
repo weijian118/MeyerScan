@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_UIComponents VERSION 0.2.0 LANGUAGES CXX)
+project(MeyerScan_UIComponents VERSION 0.4.0 LANGUAGES CXX)
 
 
 

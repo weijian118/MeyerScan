@@ -1,5 +1,33 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-06
+
+- CMake 构建入口完成实际验证：使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 和 VS2015 x64 生成器，根聚合工程 `Release` 配置与构建通过。
+- CMake PostBuild 补齐运行目录配置复制：`db_config.json`、`version_modules.json/.md`、`runtime_config.json/.md`、`permission_rules.json/.md` 和第三方建单样例都会同步到 `MeyerScan.exe` 同级目录。
+- MainExe 运行目录补齐扫描 UI 所需的 VTK/OpenCV 运行库复制；这些 DLL 只作为运行依赖存在，不进入 `logs/versionList`。
+- `version_modules.json` 已纳入 `ScanReconstructStudio.exe`、`MeyerScan_ScanWorkflowUI.dll` 和 `MeyerScan_DataProcessUI.dll`；最新 `versionList` 为 schemaVersion=2、21 个模块，扫描三件套均记录 `fileVersion`、`codeVersion`，且 `versionMatch=true`。
+- 验证：CMake 根聚合 `Release` 构建通过；`MeyerScan.exe --smoke-main` 返回 0；最新运行时版本清单无 `codeVersionError`，且未混入 Qt/VTK/OpenCV 等第三方库。
+
+## 2026-07-05
+
+- MainExe 对自研模块改为运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口，VS2015 工程不再链接这些模块的 import lib。
+- `config/version_modules.json` 升级为 schemaVersion=2，模块项从字符串扩展为 `{ file, versionFunction }`；自研模块统一通过 `GetMeyerModuleVersion()` 读取代码版本，启动时 `logs/versionList/versionList_*.json` 同时记录 `fileVersion`、`codeVersion`、`versionMatch` 和 `codeVersionError`。
+- `config/version_modules.md` 重写字段说明，明确 Windows 文件详细信息来自 `Version.rc`，代码版本来自 `ModuleInfo::Version` / `GetMeyerModuleVersion()`，二者必须同步维护。
+- CMake 中 MainExe 不再通过 `meyer_link_sibling_module()` 链接自研 DLL，只保留头文件目录和构建顺序依赖；Qt、Windows `Version.lib`、既有登录模块 `MeyerLoginWidget.lib` 仍保持当前链接方式。
+- 版本清单文件名改为 `versionList_yyyyMMdd_HHmmss_zzz.json`，避免同一秒内连续 smoke、第三方拉起或重复启动覆盖版本快照。
+- VS2015 PostBuild 增加根聚合输出目录 `MeyerScan_*.dll` 兜底覆盖；CMake POST_BUILD 也复制依赖 target 的 DLL，保证单模块输出目录不会残留旧自研 DLL。
+- 验证：`MeyerScan_MainExe.sln`、根 `MeyerScan_AllModules.sln`、`MyDatabaseQtAdapter\MeyerScan_DatabaseQtAdapter.sln` Release x64 构建通过；根输出目录主链路/第三方建单 smoke 和单模块输出目录主链路 smoke 均正常返回；根/单模块最新 `versionList` 均无缺失、无 `codeVersionError`，自研模块 `versionMatch=true`。
+
+## 2026-07-04
+
+- 首页 `Create` 入口接入 `MeyerScan_OrderScanWorkspaceShell.dll`，由 MainExe 创建 `MeyerScan_OrderCreateUI.dll` 并挂载到工作台建单步骤。
+- 新增 `--external-order <json>` 和 `--external-order-type <type>` 命令行参数，用于模拟第三方软件拉起本地口扫软件并下发建单信息。
+- 单实例 IPC 消息从简单激活扩展为 JSON，已运行实例在登录完成后可接收第二个进程转发的第三方订单路径和第三方类型。
+- 第三方拉起建单时，MainExe 后台准备 HomeUI 的“Create”入口并复核 `order.create` 的 `visible/enabled`，但不显示首页，客户视觉上直接看到 `OrderScanWorkspaceShell/OrderCreateUI`。
+- 新增 `--smoke-external-order` 自动验证入口，覆盖 ExternalLaunchAdapter → MainExe → OrderScanWorkspaceShell → OrderCreateUI 链路并自动退出。
+- `config/version_modules.json`、VS2015 工程和 CMake 已纳入 `MeyerScan_ExternalLaunchAdapter.dll`，保证运行时版本清单和发布目录包含第三方拉起适配模块。
+- 验证：`MeyerScan_MainExe.sln` 和根 `MeyerScan_AllModules.sln` Release x64 构建通过；单模块输出和根输出目录的 `MeyerScan.exe --smoke-external-order --external-order ... --external-order-type cmd_demo` 均返回 0。MainExe 仍只有外部登录头文件既有 C4819/C4091 警告。
+
 ## 2026-07-02
 
 - 2026-07-03 复查补充：单模块 `MeyerScan_MainExe.sln` 和根 `MeyerScan_AllModules.sln` 均重新构建；`MyMainExe\bin\Release` 与 `F:\MeyerScan\bin\Release` 均复制 x64 `sqlite3.dll`，`MeyerScan.exe --smoke-main` 在两个目录均返回 0。
@@ -27,7 +55,7 @@
 
 ## 2026-06-25
 
-- 版本清单改为读取 `config/version_modules.json`，只记录拆分模块 EXE/DLL，不再把 Qt、OpenSSL、AWS、VC/UCRT 等第三方库写入 `logs/versionList`。
+- 版本清单改为读取 `config/version_modules.json`，只记录拆分模块 EXE/DLL，不再把 Qt、VTK、OpenCV、OpenSSL、AWS、VC/UCRT 等第三方库写入 `logs/versionList`。
 - Release PostBuild 补充复制 `runtime_config.json`、`permission_rules.json` 及对应说明 md 到 `config/`，避免运行时只依赖首次启动自动生成默认配置。
 - Release PostBuild 补齐 `MeyerScan_CaseOrderService.dll`、`MeyerScan_OrderScanWorkspaceShell.dll`、`MeyerScan_Calibration3DUI.dll`、`MeyerScan_CalibrationColorUI.dll`，保证 `version_modules.json` 中声明的已开发拆分模块能进入 MainExe 运行目录。
 - README 和 `config/version_modules.md` 补充维护规则：新增模块写入 manifest 后，必须同步修改 PostBuild/安装包脚本，否则运行时 versionList 会以 `exists=false` 暴露漏复制问题。

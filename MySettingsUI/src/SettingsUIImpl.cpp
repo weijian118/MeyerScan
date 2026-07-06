@@ -28,6 +28,23 @@
 
 #include <cstring>
 
+// =============================================================================
+// 文件说明:
+//   设置模块 UI 实现，负责创建设置主界面、读取运行时只读数据快照、
+//   管理校准入口可用性，并把确认/应用/关闭等动作回调给 MainExe。
+//
+// 模块边界:
+//   - 不直接拼 SQL，不直接包含 Database.h。
+//   - 医生/诊所/技工所等列表通过 RuntimeDataCenter 读取。
+//   - 3D 校准和颜色校准按需懒加载，扫描重建来源打开设置时禁止校准。
+//   - Logger、RuntimeDataCenter、Calibration DLL 都是借用接口，不由 SettingsUI delete。
+//
+// 阅读重点:
+//   - UI 文案统一写英文并用 tr() 包裹，后续由 qm 翻译。
+//   - 界面布局使用 Qt Layout，不使用固定坐标，降低多语言和多分辨率维护成本。
+//   - 设置页内部 QStackedWidget 只管理设置分类页，不代表 MainExe 级页面常驻缓存。
+// =============================================================================
+
 namespace {
 const int kInitialRuntimeDomainBufferSize = 512 * 1024;
 const int kMaxRuntimeDomainBufferSize = 32 * 1024 * 1024;
@@ -1175,4 +1192,10 @@ QString SettingsUIImpl::OpenSourceName() const {
 extern "C" MEYERSCAN_SETTINGSUI_API ISettingsUI* GetSettingsUI() {
     // C 导出函数返回接口基类指针，调用方不用知道 SettingsUIImpl 的类定义。
     return &SettingsUIImpl::Instance();
+}
+
+// 统一版本导出函数。
+// 该函数只返回静态版本字符串，不触发设置页面创建或校准模块懒加载。
+extern "C" MEYERSCAN_SETTINGSUI_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
 }

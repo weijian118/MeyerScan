@@ -1,8 +1,8 @@
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,2,0,0
- PRODUCTVERSION 0,2,0,0
+ FILEVERSION 0,4,0,0
+ PRODUCTVERSION 0,4,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -19,11 +19,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
             VALUE "FileDescription", "MeyerScan UIComponents Module"
-            VALUE "FileVersion", "0.2.0.0"
+            VALUE "FileVersion", "0.4.0.0"
             VALUE "InternalName", "MeyerScan_UIComponents"
             VALUE "OriginalFilename", "MeyerScan_UIComponents.dll"
             VALUE "ProductName", "MeyerScan Digital Dental Scanner"
-            VALUE "ProductVersion", "0.2.0.0"
+            VALUE "ProductVersion", "0.4.0.0"
         END
     END
     BLOCK "VarFileInfo"

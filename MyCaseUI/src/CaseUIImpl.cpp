@@ -34,7 +34,7 @@ CaseUIImpl& CaseUIImpl::Instance() {
 }
 
 // 初始化案例管理 UI。
-// 这里只做日志加载和数据库健康检查；正式患者/订单数据必须通过 CaseOrderService。
+// 这里只加载日志、共享 UI 和 RuntimeDataCenter；正式患者/订单写流程必须通过 CaseOrderService。
 bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
     // 案例管理 UI 当前只负责界面框架和用户动作上报。
     // 初始化时只加载日志、共享 UI 和 RuntimeDataCenter，不直接读取或连接 Database。
@@ -655,4 +655,10 @@ bool CaseUIImpl::IsActionEnabled(int actionId) const {
 // MainExe 和测试宿主通过该函数获取案例管理模块接口。
 extern "C" MEYERSCAN_CASEUI_API ICaseUI* GetCaseUI() {
     return &CaseUIImpl::Instance();
+}
+
+// 统一版本导出函数。
+// MainExe 写版本清单时通过该函数读取代码版本，不需要创建案例管理界面。
+extern "C" MEYERSCAN_CASEUI_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
 }

@@ -9,6 +9,12 @@
 //   2. SQLite 通过运行时动态加载 sqlite3.dll 调用 C API。
 //   3. Database 只执行基础 SQL 和结果行列转换，不理解患者/订单业务含义。
 //   4. Qt 模块如需 QString/QJson 便利能力，应通过 MyDatabaseQtAdapter 转换。
+//
+// 阅读重点:
+//   - 对外结构全部是 POD 或 const char*，避免 std::string/QString 跨 DLL 释放问题。
+//   - SQLite 使用 LoadLibrary/GetProcAddress 动态绑定，降低 VS2015 工程对 sqlite3.lib 的依赖。
+//   - 查询结果统一序列化为轻量表格 JSON，由调用方提供缓冲区接收。
+//   - 配置文件解析是小范围轻量解析器，只用于 db_config.json，不用于复杂业务 JSON。
 // =============================================================================
 
 #include "DatabaseImpl.h"
@@ -96,6 +102,13 @@ void* DatabaseImpl::s_loggerModule = nullptr;
 // 返回 Database 单例。
 extern "C" MEYERSCAN_DATABASE_API IDatabase* GetDatabase() {
     return &DatabaseImpl::Instance();
+}
+
+// 统一版本导出函数。
+// MainExe / VersionManager 生成版本清单时只需要读取代码版本，
+// 通过这个轻量 C ABI 函数即可完成，不需要初始化数据库连接。
+extern "C" MEYERSCAN_DATABASE_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
 }
 
 // 获取进程内唯一 DatabaseImpl 实例。
@@ -227,19 +240,23 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
 
     // 先清空旧配置，避免新配置缺字段时保留旧值。
     std::memset(&m_config, 0, sizeof(m_config));
+    // version 是 POD 配置结构的版本号，后续字段扩展时可用于兼容判断。
     m_config.version = 1;
 
     // databaseType 缺省使用 sqlite，符合当前重构默认离线本地数据库链路。
     const std::string databaseType = ToLower(ExtractJsonString(json, "databaseType", "sqlite"));
+    // 对外结构体中存 int32_t，避免 DLL ABI 暴露 C++ enum class 的实现细节。
     m_config.dbType = databaseType == "mysql"
         ? static_cast<int32_t>(DatabaseType::MySQL)
         : static_cast<int32_t>(DatabaseType::SQLite);
 
     // MySQL 配置在 mysql 对象内。当前只解析保存，不建立 MySQL 原生连接。
     const std::string mysqlObject = ExtractObjectText(json, "mysql");
+    // 每个字符串字段都通过 CopyText 写入固定 char 数组，防止跨 DLL std::string 生命周期问题。
     CopyText(m_config.mysqlHost,
              sizeof(m_config.mysqlHost),
              ExtractJsonString(mysqlObject, "host", "127.0.0.1"));
+    // 整数字段解析失败时使用默认端口，保证配置缺项时模块仍有可读值。
     m_config.mysqlPort = ExtractJsonInt(mysqlObject, "port", 3308);
     CopyText(m_config.mysqlService,
              sizeof(m_config.mysqlService),
@@ -262,6 +279,7 @@ bool DatabaseImpl::LoadConfig(const char* configPath) {
 
 // 根据配置建立数据库连接。
 VoidResult DatabaseImpl::Connect() {
+    // m_mutex 保护 m_connected、m_config、m_sqliteDb 等共享状态。
     std::lock_guard<std::mutex> locker(m_mutex);
 
     // 已连接时直接成功，避免重复打开同一个文件。
@@ -273,6 +291,7 @@ VoidResult DatabaseImpl::Connect() {
     SetLastErrorMessage("");
 
     // 当前本轮完整落地 SQLite 原生驱动；MySQL 原生驱动保留接口和明确错误。
+    // 三目表达式根据配置选择具体连接函数，保持 Connect 对外流程统一。
     const bool success = m_config.dbType == static_cast<int32_t>(DatabaseType::MySQL)
         ? ConnectMySQL()
         : ConnectSQLite();
@@ -305,6 +324,7 @@ bool DatabaseImpl::LoadSqliteRuntime() {
     }
 
     // 优先从 EXE 目录或 PATH 查找 sqlite3.dll。
+    // 不静态链接 sqlite3.lib，是为了让项目在 VS2015 下更容易迁移和替换 SQLite 运行时。
     HMODULE module = LoadLibraryA("sqlite3.dll");
     if (!module) {
         SetLastWin32ErrorMessage("Failed to load sqlite3.dll", GetLastError());
@@ -315,8 +335,10 @@ bool DatabaseImpl::LoadSqliteRuntime() {
     // 这个宏只在当前函数内使用，用于减少重复 GetProcAddress 代码。
 #define LOAD_SQLITE_PROC(member, name) \
     do { \
+        /* GetProcAddress 返回 FARPROC，这里转换成成员函数指针类型。 */ \
         member = reinterpret_cast<decltype(member)>(GetProcAddress(module, name)); \
         if (!member) { \
+            /* 任一必需函数缺失都说明 sqlite3.dll 版本不匹配，必须整体失败。 */ \
             FreeLibrary(module); \
             SetLastErrorMessage("sqlite3.dll is missing required function: " name); \
             LogError("LoadSqliteRuntime", m_lastErrorMessage); \
@@ -362,11 +384,13 @@ bool DatabaseImpl::ConnectSQLite() {
 
     // sqlite3_open_v2 传入 UTF-8 路径；Windows 版 SQLite 支持 UTF-8 文件名。
     sqlite3* db = nullptr;
+    // READWRITE|CREATE 表示不存在时创建数据库文件；FULLMUTEX 让 SQLite 连接具备内部互斥保护。
     const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
     const int rc = m_sqliteOpenV2(m_config.sqlitePath, &db, flags, nullptr);
     if (rc != SQLITE_OK) {
         // 打开失败时 db 可能非空，sqlite3_errmsg 仍可读取原因。
         const char* error = db && m_sqliteErrmsg ? m_sqliteErrmsg(db) : "sqlite3_open_v2 failed";
+        // 先保存错误文本，再关闭 db；关闭后 sqlite3_errmsg 返回内容可能失效。
         SetLastErrorMessage(error);
         LogError("ConnectSQLite", m_lastErrorMessage);
         if (db && m_sqliteClose) {
@@ -384,8 +408,10 @@ bool DatabaseImpl::ConnectSQLite() {
 
 // 保存最近一次底层错误。
 void DatabaseImpl::SetLastErrorMessage(const char* message) {
+    // 先清零整块数组，保证上一次较长错误不会残留尾部字符。
     std::memset(m_lastErrorMessage, 0, sizeof(m_lastErrorMessage));
     if (message && message[0] != '\0') {
+        // strncpy 留一个字节给 '\0'，保证对外读取始终是 C 字符串。
         std::strncpy(m_lastErrorMessage, message, sizeof(m_lastErrorMessage) - 1);
     }
 }
@@ -476,6 +502,7 @@ Result<DbResult> DatabaseImpl::ExecuteUpdate(const char* sql) {
 
 // 执行 SQL 并返回影响行数。
 Result<DbResult> DatabaseImpl::ExecuteSqlLocked(const char* sql, bool /*expectRows*/) {
+    // DbResult 是对外 POD 结构，必须显式初始化每个字段。
     DbResult result;
     result.version = 1;
     result.affectedRows = 0;
@@ -495,6 +522,7 @@ Result<DbResult> DatabaseImpl::ExecuteSqlLocked(const char* sql, bool /*expectRo
     char* errorMessage = nullptr;
     const int rc = m_sqliteExec(m_sqliteDb, sql, nullptr, nullptr, &errorMessage);
     if (rc != SQLITE_OK) {
+        // sqlite3_exec 失败时可能通过 errorMessage 返回堆内存，需要 sqlite3_free 释放。
         const char* message = errorMessage ? errorMessage : SqliteLastError();
         LogError("ExecuteSql", message);
         if (errorMessage && m_sqliteFree) {
@@ -517,9 +545,11 @@ int32_t DatabaseImpl::ExecuteScript(const char** sqlScripts, int32_t count) {
 
     int32_t successCount = 0;
     for (int32_t i = 0; i < count; ++i) {
+        // 空脚本项直接跳过，避免一条空字符串中断整批初始化脚本。
         if (!sqlScripts[i]) {
             continue;
         }
+        // 每条脚本复用 ExecuteUpdate，确保日志、锁和错误处理保持一致。
         Result<DbResult> result = ExecuteUpdate(sqlScripts[i]);
         if (result.IsSuccess()) {
             ++successCount;
@@ -544,6 +574,7 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJson(const char* sql,
 Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
                                                           char* jsonBuffer,
                                                           int32_t jsonBufferSize) {
+    // DbJsonResult 也是 POD，先初始化再进入任何失败分支。
     DbJsonResult result;
     result.version = 1;
     result.rowCount = 0;
@@ -564,6 +595,7 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
     }
 
     sqlite3_stmt* statement = nullptr;
+    // prepare 把 SQL 编译成 statement；-1 表示 SQL 字符串以 '\0' 结尾。
     const int prepareRc = m_sqlitePrepareV2(m_sqliteDb, sql, -1, &statement, nullptr);
     if (prepareRc != SQLITE_OK || !statement) {
         LogError("ExecuteQueryJson", SqliteLastError());
@@ -575,6 +607,7 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
     std::vector<std::string> columns;
     columns.reserve(static_cast<size_t>(columnCount));
     for (int i = 0; i < columnCount; ++i) {
+        // sqlite3_column_name 返回 SQLite 内部指针，只在 statement 生命周期内有效，所以立即复制进 std::string。
         const char* name = m_sqliteColumnName(statement, i);
         columns.push_back(name ? name : "");
     }
@@ -590,27 +623,35 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
     int rowCount = 0;
     bool firstRow = true;
     while (true) {
+        // sqlite3_step 每调用一次推进一行；返回 SQLITE_ROW 表示当前有一行数据可读。
         const int stepRc = m_sqliteStep(statement);
         if (stepRc == SQLITE_ROW) {
             if (!firstRow) {
+                // JSON 数组元素之间需要逗号；第一行前面不能加逗号。
                 rows << ",";
             }
             firstRow = false;
             rows << "{";
             for (int i = 0; i < columnCount; ++i) {
                 if (i > 0) {
+                    // JSON 对象字段之间需要逗号；第一个字段前面不能加逗号。
                     rows << ",";
                 }
                 const char* columnName = columns[static_cast<size_t>(i)].c_str();
+                // SQLite 以动态类型存储，每个单元格都要查询实际类型。
                 const int sqliteValueType = m_sqliteColumnType(statement, i);
+                // sqlite3_column_text 会把数值也转成文本，方便统一写 JSON。
                 const unsigned char* valueBytes = m_sqliteColumnText(statement, i);
                 const char* valueText = reinterpret_cast<const char*>(valueBytes);
                 rows << "\"" << EscapeJson(columnName) << "\":";
                 if (sqliteValueType == SQLITE_NULL || !valueText) {
+                    // NULL 要写成 JSON null，而不是字符串 "null"。
                     rows << "null";
                 } else if (sqliteValueType == SQLITE_INTEGER || sqliteValueType == SQLITE_FLOAT) {
+                    // 数字直接写入 JSON，保持 UI 端解析后仍是数字类型。
                     rows << valueText;
                 } else {
+                    // 文本字段必须做 JSON 转义，避免引号、换行破坏 JSON。
                     rows << "\"" << EscapeJson(valueText) << "\"";
                 }
             }
@@ -620,9 +661,11 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
         }
 
         if (stepRc == SQLITE_DONE) {
+            // SQLITE_DONE 表示已经没有更多行，正常结束循环。
             break;
         }
 
+        // 其它返回码表示执行过程中出错，必须 finalize statement 后返回。
         LogError("ExecuteQueryJson", SqliteLastError());
         m_sqliteFinalize(statement);
         return Result<DbJsonResult>::Fail(ErrorCode::DbQueryFailed, "SQL query failed");
@@ -634,6 +677,7 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
     json << rowCount << ",\"columns\":[";
     for (size_t i = 0; i < columns.size(); ++i) {
         if (i > 0) {
+            // columns 数组元素之间添加逗号。
             json << ",";
         }
         json << "\"" << EscapeJson(columns[i].c_str()) << "\"";
@@ -641,6 +685,7 @@ Result<DbJsonResult> DatabaseImpl::ExecuteQueryJsonLocked(const char* sql,
     json << "],\"rows\":" << rows.str() << "}";
 
     const std::string jsonText = json.str();
+    // +1 是为了预留 C 字符串结尾的 '\0'。
     if (jsonText.size() + 1 > static_cast<size_t>(jsonBufferSize)) {
         LogError("ExecuteQueryJson", "JSON output buffer is too small");
         return Result<DbJsonResult>::Fail(ErrorCode::InvalidParameter, "JSON output buffer is too small");
@@ -693,6 +738,7 @@ const DbConfig& DatabaseImpl::GetConfig() const {
 // 切换数据库类型。
 VoidResult DatabaseImpl::SetDatabaseType(DatabaseType dbType) {
     {
+        // 先在锁内修改连接状态，保证其它线程看不到“类型已变但旧连接还在”的中间状态。
         std::lock_guard<std::mutex> locker(m_mutex);
 
         // 切换前关闭旧连接，避免同一实例继续使用旧驱动句柄。
@@ -702,6 +748,7 @@ VoidResult DatabaseImpl::SetDatabaseType(DatabaseType dbType) {
     }
 
     // 释放锁后再连接，避免 Connect 内部重复加锁导致死锁。
+    // 这是一个常见技巧：需要调用同类中会加锁的函数时，外层先退出锁作用域。
     VoidResult connectResult = Connect();
     if (connectResult.IsSuccess()) {
         LogInfo("SetDatabaseType", "Database type switched");
@@ -733,6 +780,7 @@ const char* DatabaseImpl::SqliteLastError() const {
 
 // 备份 SQLite 文件。
 bool DatabaseImpl::BackupSQLite(const char* backupPath) {
+    // backupPath 是目录，不是完整文件名；文件名由模块统一加时间戳生成。
     const std::string backupDir = NormalizePath(backupPath ? backupPath : "");
     if (!EnsureDirectoryExists(backupDir)) {
         LogError("BackupSQLite", "Failed to create backup directory");
@@ -740,6 +788,7 @@ bool DatabaseImpl::BackupSQLite(const char* backupPath) {
     }
 
     const std::string timestamp = CurrentTimestamp();
+    // 统一备份文件名便于人工按时间查找历史 SQLite 数据库。
     const std::string targetFile = backupDir + "/" + timestamp + "-MeyerScanSQLite.db";
 
     // CopyFileA 第三个参数 FALSE 表示目标存在时覆盖，便于同秒重复测试。
@@ -763,7 +812,9 @@ bool DatabaseImpl::BackupMySQL(const char* backupPath) {
 
 // 标准化路径分隔符。
 std::string DatabaseImpl::NormalizePath(const std::string& path) {
+    // Trim 去掉配置中不小心写入的首尾空格。
     std::string normalized = Trim(path);
+    // 内部统一使用 "/"，这样 DirectoryOf/拼接逻辑只需要处理一种分隔符。
     std::replace(normalized.begin(), normalized.end(), '\\', '/');
     return normalized;
 }
@@ -780,12 +831,14 @@ std::string DatabaseImpl::DirectoryOf(const std::string& path) {
 
 // 判断是否为绝对路径。
 bool DatabaseImpl::IsAbsolutePath(const std::string& path) {
+    // Windows 盘符绝对路径，例如 C:/xxx 或 C:\xxx。
     if (path.size() >= 3 &&
         std::isalpha(static_cast<unsigned char>(path[0])) &&
         path[1] == ':' &&
         (path[2] == '/' || path[2] == '\\')) {
         return true;
     }
+    // UNC 网络路径，例如 //server/share。
     if (path.size() >= 2 && path[0] == '/' && path[1] == '/') {
         return true;
     }
@@ -794,11 +847,13 @@ bool DatabaseImpl::IsAbsolutePath(const std::string& path) {
 
 // 按配置文件目录解析相对路径。
 std::string DatabaseImpl::ResolvePathFromConfig(const std::string& configuredPath) const {
+    // 先做标准化，后续只需要判断 "/" 分隔的路径。
     const std::string normalized = NormalizePath(configuredPath);
     if (normalized.empty()) {
         return std::string();
     }
     if (IsAbsolutePath(normalized)) {
+        // 绝对路径保持原样，不再拼配置目录。
         return normalized;
     }
     if (m_configDir.empty() || m_configDir == ".") {
@@ -816,6 +871,7 @@ bool DatabaseImpl::EnsureDirectoryExists(const std::string& dirPath) {
 
     DWORD attrs = GetFileAttributesA(normalized.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES) {
+        // 路径存在时必须确认它是目录；如果是文件则返回失败。
         return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
     }
 
@@ -825,6 +881,7 @@ bool DatabaseImpl::EnsureDirectoryExists(const std::string& dirPath) {
         const char ch = normalized[i];
         partial.push_back(ch);
         if (ch != '/' && i + 1 != normalized.size()) {
+            // 还没走到一个目录片段边界，继续累积字符。
             continue;
         }
 
@@ -835,6 +892,7 @@ bool DatabaseImpl::EnsureDirectoryExists(const std::string& dirPath) {
 
         DWORD currentAttrs = GetFileAttributesA(partial.c_str());
         if (currentAttrs == INVALID_FILE_ATTRIBUTES) {
+            // CreateDirectoryA 创建失败可能是目录刚被其它线程创建；最终统一再检查 attrs。
             CreateDirectoryA(partial.c_str(), nullptr);
         }
     }
@@ -850,6 +908,7 @@ bool DatabaseImpl::EnsureParentDirectoryExists(const std::string& filePath) {
 
 // 从 JSON 文本读取对象片段。
 std::string DatabaseImpl::ExtractObjectText(const std::string& json, const std::string& key) {
+    // 这是一个轻量解析器，只用于读取我们自己生成的小配置文件，不用于解析复杂业务 JSON。
     const std::string pattern = "\"" + key + "\"";
     const size_t keyPos = json.find(pattern);
     if (keyPos == std::string::npos) {
@@ -867,23 +926,29 @@ std::string DatabaseImpl::ExtractObjectText(const std::string& json, const std::
     }
 
     int depth = 0;
+    // inString 表示当前扫描位置是否在 JSON 字符串内，字符串内的 { } 不能计入对象层级。
     bool inString = false;
+    // escape 表示上一字符是反斜杠，下一字符应按普通字符处理。
     bool escape = false;
     for (size_t i = objectBegin; i < json.size(); ++i) {
         const char ch = json[i];
         if (escape) {
+            // 被转义的字符不会影响字符串状态或大括号层级。
             escape = false;
             continue;
         }
         if (ch == '\\' && inString) {
+            // 只有字符串内部的反斜杠才表示转义。
             escape = true;
             continue;
         }
         if (ch == '"') {
+            // 遇到未转义引号时，在字符串内/外状态之间切换。
             inString = !inString;
             continue;
         }
         if (inString) {
+            // 字符串里的所有字符都不参与对象层级判断。
             continue;
         }
         if (ch == '{') {
@@ -891,6 +956,7 @@ std::string DatabaseImpl::ExtractObjectText(const std::string& json, const std::
         } else if (ch == '}') {
             --depth;
             if (depth == 0) {
+                // depth 回到 0，说明找到了和 objectBegin 配对的右大括号。
                 return json.substr(objectBegin, i - objectBegin + 1);
             }
         }
@@ -902,6 +968,7 @@ std::string DatabaseImpl::ExtractObjectText(const std::string& json, const std::
 std::string DatabaseImpl::ExtractJsonString(const std::string& json,
                                             const std::string& key,
                                             const std::string& defaultValue) {
+    // 查找形如 "key" 的字段名。该轻量函数不支持同名嵌套字段的复杂场景。
     const std::string pattern = "\"" + key + "\"";
     const size_t keyPos = json.find(pattern);
     if (keyPos == std::string::npos) {
@@ -919,6 +986,7 @@ std::string DatabaseImpl::ExtractJsonString(const std::string& json,
     }
 
     std::string value;
+    // escape 用来识别 \"、\\、\n 等转义序列。
     bool escape = false;
     for (size_t i = quote + 1; i < json.size(); ++i) {
         const char ch = json[i];
@@ -937,10 +1005,12 @@ std::string DatabaseImpl::ExtractJsonString(const std::string& json,
             continue;
         }
         if (ch == '\\') {
+            // 下一轮循环会把反斜杠后的字符当作转义值处理。
             escape = true;
             continue;
         }
         if (ch == '"') {
+            // 未转义引号表示字符串值结束。
             return value;
         }
         value.push_back(ch);
@@ -952,6 +1022,7 @@ std::string DatabaseImpl::ExtractJsonString(const std::string& json,
 int DatabaseImpl::ExtractJsonInt(const std::string& json,
                                  const std::string& key,
                                  int defaultValue) {
+    // 整数解析同样用于小配置文件，解析失败一律返回默认值。
     const std::string pattern = "\"" + key + "\"";
     const size_t keyPos = json.find(pattern);
     if (keyPos == std::string::npos) {
@@ -965,6 +1036,7 @@ int DatabaseImpl::ExtractJsonInt(const std::string& json,
     size_t begin = colon + 1;
     while (begin < json.size() &&
            std::isspace(static_cast<unsigned char>(json[begin]))) {
+        // 跳过冒号后面的空白字符。
         ++begin;
     }
 
@@ -973,6 +1045,7 @@ int DatabaseImpl::ExtractJsonInt(const std::string& json,
            (std::isdigit(static_cast<unsigned char>(json[end])) ||
             json[end] == '-' ||
             json[end] == '+')) {
+        // 只接受简单十进制整数，不解析小数或科学计数法。
         ++end;
     }
 
@@ -990,13 +1063,16 @@ std::string DatabaseImpl::EscapeJson(const char* text) {
     }
 
     std::string escaped;
+    // 按字节遍历 UTF-8 文本。中文等非 ASCII 字节直接保留，JSON/UTF-8 允许这样输出。
     for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p; ++p) {
         const unsigned char ch = *p;
         switch (ch) {
         case '\\':
+            // 反斜杠本身必须转义，否则会影响后续字符含义。
             escaped += "\\\\";
             break;
         case '"':
+            // 双引号必须转义，否则会提前结束 JSON 字符串。
             escaped += "\\\"";
             break;
         case '\n':
@@ -1010,10 +1086,12 @@ std::string DatabaseImpl::EscapeJson(const char* text) {
             break;
         default:
             if (ch < 0x20) {
+                // JSON 不允许直接出现控制字符，统一写成 \u00xx。
                 char buffer[8] = {0};
                 std::snprintf(buffer, sizeof(buffer), "\\u%04x", ch);
                 escaped += buffer;
             } else {
+                // 普通字符原样追加。
                 escaped.push_back(static_cast<char>(ch));
             }
             break;
@@ -1030,21 +1108,25 @@ bool DatabaseImpl::LooksLikeNumber(const char* text) {
 
     const char* p = text;
     if (*p == '-' || *p == '+') {
+        // 允许前导正负号。
         ++p;
     }
     bool hasDigit = false;
     bool hasDot = false;
     while (*p) {
         if (std::isdigit(static_cast<unsigned char>(*p))) {
+            // 只要出现过数字，最终才可能被认为是合法数字。
             hasDigit = true;
             ++p;
             continue;
         }
         if (*p == '.' && !hasDot) {
+            // 小数点最多允许一个。
             hasDot = true;
             ++p;
             continue;
         }
+        // 出现其它字符时，不把它当作 JSON 数字。
         return false;
     }
     return hasDigit;

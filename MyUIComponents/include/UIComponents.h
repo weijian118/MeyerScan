@@ -11,7 +11,10 @@
 class QPushButton;
 class QLabel;
 class QComboBox;
+class QDateEdit;
 class QLineEdit;
+class QTableWidget;
+class QTextEdit;
 class QToolButton;
 
 // 通用按钮视觉角色。
@@ -101,6 +104,27 @@ public:
 
     // 清理模块状态。
     virtual void Shutdown() = 0;
+
+    // 创建统一日期输入框。
+    // 新增接口必须追加在接口末尾，避免破坏旧模块已编译代码的 vtable 顺序。
+    // 日期值和显示格式由调用模块设置；UIComponents 只统一高度、边框、背景和可点击区域。
+    virtual QDateEdit* CreateDateEdit(QWidget* parent = nullptr) = 0;
+
+    // 创建统一多行文本框。
+    // 适合备注、说明等常用输入场景；业务模块仍负责字数限制、校验和保存。
+    virtual QTextEdit* CreateTextEdit(QWidget* parent = nullptr) = 0;
+
+    // 创建统一字段标签。
+    // textUtf8 必须是调用方 tr("English source text") 后的显示文本。
+    virtual QLabel* CreateFieldLabel(const char* textUtf8, QWidget* parent = nullptr) = 0;
+
+    // 创建统一表格控件。
+    // 表格列名、数据填充、选择模式和业务动作由调用模块决定；UIComponents 只统一基础外观。
+    virtual QTableWidget* CreateTableWidget(QWidget* parent = nullptr) = 0;
+
+    // 给已有 QTableWidget 应用统一表格样式。
+    // 用于 CaseUI、SettingsUI 等已有表格逐步迁移到统一视觉规则。
+    virtual void ApplyTableStyle(QTableWidget* table) = 0;
 };
 
 // C ABI 工厂函数。

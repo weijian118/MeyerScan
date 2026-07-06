@@ -1,8 +1,13 @@
 ﻿#include "MainWindow.h"
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QString>
+#include <QStringList>
 #include <QTimer>
 
 #include <cstring>
@@ -13,9 +18,35 @@ namespace {
 // 该名称只在本机当前用户会话内使用，用于第二次启动时通知已经运行的 MeyerScan.exe。
 const char* kSingleInstanceName = "MeyerScan_MainExe_SingleInstance";
 
-// 通知已经运行的 MeyerScan.exe 激活主窗口。
+// 从命令行读取指定参数后面的值。
+// 这里不用 Qt 的 QCommandLineParser，是为了保持当前 main.cpp 简单并兼容 VS2015 既有写法。
+QString ValueAfterArgument(const QStringList& arguments, const QString& name) {
+    const int index = arguments.indexOf(name);
+    if (index >= 0 && index + 1 < arguments.size()) {
+        return arguments.at(index + 1);
+    }
+    return QString();
+}
+
+// 构造单实例消息。
+// 使用 JSON 而不是裸字符串拼接，是为了以后继续扩展第三方参数时不破坏旧字段。
+QByteArray BuildSingleInstanceMessage(const QString& type,
+                                      const QString& externalOrderPath = QString(),
+                                      const QString& externalOrderType = QString()) {
+    QJsonObject message;
+    message.insert("type", type);
+    if (!externalOrderPath.isEmpty()) {
+        message.insert("externalOrderPath", externalOrderPath);
+    }
+    if (!externalOrderType.isEmpty()) {
+        message.insert("externalOrderType", externalOrderType);
+    }
+    return QJsonDocument(message).toJson(QJsonDocument::Compact);
+}
+
+// 通知已经运行的 MeyerScan.exe 激活主窗口或处理第三方建单。
 // 返回 true 表示本机已有实例接收了通知，当前进程可以直接退出。
-bool NotifyExistingInstance() {
+bool NotifyExistingInstance(const QByteArray& message) {
     // QLocalSocket 是 Qt 提供的本机进程间通信 socket。
     // 这里不需要跨机器通信，只需要连接同名 QLocalServer。
     QLocalSocket socket;
@@ -28,9 +59,9 @@ bool NotifyExistingInstance() {
         return false;
     }
 
-    // 发送一个很小的激活消息。
-    // 当前协议只关心“有第二次启动发生”，消息体不承载复杂业务数据。
-    socket.write("activate");
+    // 发送单实例消息。当前支持 activate 和 external-order。
+    // 第三方拉起时，新的进程只负责把 JSON 路径交给旧实例，避免同时运行两个 MeyerScan.exe。
+    socket.write(message);
 
     // flush 把 Qt 缓冲区中的数据推给底层 socket。
     socket.flush();
@@ -56,13 +87,23 @@ int main(int argc, char* argv[]) {
 
     // --smoke 走真实登录前启动链路，稍后自动退出。
     // --smoke-main 跳过登录，用于自动验证 MainExe + HomeUI + CaseUI 集成链路。
+    // --smoke-external-order 走第三方建单链路，自动打开 OrderScanWorkspaceShell/OrderCreateUI 后退出。
     // std::strcmp 前先判断 argc，避免访问不存在的 argv[1]。
     const bool smoke = argc > 1 && std::strcmp(argv[1], "--smoke") == 0;
     const bool smokeMain = argc > 1 && std::strcmp(argv[1], "--smoke-main") == 0;
+    const QStringList arguments = QCoreApplication::arguments();
+    const bool smokeExternalOrder = arguments.contains("--smoke-external-order");
+    const QString externalOrderPath = ValueAfterArgument(arguments, "--external-order");
+    const QString externalOrderType = ValueAfterArgument(arguments, "--external-order-type");
+    const bool externalOrder = !externalOrderPath.isEmpty();
 
     // 单实例是固定启动流程，不由 runtime_config.json 控制。
     // 冒烟测试允许并行启动，避免自动化测试之间互相抢同一个本地服务名。
-    if (!smoke && !smokeMain && NotifyExistingInstance()) {
+    const QByteArray singleInstanceMessage = externalOrder
+        ? BuildSingleInstanceMessage("external-order", externalOrderPath, externalOrderType)
+        : BuildSingleInstanceMessage("activate");
+
+    if (!smoke && !smokeMain && !smokeExternalOrder && NotifyExistingInstance(singleInstanceMessage)) {
         // 已经通知旧实例后，本进程直接退出，保证客户桌面只保留一个主程序。
         return 0;
     }
@@ -73,7 +114,7 @@ int main(int argc, char* argv[]) {
 
     // 当前进程作为唯一主实例时监听这个本地服务名。
     QLocalServer singleServer;
-    if (!smoke && !smokeMain) {
+    if (!smoke && !smokeMain && !smokeExternalOrder) {
         // listen 失败时不阻塞主流程；最坏结果只是第二次启动无法激活旧窗口。
         singleServer.listen(kSingleInstanceName);
     }
@@ -89,27 +130,49 @@ int main(int argc, char* argv[]) {
         // deleteLater 比立即 delete 更适合在信号回调中释放 QObject。
         QLocalSocket* socket = singleServer.nextPendingConnection();
         if (socket) {
+            // 第二个进程写完后会很快退出，这里短暂等待数据到达。
+            // 如果读取不到内容，按旧的 activate 行为处理即可。
+            socket->waitForReadyRead(200);
+            const QByteArray payload = socket->readAll();
             socket->deleteLater();
-        }
 
-        // 登录完成后才允许激活主界面。
-        // 这样第三方重复打开软件时不会打断数据库检查、登录模块或等待页流程。
-        if (window.IsLoginCompleted() && window.isVisible()) {
-            window.showNormal();
-            window.raise();
-            window.activateWindow();
+            const QJsonDocument document = QJsonDocument::fromJson(payload);
+            const QJsonObject message = document.isObject() ? document.object() : QJsonObject();
+            const QString type = message.value("type").toString("activate");
+
+            // 登录完成后才允许激活主界面或接收第三方订单。
+            // 数据库检查或登录过程中收到第二次启动，按既有规则忽略。
+            if (window.IsLoginCompleted()) {
+                if (type == "external-order") {
+                    window.StartExternalOrder(message.value("externalOrderPath").toString(),
+                                              message.value("externalOrderType").toString());
+                } else if (window.isVisible()) {
+                    window.showNormal();
+                    window.raise();
+                    window.activateWindow();
+                }
+            }
         }
     });
 
     if (smokeMain) {
         // smoke-main 跳过登录模块，专门验证主程序和已拆 UI 模块之间的集成流程。
         window.StartWithoutLoginForSmoke();
+    } else if (smokeExternalOrder) {
+        // smoke-external-order 用于自动化验证第三方建单链路。
+        // 它仍然走 ExternalLaunchAdapter -> 后台首页创建入口 -> OrderScanWorkspaceShell/OrderCreateUI，
+        // 但会由下面的定时器自动退出，避免命令行测试卡住。
+        window.StartExternalOrder(externalOrderPath, externalOrderType);
+    } else if (externalOrder) {
+        // 第三方拉起建单模拟：命令行传入 JSON 文件路径，可选传 thirdPartyType。
+        // 视觉上直接进入 OrderScanWorkspaceShell/OrderCreateUI，不显示首页自动跳转过程。
+        window.StartExternalOrder(externalOrderPath, externalOrderType);
     } else {
         // 正式流程和 --smoke 都从登录链路开始。
         window.StartLogin();
     }
 
-    if (smoke || smokeMain) {
+    if (smoke || smokeMain || smokeExternalOrder) {
         // 冒烟测试必须自动退出，避免命令行构建/测试流程卡在 Qt 事件循环。
         // 3 秒给登录窗口、首页/案例切换和资源释放留出基本事件处理时间。
         QTimer::singleShot(3000, &app, SLOT(quit()));

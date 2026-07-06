@@ -1,4 +1,20 @@
-# MeyerScan CaseUI 变更记录
+﻿# MeyerScan CaseUI 变更记录
+
+## 2026-07-06
+
+- 修正 `CaseUI.h` 和 `CaseUIImpl.cpp` 中容易误导后续维护的旧说明：正式 CaseUI 只初始化日志、共享 UI 和 RuntimeDataCenter，只读取运行时快照展示患者/订单列表，不负责数据库健康检查、建表、迁移或业务写入。
+- 复核当前链路仍保持 `CaseUI -> RuntimeDataCenter -> DatabaseQtAdapter -> Database`，CaseUI 不直接包含 Database 接口，也不直接拼业务 SQL。
+- 已在根聚合 CMake `Release` 构建中验证本模块和测试宿主可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `CaseUITest.exe` 测试宿主文件级阅读说明，说明测试数据库配置、患者/订单/参考数据造数、RuntimeDataCenter 快照链路、`--smoke` 表格行数验证和 CaseUI 只负责显示不负责建表/造数的边界。
+- 本轮仅补充注释，不改变 CaseUI 列表读取、动作上报或页面切换逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；`CaseUITest.exe --smoke` 返回 0；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-03
 

@@ -1,4 +1,13 @@
-# MeyerScan HomeUI 变更记录
+﻿# MeyerScan HomeUI 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 参与全模块偏移复查：确认首页仍只展示入口、渲染 visible/enabled 状态并通过入口 ID 回调 MainExe；`Create` 入口由 MainExe 编排进入 `OrderScanWorkspaceShell/OrderCreateUI`，HomeUI 不直接创建建单页、不保存订单、不判断第三方字段。
+- 复测根输出目录 `HomeUITest.exe --smoke` 返回 0；本轮不改变 HomeUI 业务逻辑。
 
 ## 2026-07-02
 

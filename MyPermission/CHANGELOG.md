@@ -1,4 +1,14 @@
-# MeyerScan Permission 变更记录
+﻿# MeyerScan Permission 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `PermissionTest.exe` 测试宿主中文注释，说明测试专用 `permission_rules.json` 写入、`visible` 与 `enabled` 区别、缺失功能默认值和权限缓存释放流程。
+- 本轮仅补充注释，不改变 Permission 规则解析和权限判断逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-02
 

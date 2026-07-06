@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="UserMacros">
+    <MeyerScanWorkspaceRoot Condition="'$(MeyerScanWorkspaceRoot)'==''">$(MSBuildThisFileDirectory)..\</MeyerScanWorkspaceRoot>
+    <MeyerScanInstalledRoot Condition="'$(MeyerScanInstalledRoot)'==''">C:\Program Files (x86)\MeyerScan</MeyerScanInstalledRoot>
+
+    <QtRoot Condition="'$(QtRoot)'=='' and '$(QT_ROOT)'!='' and Exists('$(QT_ROOT)\bin\moc.exe')">$(QT_ROOT)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)'=='' and '$(QTDIR)'!='' and Exists('$(QTDIR)\bin\moc.exe')">$(QTDIR)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)'=='' and Exists('$(MeyerScanWorkspaceRoot)ThirdParty\Qt5.6.3\5.6.3\msvc2015_64\bin\moc.exe')">$(MeyerScanWorkspaceRoot)ThirdParty\Qt5.6.3\5.6.3\msvc2015_64</QtRoot>
+    <QtRoot Condition="'$(QtRoot)'=='' and Exists('$(MeyerScanInstalledRoot)\Qt5.6.3\5.6.3\msvc2015_64\bin\moc.exe')">$(MeyerScanInstalledRoot)\Qt5.6.3\5.6.3\msvc2015_64</QtRoot>
+    <QtRoot Condition="'$(QtRoot)'=='' and Exists('C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\moc.exe')">C:\Qt\Qt5.6.3\5.6.3\msvc2015_64</QtRoot>
+    <QtRoot Condition="'$(QtRoot)'==''">C:\Qt\Qt5.6.3\5.6.3\msvc2015_64</QtRoot>
+
+    <VtkRoot Condition="'$(VtkRoot)'=='' and '$(VTK_ROOT)'!='' and Exists('$(VTK_ROOT)\lib\vtkCommonCore-8.0.lib')">$(VTK_ROOT)</VtkRoot>
+    <VtkRoot Condition="'$(VtkRoot)'=='' and Exists('$(MeyerScanWorkspaceRoot)ThirdParty\VTK\VTK8_Release\lib\vtkCommonCore-8.0.lib')">$(MeyerScanWorkspaceRoot)ThirdParty\VTK\VTK8_Release</VtkRoot>
+    <VtkRoot Condition="'$(VtkRoot)'=='' and Exists('D:\wj\SelectPolyData\VTK\VTK8_Release\lib\vtkCommonCore-8.0.lib')">D:\wj\SelectPolyData\VTK\VTK8_Release</VtkRoot>
+    <VtkRoot Condition="'$(VtkRoot)'==''">$(MeyerScanWorkspaceRoot)ThirdParty\VTK\VTK8_Release</VtkRoot>
+
+    <VtkHeadersRoot Condition="'$(VtkHeadersRoot)'=='' and Exists('$(MeyerScanWorkspaceRoot)ThirdParty\VTKHeaders\include\vtk-8.0\vtkPolyData.h')">$(MeyerScanWorkspaceRoot)ThirdParty\VTKHeaders</VtkHeadersRoot>
+    <VtkHeadersRoot Condition="'$(VtkHeadersRoot)'=='' and Exists('D:\wj\SelectPolyData\VTKHeaders\include\vtk-8.0\vtkPolyData.h')">D:\wj\SelectPolyData\VTKHeaders</VtkHeadersRoot>
+    <VtkHeadersRoot Condition="'$(VtkHeadersRoot)'==''">$(VtkRoot)</VtkHeadersRoot>
+
+    <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and '$(OPENCV_ROOT)'!='' and Exists('$(OPENCV_ROOT)\build\x64\vc14\lib\opencv_world330.lib')">$(OPENCV_ROOT)</OpenCVRoot>
+    <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and Exists('$(MeyerScanWorkspaceRoot)ThirdParty\opencv\build\x64\vc14\lib\opencv_world330.lib')">$(MeyerScanWorkspaceRoot)ThirdParty\opencv</OpenCVRoot>
+    <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and Exists('D:\SoftWareInstall\opencv\build\x64\vc14\lib\opencv_world330.lib')">D:\SoftWareInstall\opencv</OpenCVRoot>
+    <OpenCVRoot Condition="'$(OpenCVRoot)'==''">$(MeyerScanWorkspaceRoot)ThirdParty\opencv</OpenCVRoot>
+
+    <QtIncludeDirs>$(QtRoot)\include;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtANGLE;$(QtRoot)\mkspecs\win32-msvc2015</QtIncludeDirs>
+    <QtLibDirs>$(QtRoot)\lib</QtLibDirs>
+    <QtLibs>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib</QtLibs>
+
+    <VtkIncludeDirs>$(VtkHeadersRoot)\include\vtk-8.0;$(VtkRoot)\include\vtk-8.0</VtkIncludeDirs>
+    <VtkLibDirs>$(VtkRoot)\lib</VtkLibDirs>
+    <VtkLibs>vtkCommonCore-8.0.lib;vtkCommonDataModel-8.0.lib;vtkCommonExecutionModel-8.0.lib;vtkFiltersCore-8.0.lib;vtkFiltersGeneral-8.0.lib;vtkFiltersSources-8.0.lib;vtkGUISupportQt-8.0.lib;vtkIOCore-8.0.lib;vtkIOGeometry-8.0.lib;vtkInteractionStyle-8.0.lib;vtkRenderingCore-8.0.lib;vtkRenderingFreeType-8.0.lib;vtkRenderingOpenGL2-8.0.lib;vtkCommonColor-8.0.lib;vtkCommonMath-8.0.lib;vtkCommonSystem-8.0.lib;vtkCommonTransforms-8.0.lib;vtkFiltersGeometry-8.0.lib;vtkfreetype-8.0.lib;vtkglew-8.0.lib;vtkjpeg-8.0.lib;vtkpng-8.0.lib;vtksys-8.0.lib;vtktiff-8.0.lib;vtkzlib-8.0.lib</VtkLibs>
+
+    <OpenCVIncludeDirs>$(OpenCVRoot)\build\include</OpenCVIncludeDirs>
+    <OpenCVLibDirs>$(OpenCVRoot)\build\x64\vc14\lib</OpenCVLibDirs>
+    <OpenCVBinDir>$(OpenCVRoot)\build\x64\vc14\bin</OpenCVBinDir>
+    <OpenCVLibs>opencv_world330.lib</OpenCVLibs>
+  </PropertyGroup>
+</Project>

@@ -18,7 +18,7 @@ public:
 
     // 读取 appDir/config/version_modules.json 中声明的拆分模块，
     // 并写入 logs/versionList/versionList_时间戳.json。
-    // 不扫描运行目录全部 DLL，避免把 Qt、OpenSSL、AWS、VC/UCRT 等第三方库混入运行时版本清单。
+    // 不扫描运行目录全部 DLL，避免把 Qt、VTK、OpenCV、OpenSSL、AWS、VC/UCRT 等第三方库混入运行时版本清单。
     virtual bool WriteVersionList() = 0;
 
     // 返回最近一次成功写出的版本清单路径。

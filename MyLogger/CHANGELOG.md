@@ -1,4 +1,13 @@
-# MeyerScan Logger 变更记录
+﻿# MeyerScan Logger 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 参与全模块偏移复查：确认 Logger 继续保持无 Qt 依赖基础设施边界，运行路径仍由调用方传入，模块本体不读取 `QDir::currentPath()`，日志写入规则和 `ILogger* m_logger` 生命周期缓存用法不变。
+- 复测根输出目录 `LoggerTest.exe` 返回 0；本轮不改变日志格式、轮转规则或写文件策略。
 
 ## 2026-07-02
 

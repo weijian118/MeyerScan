@@ -3,6 +3,9 @@ project(MeyerScan_MainExe VERSION 0.1.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
+set(MEYER_SCAN_THIRD_PARTY_RUNTIME_ONLY ON)
+include(../cmake/MeyerScanScanThirdParty.cmake)
+unset(MEYER_SCAN_THIRD_PARTY_RUNTIME_ONLY)
 
 set(MEYER_LOGIN_ROOT "D:/wj/My-wj/MyLogin" CACHE PATH
     "External MeyerLoginWidget SDK root")
@@ -23,11 +26,18 @@ target_include_directories(MeyerScan PRIVATE
     ../MyHomeUI/include
     ../MyCaseUI/include
     ../MySettingsUI/include
+    ../MyOrderCreateUI/include
+    ../MyOrderScanWorkspaceShell/include
+    ../MyExternalLaunchAdapter/include
     ../MyConfigCenter/include
     ../MyPermission/include
     ../MyUIComponents/include
     ../MyRuntimeDataCenter/include
     ../MyDatabaseQtAdapter/include
+    ../MyDatabase/include
+    ../MyCaseOrderService/include
+    ../MyCalibration3DUI/include
+    ../MyCalibrationColorUI/include
     ../MyLogger/include
 )
 
@@ -40,13 +50,53 @@ target_link_libraries(MeyerScan PRIVATE
     "${MEYER_LOGIN_ROOT}/lib/MeyerLoginWidget.lib"
 )
 
-meyer_link_sibling_module(MeyerScan MyHomeUI MeyerScan_HomeUI)
-meyer_link_sibling_module(MeyerScan MyCaseUI MeyerScan_CaseUI)
-meyer_link_sibling_module(MeyerScan MySettingsUI MeyerScan_SettingsUI)
-meyer_link_sibling_module(MeyerScan MyConfigCenter MeyerScan_ConfigCenter)
-meyer_link_sibling_module(MeyerScan MyPermission MeyerScan_Permission)
-meyer_link_sibling_module(MeyerScan MyUIComponents MeyerScan_UIComponents)
-meyer_link_sibling_module(MeyerScan MyRuntimeDataCenter MeyerScan_RuntimeDataCenter)
-meyer_link_sibling_module(MeyerScan MyDatabaseQtAdapter MeyerScan_DatabaseQtAdapter)
-meyer_link_sibling_module(MeyerScan MyLogger MeyerScan_Logger)
+foreach(_meyer_runtime_target
+        MeyerScan_HomeUI
+        MeyerScan_CaseUI
+        MeyerScan_SettingsUI
+        MeyerScan_OrderCreateUI
+        MeyerScan_OrderScanWorkspaceShell
+        MeyerScan_ExternalLaunchAdapter
+        MeyerScan_ConfigCenter
+        MeyerScan_Permission
+        MeyerScan_UIComponents
+        MeyerScan_RuntimeDataCenter
+        MeyerScan_DatabaseQtAdapter
+        MeyerScan_Database
+        MeyerScan_CaseOrderService
+        MeyerScan_Calibration3DUI
+        MeyerScan_CalibrationColorUI
+        MeyerScan_ScanWorkflowUI
+        MeyerScan_DataProcessUI
+        ScanReconstructStudio
+        MeyerScan_Logger)
+    if(TARGET ${_meyer_runtime_target})
+        # MainExe 运行时通过 QLibrary 加载这些自研 DLL。
+        # 这里仅建立构建顺序并把 DLL 复制到 MeyerScan.exe 同级目录，不链接 import lib。
+        add_dependencies(MeyerScan ${_meyer_runtime_target})
+        add_custom_command(TARGET MeyerScan POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:${_meyer_runtime_target}>"
+                    "$<TARGET_FILE_DIR:MeyerScan>"
+        )
+    endif()
+endforeach()
+
 meyer_copy_sqlite_runtime(MeyerScan)
+
+file(GLOB MEYER_SCAN_VTK_RUNTIME_DLLS "${MEYER_SCAN_VTK_ROOT}/bin/*.dll")
+file(GLOB MEYER_SCAN_OPENCV_RUNTIME_DLLS "${MEYER_SCAN_OPENCV_ROOT}/build/x64/vc14/bin/opencv_world330.dll")
+
+add_custom_command(TARGET MeyerScan POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:MeyerScan>/config"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyDatabase/config/db_config.json" "$<TARGET_FILE_DIR:MeyerScan>/config/db_config.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/config/version_modules.json" "$<TARGET_FILE_DIR:MeyerScan>/config/version_modules.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/config/version_modules.md" "$<TARGET_FILE_DIR:MeyerScan>/config/version_modules.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyConfigCenter/config/runtime_config.json" "$<TARGET_FILE_DIR:MeyerScan>/config/runtime_config.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyConfigCenter/config/runtime_config.md" "$<TARGET_FILE_DIR:MeyerScan>/config/runtime_config.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.json" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.md" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.md"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyExternalLaunchAdapter/test/external_order_sample.json" "$<TARGET_FILE_DIR:MeyerScan>/external_order_sample.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_VTK_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_OPENCV_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
+)

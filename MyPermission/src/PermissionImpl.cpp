@@ -175,3 +175,9 @@ extern "C" MEYERSCAN_PERMISSION_API IPermission* GetPermission() {
     // C ABI 导出稳定符号名，调用方可以用 QLibrary::resolve("GetPermission") 动态加载。
     return &PermissionImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单只读取这个固定符号名，不需要初始化权限规则或读取 permission_rules.json。
+extern "C" MEYERSCAN_PERMISSION_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

@@ -1,0 +1,91 @@
+# MeyerScan OrderCreateUI
+
+`MyOrderCreateUI` 输出 `MeyerScan_OrderCreateUI.dll`，用于提供初版建单界面。
+
+## 当前定位
+
+- 本模块负责建单 UI：患者基本信息、订单基本信息、扫描类型、牙位选择、已选明细和确认操作。
+- 初版把原“基本信息”和“扫描方案”的主要内容放在同一个工作台界面内，减少页面切换。
+- 本模块是 Qt Widgets UI 模块，可以使用 `QWidget`、Qt Layout、信号槽和 `QString`。
+- 本模块不直接保存数据库，不加载订单规则，不决定扫描流程；后续保存应通过 `CaseOrderService / RuntimeDataCenter / MyDatabaseQtAdapter / MyDatabase`。
+- 对外动作通过 `OrderCreateActionId` 回调抛出，避免外部模块直接绑定内部按钮对象。
+- 支持 `SetOrderContextJson(const char*)` 接收标准建单上下文；第三方拉起、HIS/Worklist 和手工建单补全后都应收敛到同一套上下文结构。
+- 通用按钮、字段标签、输入框、下拉框、日期框、多行备注框和已选牙位表格基础样式优先通过 `MeyerScan_UIComponents.dll` 创建；牙位按钮、扫描类型按钮、扫描方案联动等业务控件留在本模块内部。
+- `MeyerScan_UIComponents.dll` 通过 `QLibrary` 动态加载，工程只保留头文件依赖和 DLL 复制，不强制链接 `MeyerScan_UIComponents.lib`；共享 UI 缺失时建单界面使用本地降级样式继续运行。
+- 当前会调用 UIComponents v0.4.0 新增的表格接口，因此加载成功后还会检查 `GetModuleVersion()`；运行目录里如果残留旧版 UIComponents，会主动降级到本地样式，避免旧 DLL vtable 不包含新接口导致崩溃。
+
+## 边界
+
+- 只做建单界面展示和临时 UI 状态。
+- 不写数据库。
+- 不直接读取云端或 HIS/worklist。
+- 不做扫描采集、算法重建、设备通信。
+- 不跨 DLL 传递 `QWidget*` 以外的复杂业务对象；患者/订单数据后续应使用专门 DTO 或 JSON/UTF-8 文本结构承载。
+- 不解析第三方私有字段；第三方差异统一由 `MyExternalLaunchAdapter` 按 `source.thirdPartyType` 映射成标准字段。
+
+## 标准建单上下文
+
+```json
+{
+  "schemaVersion": 1,
+  "source": {
+    "launchType": "external",
+    "thirdPartyType": "cmd_demo",
+    "thirdPartyName": "Command Line Demo",
+    "sourceSystem": "cmd-simulator",
+    "sourceVersion": "0.1"
+  },
+  "patient": {
+    "patientId": "EXT-P-001",
+    "name": "External Patient",
+    "age": 28,
+    "birthDate": "1998/03/15",
+    "gender": "female",
+    "contact": "13800000000",
+    "note": "Created by external launch simulation."
+  },
+  "order": {
+    "orderId": "EXT-O-001",
+    "doctor": "Dr. External",
+    "lab": "External Partner Lab",
+    "deliveryDate": "2026/07/08",
+    "caseType": "restoration",
+    "note": "External order note."
+  },
+  "scanPlan": {
+    "items": [
+      { "tooth": 15, "type": "crown", "material": "--", "shade": "A2" }
+    ]
+  }
+}
+```
+
+- `source.thirdPartyType` 必须保留，用于区分多个第三方来源。
+- `patient` 和 `order` 只负责填充当前界面；保存和字段校验后续交给服务层。
+- `scanPlan.items` 用于填充牙位方案；空数组时保留当前 UI 选择。
+
+## 初版界面
+
+- 左侧：患者编号、姓名、年龄、出生日期、性别、病例类型、医生、订单号、技工所、交付日期、联系方式、患者备注；表单类控件走 UIComponents 统一样式。
+- 中间：修复类型选择和 FDI 牙位按钮，支持点击选择/取消和清空；这些是建单业务控件，不进入 UIComponents。
+- 右侧：基本摘要、已选牙位明细、标信息占位、订单备注、上一步/取消/确认/下一步；普通操作按钮和表格基础样式走 UIComponents，牙位明细数据和列含义仍由本模块维护。
+
+## 构建
+
+```powershell
+& 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_OrderCreateUI.sln /p:Configuration=Release /p:Platform=x64
+```
+
+## 测试入口
+
+- VS2015：打开 `MeyerScan_OrderCreateUI.sln`，构建并运行 `OrderCreateUITest.exe`。
+- CMake/VSCode：默认开启 `OrderCreateUITest` 测试目标，可通过 `MEYER_BUILD_ORDERCREATEUITEST` 控制。
+- 双击 `OrderCreateUITest.exe` 默认打开建单界面，便于人工验收。
+- `OrderCreateUITest.exe --smoke` 执行自动冒烟测试并立即退出，适合命令行/批量验证。
+
+## 维护记录要求
+
+- CHANGELOG 使用中文记录。
+- 代码注释使用中文。
+- 界面可见文本必须使用 `tr("English source text")`，不要在源码里直接写中文界面文案。
+- 模块路径必须来自 `Init(appDirUtf8, logDirUtf8)` 或 `QCoreApplication::applicationDirPath()`，不要使用 `QDir::currentPath()`。

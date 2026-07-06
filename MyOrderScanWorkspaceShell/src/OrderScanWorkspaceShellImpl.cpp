@@ -254,3 +254,9 @@ extern "C" MEYERSCAN_ORDERSCANWORKSPACESHELL_API IOrderScanWorkspaceShell* GetOr
     // 保持 C ABI 导出名稳定，方便 MainExe 或测试宿主动态加载该 DLL。
     return &OrderScanWorkspaceShellImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单读取工作台壳代码版本时，不创建工作台页面或步骤占位控件。
+extern "C" MEYERSCAN_ORDERSCANWORKSPACESHELL_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

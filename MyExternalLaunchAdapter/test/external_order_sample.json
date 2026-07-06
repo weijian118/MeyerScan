@@ -1,0 +1,41 @@
+{
+  "source": {
+    "thirdPartyType": "cmd_demo",
+    "thirdPartyName": "Command Line Demo",
+    "sourceSystem": "cmd-simulator",
+    "sourceVersion": "0.1"
+  },
+  "patient": {
+    "patientId": "EXT-P-001",
+    "name": "External Patient",
+    "age": 28,
+    "birthDate": "1998/03/15",
+    "gender": "female",
+    "contact": "13800000000",
+    "note": "Created by external launch simulation."
+  },
+  "order": {
+    "orderId": "EXT-O-001",
+    "doctor": "Dr. External",
+    "lab": "External Partner Lab",
+    "deliveryDate": "2026/07/08",
+    "caseType": "restoration",
+    "note": "External order note."
+  },
+  "scanPlan": {
+    "items": [
+      {
+        "tooth": 15,
+        "type": "crown",
+        "material": "--",
+        "shade": "A2"
+      },
+      {
+        "tooth": 47,
+        "type": "implant",
+        "material": "--",
+        "shade": "--"
+      }
+    ]
+  }
+}

@@ -1,90 +1,96 @@
 # MeyerScan
 
-MeyerScan 是美亚光电口扫软件重构仓库。当前仓库按模块一级目录维护，每个模块独立保存 VS2015 工程、源码、README 和中文 CHANGELOG。
+MeyerScan 是美亚光电口扫软件重构仓库。当前仓库按模块一级目录维护，每个模块需要保留源码、VS2015 工程、CMakeLists、README 和中文 CHANGELOG。
 
 ## 当前模块
 
 | 目录 | 产物 | 状态 | 边界 |
 |------|------|------|------|
-| `MyLogger` | `MeyerScan_Logger.dll` | v1.1.0 | 结构化日志、按天和大小轮转、逐条同步写入；不承载业务逻辑 |
-| `MyDatabase` | `MeyerScan_Database.dll` | v1.3.0 | 纯 C++ 数据库基础设施；SQLite 通过 sqlite3.dll C API 动态加载，只做连接、SQL、事务、备份 |
-| `MyDatabaseQtAdapter` | `MeyerScan_DatabaseQtAdapter.dll` | v0.1.0 | Qt 模块访问纯 C++ Database 的类型转换层；只做 QString/QJson/缓冲区适配 |
-| `MyRuntimeDataCenter` | `MeyerScan_RuntimeDataCenter.dll` | v0.1.0 | 本地/云端常用信息运行时 JSON 快照；只读缓存，不做 CRUD |
-| `MyConfigCenter` | `MeyerScan_ConfigCenter.dll` | v0.1.0 | 运行配置读取和默认配置生成；不做权限判断 |
-| `MyPermission` | `MeyerScan_Permission.dll` | v0.1.0 | 权限 visible/enabled 骨架；不做 UI |
-| `MyUIComponents` | `MeyerScan_UIComponents.dll` | v0.2.0 | 通用控件和样式；当前已统一标准按钮角色和内容布局 |
-| `MyHomeUI` | `MeyerScan_HomeUI.dll` | v0.2.0 | 首页入口 UI；只上报入口 ID |
-| `MyCaseUI` | `MeyerScan_CaseUI.dll` | v0.2.0 | 案例管理 UI 框架；只上报动作 ID |
-| `MySettingsUI` | `MeyerScan_SettingsUI.dll` | v0.2.0 | 用户设置 UI；校准入口嵌入，设置持久化后续走 ConfigCenter |
-| `MyMainExe` | `MeyerScan.exe` | v0.1.0 | 主入口、单实例、基础设施初始化、页面容器和模块编排 |
+| `MyLogger` | `MeyerScan_Logger.dll` | 已落地 | 结构化日志、按天/大小轮转、逐条同步写入；不承载业务逻辑 |
+| `MyDatabase` | `MeyerScan_Database.dll` | 已落地 | 纯 C++ 数据库基础设施；当前默认 SQLite；不理解患者/订单语义 |
+| `MyDatabaseQtAdapter` | `MeyerScan_DatabaseQtAdapter.dll` | 已落地 | Qt 模块访问纯 C++ Database 的类型转换层 |
+| `MyRuntimeDataCenter` | `MeyerScan_RuntimeDataCenter.dll` | 已落地 | 本地/云端常用信息运行时 JSON 快照；只读缓存，不做 CRUD |
+| `MyConfigCenter` | `MeyerScan_ConfigCenter.dll` | 已落地 | 运行配置读取和默认配置生成；不做权限判断 |
+| `MyPermission` | `MeyerScan_Permission.dll` | 已落地 | 权限 visible/enabled 骨架；不做 UI |
+| `MyUIComponents` | `MeyerScan_UIComponents.dll` | 已落地 | 通用控件和样式；不承载业务行为 |
+| `MyHomeUI` | `MeyerScan_HomeUI.dll` | 已落地 | 首页入口 UI，只上报入口 ID |
+| `MyCaseUI` | `MeyerScan_CaseUI.dll` | 已落地 | 案例管理 UI，只展示/上报动作，业务保存走服务 |
+| `MySettingsUI` | `MeyerScan_SettingsUI.dll` | 已落地 | 用户设置 UI，校准入口嵌入，持久化后续走配置/服务 |
+| `MyOrderCreateUI` | `MeyerScan_OrderCreateUI.dll` | 已落地 | 建单 UI，展示基本信息、扫描方案和牙位选择，只上报动作 ID |
+| `MyOrderScanWorkspaceShell` | `MeyerScan_OrderScanWorkspaceShell.dll` | 已落地 | 建单、扫描、处理、发送统一工作台壳 |
+| `MyExternalLaunchAdapter` | `MeyerScan_ExternalLaunchAdapter.dll` | 已落地 | 第三方拉起建单 JSON 映射，保留 `thirdPartyType` |
+| `MyScanWorkflowUI` | `MeyerScan_ScanWorkflowUI.dll` | 初版落地 | `ScanReconstructStudio.exe` 内部“扫描”阶段 UI，负责 QVTK 显示和扫描操作入口 |
+| `MyDataProcessUI` | `MeyerScan_DataProcessUI.dll` | 初版落地 | `ScanReconstructStudio.exe` 内部“数据处理”阶段 UI，负责 QVTK 显示和处理工具入口 |
+| `MyScanReconstructStudio` | `ScanReconstructStudio.exe` | 初版落地 | 扫描重建独立进程壳，动态加载扫描 UI 和数据处理 UI，切换阶段时释放重资源 |
+| `MyMainExe` | `MeyerScan.exe` | 已落地 | 主入口、单实例、登录、页面容器、模块编排和版本清单 |
 
-另有 `MyCaseOrderService`、`MyOrderScanWorkspaceShell`、`MyCalibration3DUI`、`MyCalibrationColorUI`、`MyVersionManager` 等骨架模块，具体状态见各模块 README/CHANGELOG 和 `D:\wj\重构文档`。
-
-`MyCaseManager` 是旧版数据库/旧 schema 参考目录，不是当前活跃案例管理模块。当前案例管理 UI 归 `MyCaseUI`，患者/订单和医生、诊所、技工所等数据库领域数据归 `MyCaseOrderService`；本地常用信息和云端诊所信息的只读快照归 `MyRuntimeDataCenter`。
+另有 `MyCaseOrderService`、`MyCalibration3DUI`、`MyCalibrationColorUI`、`MyVersionManager` 等骨架模块，具体状态见各模块 README/CHANGELOG 和 `D:\wj\重构文档`。
 
 ## 关键规则
 
-- 源码注释、模块 CHANGELOG 和 GitHub 提交信息使用中文。
-- UI 可见文案统一写 `tr("English source text")`，源码不写中文 UI source text。
-- 运行路径以 `QCoreApplication::applicationDirPath()` 或调用方传入的应用目录为基准，禁止用 `QDir::currentPath()` 推导资源路径。
-- UI 模块只做展示、输入收集、操作日志和 ID 上报；业务规则进入 Service/Workflow。
-- 当前默认数据库链路为 SQLite，Database 本体不依赖 Qt；Qt 模块通过 `MyDatabaseQtAdapter` 访问 Database。MySQL 原生驱动待 MySQL C API SDK 接入后恢复，UI 不直接拼业务 SQL。
-- SQLite 运行时固定使用 x64 `ThirdParty/SQLite/win-x64/sqlite3.dll`，各模块 VS2015 PostBuild 和 CMake 公共规则从该目录复制到输出目录；不要再从旧 SQLiteStudio 目录复制 32 位 DLL。第三方 DLL 本体不提交仓库，只提交放置说明。
-- 本地诊所、技工所、医生、患者、订单、设备等高频变化字段优先通过 `MyRuntimeDataCenter` 的 domain JSON 快照读取，保存/删除/状态变化仍走 `MyCaseOrderService`。
-- `MyRuntimeDataCenter` 是有上限的运行时只读快照，不是无限大数据通道；字段扩展可自然进入 JSON，记录量过大时必须改分页/查询服务，不能继续把大表全量塞进 UI。
-- 通用控件和通用样式进入 `MyUIComponents`，单模块专用控件留在自身模块。
-- 每个 EXE/DLL 保持 `Version.rc`、`ModuleInfo::Version`、`GetModuleVersion()` 一致。
-- 每个模块和测试宿主都必须同时保留 VS2015 工程和 `CMakeLists.txt`。VS2015 继续用于现有调试习惯，VSCode 优先通过 CMake Tools / VS2015 生成器打开根目录或单模块目录。
-- 当前活跃自研 DLL 模块必须有独立 `*Test.exe` 或等价 smoke 入口；根 `MeyerScan_AllModules.sln` 必须纳入这些测试项目。主程序 `MeyerScan.exe` 本身通过 `--smoke-main` 覆盖主链路，不额外创建 `MainExeTest.exe`。
-- 单模块 `.sln` 和根 `MeyerScan_AllModules.sln` 都必须能生成可运行输出；涉及 Database/DatabaseQtAdapter 的模块需要同时验证自身 `bin/Release` 和根 `bin/Release`，避免只在聚合目录复制了依赖。
-- 非界面模块默认优先评估纯 C++ 实现，能不用 Qt 就不用 Qt；已有 Qt 非界面模块先保持公共 ABI 不暴露 Qt 类型，把 Qt 限制在 `.cpp` 私有实现内，后续再逐步替换。
-- GitHub 提交之外，还必须用 `tools/BackupToLocalRepository.ps1` 同步到本地仓库 `F:\MeyerScan-Reposit`。本地仓库按所有模块整体备份，中文提交日志要写清变更内容和验证结果。
-- 本地仓库只保存自研源码、测试项目、VS2015 工程、CMake、配置说明、文档快照和自研 DLL/EXE/LIB。Qt 插件、VC/UCRT、OpenSSL、AWS、MySQL/SQLiteStudio/SQL 驱动、日志、数据库现场文件、IDE 临时文件必须过滤。
-- 后续扫描重建模块中，EXE 只负责 UI/交互/流程编排；编辑、处理、数据 IO、预处理等业务/算法能力优先拆成 DLL 或独立库，避免界面代码和数据处理代码混在一起。
+- 模块 README / CHANGELOG / 提交日志使用中文；UI 可见文本源码统一写 `tr("English source text")`。
+- 运行路径以 `QCoreApplication::applicationDirPath()` 或调用方传入的应用目录为准，禁止用 `QDir::currentPath()` 推导资源路径。
+- UI 模块只做展示、输入收集、操作日志和动作 ID 上报；业务规则进入 Service/Workflow。
+- Database 本体不依赖 Qt；Qt 模块通过 `MyDatabaseQtAdapter` 访问 Database。
+- 扫描重建保持独立进程。`ScanReconstructStudio.exe` 只做壳子、UI/交互/流程编排；扫描采集、设备命令、数据 IO、预处理、编辑、颈缘、测量、倒凹、咬合、底座等能力后续继续拆 DLL 或独立库。
+- 重资源页面离开时必须释放或暂停资源。扫描 UI、数据处理 UI 当前通过 `DeactivateAndRelease()` 释放 `QVTKWidget`、VTK renderer、OpenGL/显存相关资源。
+- 每个 EXE/DLL 保持 `Version.rc`、模块代码版本和 `GetMeyerModuleVersion()` 口径一致。
+- GitHub 之外还需要用 `tools/BackupToLocalRepository.ps1` 同步到本地仓库 `F:\MeyerScan-Reposit`。
 
 ## 构建
 
-每个模块目录都保留 VS2015 `.sln/.vcxproj`。也可以用根目录聚合方案一次打开当前已拆分模块：
+VS2015 单模块构建：
 
 ```powershell
-& 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' F:\MeyerScan\MeyerScan_AllModules.sln /p:Configuration=Release /p:Platform=x64 /m
+& 'C:\Program Files (x86)\MSBuild\14.0\Bin\amd64\MSBuild.exe' F:\MeyerScan\MyScanReconstructStudio\MeyerScan_ScanReconstructStudio.sln /p:Configuration=Release /p:Platform=x64 /m
 ```
 
-常用 smoke：
+根聚合方案：
 
 ```powershell
-F:\MeyerScan\bin\Release\LoggerTest.exe
-F:\MeyerScan\bin\Release\DatabaseTest.exe
-F:\MeyerScan\bin\Release\ConfigCenterTest.exe
-F:\MeyerScan\bin\Release\PermissionTest.exe
-F:\MeyerScan\bin\Release\VersionManagerTest.exe
-F:\MeyerScan\bin\Release\DatabaseQtAdapterTest.exe
-F:\MeyerScan\bin\Release\CaseOrderServiceTest.exe
-F:\MeyerScan\bin\Release\RuntimeDataCenterTest.exe
-F:\MeyerScan\bin\Release\UIComponentsTest.exe
-F:\MeyerScan\MyHomeUI\bin\Release\HomeUITest.exe --smoke
-F:\MeyerScan\MyCaseUI\bin\Release\CaseUITest.exe --smoke
-F:\MeyerScan\MySettingsUI\bin\Release\SettingsUITest.exe --smoke
-F:\MeyerScan\bin\Release\Calibration3DUITest.exe
-F:\MeyerScan\bin\Release\CalibrationColorUITest.exe
-F:\MeyerScan\bin\Release\OrderScanWorkspaceShellTest.exe
-F:\MeyerScan\MyMainExe\bin\Release\MeyerScan.exe --smoke-main
+& 'C:\Program Files (x86)\MSBuild\14.0\Bin\amd64\MSBuild.exe' F:\MeyerScan\MeyerScan_AllModules.sln /p:Configuration=Release /p:Platform=x64 /m
 ```
-
-登录测试宿主 `MyMainExe\MyLogin\MeyerLoginTest.exe` 用于验证外部既有登录 DLL，会打开登录界面并依赖外部 SDK/安装目录文件，按人工集成测试独立维护。
 
 VSCode/CMake 入口：
 
 ```powershell
 cd F:\MeyerScan
-cmake -G "Visual Studio 14 2015 Win64" -S . -B build_vs2015
-cmake --build build_vs2015 --config Release
+& 'F:\Tools\CMakePython\cmake\data\bin\cmake.exe' -G "Visual Studio 14 2015 Win64" -S . -B build\cmake-vs2015-x64
+& 'F:\Tools\CMakePython\cmake\data\bin\cmake.exe' --build build\cmake-vs2015-x64 --config Release
 ```
 
-本地仓库备份：
+当前电脑已安装 CMake 3.31.6，安装位置为 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe`；该路径已写入用户 PATH，新开的 VSCode / PowerShell 可直接使用 `cmake`。已用 VS2015 x64 生成器完成根聚合工程 `Release` 配置和构建验证。
+
+运行时版本清单由 `MyMainExe/config/version_modules.json` 驱动，只记录自研拆分模块 EXE/DLL。扫描 UI 需要的 VTK/OpenCV/Qt 运行库会复制到运行目录，但不进入 `logs/versionList`；正式安装包依赖清单后续由打包模块单独维护。
+
+扫描相关第三方依赖路径优先使用环境变量：
+
+- `QT_ROOT`
+- `VTK_ROOT`
+- `VTK_HEADERS_ROOT`
+- `OPENCV_ROOT`
+
+未设置环境变量时，VS/CMake 会尝试仓库 `ThirdParty` 目录，最后回退到当前开发机参考路径。
+
+## 常用烟测
+
+```powershell
+F:\MeyerScan\MyScanWorkflowUI\bin\Release\ScanWorkflowUITest.exe
+F:\MeyerScan\MyDataProcessUI\bin\Release\DataProcessUITest.exe
+F:\MeyerScan\MyScanReconstructStudio\bin\Release\ScanReconstructStudio.exe --smoke
+F:\MeyerScan\MyMainExe\bin\Release\MeyerScan.exe --smoke-main
+```
+
+需要人工查看界面时：
+
+```powershell
+F:\MeyerScan\MyScanWorkflowUI\bin\Release\ScanWorkflowUITest.exe --show
+F:\MeyerScan\MyDataProcessUI\bin\Release\DataProcessUITest.exe --show
+F:\MeyerScan\MyScanReconstructStudio\bin\Release\ScanReconstructStudio.exe
+```
+
+## 本地仓库备份
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File F:\MeyerScan\tools\BackupToLocalRepository.ps1 -RefactorDocsRoot "D:\wj\重构文档" -CommitMessage "本地完整备份：说明本次变更、影响模块和验证结果"
 ```
-
-脚本会额外把 `D:\wj\重构文档` 下的 Markdown 文件同步到 `_RefactorDocs`，只保存 `.md`，不保存 token 文本、临时提取文件、图片或其他非 Markdown 文件。

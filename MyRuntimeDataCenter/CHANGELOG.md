@@ -1,4 +1,14 @@
-# MeyerScan RuntimeDataCenter 变更记录
+﻿# MeyerScan RuntimeDataCenter 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `RuntimeDataCenterImpl.cpp` 中文注释，说明 domain 快照缓存、候选旧表兼容、云端 envelope、调用方 buffer 返回、有限扩容查询、锁粒度和 Logger 降级策略。
+- 本轮仅补充注释，不改变 RuntimeDataCenter domain 映射、缓存结构或数据库读取逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-02
 

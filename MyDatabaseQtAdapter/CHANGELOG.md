@@ -1,4 +1,19 @@
-# MeyerScan DatabaseQtAdapter 变更记录
+﻿# MeyerScan DatabaseQtAdapter 变更记录
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+- 新增 `IDatabaseQtAdapter` 纯虚接口，`DatabaseQtAdapter` 实现该接口；MainExe 可通过 `QLibrary` 动态加载 `MeyerScan_DatabaseQtAdapter.dll` 后按接口使用，不再需要链接 `MeyerScan_DatabaseQtAdapter.lib`。
+- 新增 `GetModuleVersion()`，返回 Adapter 自身代码版本，供 MainExe 运行时版本清单记录 `codeVersion`；原有 `DatabaseModuleVersion()` 继续返回底层 `MeyerScan_Database.dll` 版本。
+- 继续兼容既有 `GetDatabaseQtAdapter()` 返回具体类指针的调用方式，避免影响当前测试宿主和服务模块源码。
+- 清理 standalone `MeyerScan_DatabaseQtAdapter.sln` 中测试项目指向不存在工程的 stale GUID 依赖，避免 VS2015 打开/构建该解决方案时报错或卡住。
+- 验证：`MeyerScan_DatabaseQtAdapter.sln` Release x64 构建通过；根/单模块 MainExe 版本清单均可读取 Adapter 自身 `codeVersion`，并与 `Version.rc` 的 `fileVersion=0.1.0.0` 匹配。
+
+## 2026-07-04
+
+- 补充 `DatabaseQtAdapter.cpp` 和 `DatabaseQtAdapterTest.exe` 中文注释，说明 Qt 类型到纯 C++ Database 的边界转换、`QByteArray::constData()` 生命周期、查询 JSON 有限扩容、错误日志不打印完整 SQL 和测试数据库隔离策略。
+- 本轮仅补充注释，不改变 DatabaseQtAdapter 连接、查询、脚本执行或日志调用逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；`DatabaseQtAdapterTest.exe` 返回 0；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-03
 

@@ -57,6 +57,21 @@ public:
     // 创建通用下拉框。
     QComboBox* CreateComboBox(QWidget* parent = nullptr) override;
 
+    // 创建通用日期输入框。
+    QDateEdit* CreateDateEdit(QWidget* parent = nullptr) override;
+
+    // 创建通用多行文本框。
+    QTextEdit* CreateTextEdit(QWidget* parent = nullptr) override;
+
+    // 创建通用字段标签。
+    QLabel* CreateFieldLabel(const char* textUtf8, QWidget* parent = nullptr) override;
+
+    // 创建通用表格控件。
+    QTableWidget* CreateTableWidget(QWidget* parent = nullptr) override;
+
+    // 给已有表格套用统一基础样式。
+    void ApplyTableStyle(QTableWidget* table) override;
+
     // 创建页面标题标签。
     QLabel* CreatePageTitle(const char* textUtf8, QWidget* parent = nullptr) override;
 
@@ -83,6 +98,9 @@ private:
 
     // 统一加载图标；空路径或加载失败时返回空图标，按钮仍正常显示文字。
     QIcon LoadIcon(const char* iconResourcePathUtf8) const;
+
+    // 返回普通输入控件统一 QSS，供 QLineEdit/QComboBox/QDateEdit/QTextEdit 复用。
+    QString InputStyleSheet(const QString& selector) const;
 
 private:
     // 基于当前屏幕相对 1920x1080 的横向辅助缩放系数。

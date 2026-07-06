@@ -153,3 +153,9 @@ extern "C" MEYERSCAN_CALIBRATION3DUI_API ICalibration3DUI* GetCalibration3DUI() 
     // 对外只暴露接口指针，后续内部页面和算法接入不会影响调用方头文件。
     return &Calibration3DUIImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单读取三维校准 UI 代码版本时，不加载校准页面、算法 DLL 或设备资源。
+extern "C" MEYERSCAN_CALIBRATION3DUI_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

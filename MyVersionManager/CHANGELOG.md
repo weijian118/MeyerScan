@@ -1,5 +1,25 @@
 # MeyerScan VersionManager 变更记录
 
+## 2026-07-06
+
+- 历史 VersionManager 骨架默认清单同步 MainExe 当前 21 模块口径，补入 `ScanReconstructStudio.exe`、`MeyerScan_ScanWorkflowUI.dll` 和 `MeyerScan_DataProcessUI.dll`，避免后续误用历史骨架时版本清单退回旧范围。
+- README、头文件和实现注释同步明确运行时版本清单不记录 Qt、VTK、OpenCV、OpenSSL、AWS、VC/UCRT、SQL 驱动等第三方库；第三方依赖后续只进入安装打包发布清单。
+- 已在根聚合 CMake `Release` 构建中验证本模块和测试宿主可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
+
+## 2026-07-05
+
+- 历史 VersionManager 骨架同步 MainExe 最新版本清单口径：`version_modules.json` 使用 schemaVersion=2，模块项支持 `file + versionFunction`。
+- 新增统一版本函数读取逻辑：通过 `LoadLibraryW + GetProcAddress("GetMeyerModuleVersion")` 读取自研 DLL 的 `codeVersion`，不创建业务接口对象，不扫描第三方库。
+- 输出 `fileVersion`、`codeVersion`、`versionMatch` 和 `codeVersionError`，文件名改为 `versionList_yyyyMMdd_HHmmss_zzz.json`。
+- `VersionManagerTest.exe` 增加 schemaVersion、文件版本、代码版本和版本一致性校验。
+- 验证：`MeyerScan_VersionManager.sln` Release x64 构建通过；`VersionManagerTest.exe` 返回 0。
+
+## 2026-07-04
+
+- 补充 `VersionManagerTest.exe` 测试宿主中文注释，说明测试 manifest 写入、版本清单输出目录、缺失模块条目验证、调用方路径推导和 Shutdown 清理流程。
+- 本轮仅补充注释，不改变 VersionManager 版本清单生成逻辑。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
+
 ## 2026-07-02
 
 - 新增模块 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建，同时保留原 VS2015 工程。
@@ -13,7 +33,7 @@
 
 ## 2026-06-25
 
-- 历史 VersionManager 骨架改为读取 `config/version_modules.json`，只记录清单中声明的 MeyerScan 拆分模块 EXE/DLL；不再扫描运行目录所有 DLL，避免 Qt、OpenSSL、AWS、VC/UCRT 等第三方库进入运行时版本清单。
+- 历史 VersionManager 骨架改为读取 `config/version_modules.json`，只记录清单中声明的 MeyerScan 拆分模块 EXE/DLL；不再扫描运行目录所有 DLL，避免 Qt、VTK、OpenCV、OpenSSL、AWS、VC/UCRT 等第三方库进入运行时版本清单。
 - 新增缺失模块记录：manifest 中声明但运行目录不存在的文件仍写入 `exists=false`，便于安装包阶段发现漏复制。
 - 根据 `glm52` 建议统一 `Version.rc`：公司名、产品名和 `FileDescription` 与全项目版本资源规范保持一致。
 - 在 VS2015 工程中补充 `MEYER_MODULE_NAME="MeyerScan_VersionManager"`，保证后续如恢复独立 DLL 时日志宏输出正确版本清单模块名。

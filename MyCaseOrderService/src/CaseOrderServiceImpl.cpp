@@ -429,3 +429,9 @@ extern "C" MEYERSCAN_CASEORDERSERVICE_API ICaseOrderService* GetCaseOrderService
     // 对外只暴露接口指针，调用方不需要包含实现类头文件。
     return &CaseOrderServiceImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单读取服务代码版本时不需要初始化数据库适配器或 Logger。
+extern "C" MEYERSCAN_CASEORDERSERVICE_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

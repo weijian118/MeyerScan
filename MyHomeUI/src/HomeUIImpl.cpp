@@ -324,3 +324,9 @@ bool HomeUIImpl::IsEntryEnabled(int entryId) const {
 extern "C" MEYERSCAN_HOMEUI_API IHomeUI* GetHomeUI() {
     return &HomeUIImpl::Instance();
 }
+
+// 统一版本导出函数。
+// 版本清单读取该函数时不会创建首页 QWidget，避免启动版本扫描带来 UI 资源占用。
+extern "C" MEYERSCAN_HOMEUI_API const char* GetMeyerModuleVersion() {
+    return ModuleInfo::Version;
+}

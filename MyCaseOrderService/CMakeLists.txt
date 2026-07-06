@@ -56,6 +56,8 @@ if(MEYER_BUILD_CASEORDERSERVICETEST)
 
     target_link_libraries(CaseOrderServiceTest PRIVATE MeyerScan_CaseOrderService Qt5::Core)
 
+    meyer_link_sibling_module(CaseOrderServiceTest MyDatabaseQtAdapter MeyerScan_DatabaseQtAdapter)
+
     meyer_link_sibling_module(CaseOrderServiceTest MyLogger MeyerScan_Logger)
 
     meyer_copy_sqlite_runtime(CaseOrderServiceTest)

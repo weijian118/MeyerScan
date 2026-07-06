@@ -1,21 +1,90 @@
 {
     "description": "MeyerScan split modules recorded in startup versionList",
+    "schemaVersion": 2,
     "modules": [
-        "MeyerScan.exe",
-        "MeyerLoginWidget.dll",
-        "MeyerScan_Logger.dll",
-        "MeyerScan_Database.dll",
-        "MeyerScan_DatabaseQtAdapter.dll",
-        "MeyerScan_ConfigCenter.dll",
-        "MeyerScan_Permission.dll",
-        "MeyerScan_UIComponents.dll",
-        "MeyerScan_HomeUI.dll",
-        "MeyerScan_CaseUI.dll",
-        "MeyerScan_SettingsUI.dll",
-        "MeyerScan_CaseOrderService.dll",
-        "MeyerScan_RuntimeDataCenter.dll",
-        "MeyerScan_OrderScanWorkspaceShell.dll",
-        "MeyerScan_Calibration3DUI.dll",
-        "MeyerScan_CalibrationColorUI.dll"
+        {
+            "file": "MeyerScan.exe",
+            "versionFunction": ""
+        },
+        {
+            "file": "MeyerLoginWidget.dll",
+            "versionFunction": ""
+        },
+        {
+            "file": "MeyerScan_Logger.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_Database.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_DatabaseQtAdapter.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_ConfigCenter.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_Permission.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_UIComponents.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_HomeUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_CaseUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_SettingsUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_CaseOrderService.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_RuntimeDataCenter.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_OrderCreateUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_OrderScanWorkspaceShell.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_ExternalLaunchAdapter.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_Calibration3DUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_CalibrationColorUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "ScanReconstructStudio.exe",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_ScanWorkflowUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_DataProcessUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        }
     ]
 }

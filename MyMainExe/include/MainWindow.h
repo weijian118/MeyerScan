@@ -1,13 +1,19 @@
 ﻿#pragma once
 
 #include <QCoreApplication>
+#include <QLibrary>
+#include <QList>
 #include <QMainWindow>
+#include <QPair>
 #include <QStringList>
 
 #include "CaseUI.h"
 #include "ConfigCenter.h"
+#include "ExternalLaunchAdapter.h"
 #include "HomeUI.h"
 #include "MeyerLoginWidget.h"
+#include "OrderCreateUI.h"
+#include "OrderScanWorkspaceShell.h"
 #include "Permission.h"
 #include "RuntimeDataCenter.h"
 #include "SettingsUI.h"
@@ -15,6 +21,7 @@
 
 class QLabel;
 class QVBoxLayout;
+class IDatabaseQtAdapter;
 class ILogger;
 
 // MainWindow 是 MeyerScan.exe 的主窗口和轻量编排层。
@@ -37,6 +44,10 @@ public:
     // 自动化/冒烟测试入口：跳过登录，用定时器验证首页和案例页切换。
     void StartWithoutLoginForSmoke();
 
+    // 第三方拉起入口：跳过首页视觉展示，直接进入建单扫描工作台。
+    // inputJsonPath 是第三方下发的建单 JSON 路径，thirdPartyType 可为空。
+    void StartExternalOrder(const QString& inputJsonPath, const QString& thirdPartyType);
+
     // 单实例激活时用于判断是否已经登录完成。
     // 登录前重复双击只忽略，不弹出未完成初始化的窗口。
     bool IsLoginCompleted() const { return m_loginCompleted; }
@@ -54,6 +65,9 @@ private:
     // SettingsUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
     static void OnSettingsAction(void* context, int actionId);
 
+    // OrderCreateUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnOrderCreateAction(void* context, int actionId);
+
     // 处理首页入口点击，例如浏览、创建、练习、设置。
     void HandleHomeEntryClicked(int entryId);
 
@@ -62,6 +76,12 @@ private:
 
     // 处理设置页面动作，例如关闭、确认、应用和校准入口。
     void HandleSettingsAction(int actionId);
+
+    // 处理建单页面动作，例如取消、确认、下一步或牙位变化。
+    void HandleOrderCreateAction(int actionId);
+
+    // 第三方拉起建单时，后台准备首页创建入口并复用同一套权限/配置规则。
+    bool PrepareHomeCreateEntryForExternalOrder();
 
     // 判断登录 DLL 的状态码是否代表可以进入主界面。
     bool IsLoginAcceptedStatus(int status) const;
@@ -75,6 +95,9 @@ private:
     // 显示设置页；openSource 记录关闭设置后回到哪个主页面，并决定校准入口是否可用。
     void ShowSettings(int openSource);
 
+    // 显示建单/扫描工作台，并把建单 UI 挂入工作台第一步。
+    void ShowOrderWorkspace(const QString& orderContextJson = QString());
+
     // 进入扫描重建前释放案例管理页，把内存/显存资源留给扫描重建。
     void PrepareForScanReconstruct();
 
@@ -86,6 +109,9 @@ private:
 
     // 确保 SettingsUI 已初始化并已创建 QWidget。
     bool EnsureSettingsPage();
+
+    // 确保建单/扫描工作台和建单 UI 已初始化并已创建 QWidget。
+    bool EnsureOrderWorkspacePage(const QString& orderContextJson);
 
     // 根据设置来源返回设置关闭后应该回到的页面名称。
     QString SettingsReturnPageName(int openSource) const;
@@ -104,6 +130,9 @@ private:
 
     // 释放设置页。
     void ReleaseSettingsPage();
+
+    // 释放建单/扫描工作台和建单 UI。
+    void ReleaseOrderWorkspacePage();
 
     // 释放指定页面指针。allowActive=false 时不会释放当前正在显示的页面。
     void ReleasePageWidget(QWidget*& pageWidget, const QString& pageName, bool allowActive);
@@ -133,6 +162,11 @@ private:
     // MainExe 内容区一次只挂载一个全屏页面，不把首页和浏览页作为并列兄弟页长期放在容器中。
     void ReplaceContentWidget(QWidget* widget, const QString& pageName);
 
+    // 调用 ExternalLaunchAdapter，把第三方 JSON 文件转换成标准建单上下文。
+    bool NormalizeExternalOrderContext(const QString& inputJsonPath,
+                                       const QString& thirdPartyType,
+                                       QString* outputContextJson);
+
     // 读取 ConfigCenter 与 Permission 后统一下发首页入口规则。
     void ApplyHomeEntryRules();
 
@@ -156,13 +190,43 @@ private:
     void WriteVersionList();
 
     // 版本清单只读取 manifest 中列出的拆分模块文件，避免把 Qt/OpenSSL/AWS 等第三方库写入清单。
-    QStringList LoadVersionManifest(const QString& manifestPath) const;
+    QList<QPair<QString, QString>> LoadVersionManifest(const QString& manifestPath) const;
 
     // 首次运行没有 manifest 时写入默认清单，后续新增模块只维护该文件即可。
     void EnsureDefaultVersionManifest(const QString& manifestPath) const;
 
     // 从 Windows 文件版本资源读取文件版本号。
     QString ReadFileVersion(const QString& filePath) const;
+
+    // 从自研 DLL 的统一 C ABI 版本函数读取代码版本。
+    QString ReadCodeVersion(const QString& filePath, const QString& versionFunctionName, QString* errorMessage) const;
+
+    // 从 "MeyerScan_Logger v1.1.0 (2026-06-24)" 这类字符串中提取 "1.1.0"。
+    QString NormalizeVersionText(const QString& versionText) const;
+
+    // 比较文件版本和代码版本是否一致；允许文件版本末尾多一个 ".0"。
+    bool AreVersionsConsistent(const QString& fileVersion, const QString& codeVersion) const;
+
+    // 运行时加载 DLL 并解析 C ABI 工厂函数。
+    QFunctionPointer ResolveFactory(QLibrary& library,
+                                    const char* dllName,
+                                    const char* factoryName,
+                                    QString* errorMessage = nullptr) const;
+
+    // 以下函数分别返回各自模块的接口指针。
+    // MainExe 只保存接口头文件，不链接这些自研 DLL 的 import lib。
+    ILogger* LoggerModule();
+    IDatabaseQtAdapter* DatabaseAdapterModule();
+    IConfigCenter* ConfigCenterModule();
+    IPermission* PermissionModule();
+    IUIComponents* UIComponentsModule();
+    IRuntimeDataCenter* RuntimeDataCenterModule();
+    IHomeUI* HomeUIModule();
+    ICaseUI* CaseUIModule();
+    ISettingsUI* SettingsUIModule();
+    IOrderScanWorkspaceShell* OrderWorkspaceModule();
+    IOrderCreateUI* OrderCreateUIModule();
+    IExternalLaunchAdapter* ExternalLaunchAdapterModule();
 
     // 写入客户操作日志。
     void WriteUserAction(const QString& operation, const QString& content);
@@ -179,14 +243,31 @@ private:
     IHomeUI* m_home = nullptr;
     ICaseUI* m_case = nullptr;
     ISettingsUI* m_settings = nullptr;
+    IOrderScanWorkspaceShell* m_orderWorkspace = nullptr;
+    IOrderCreateUI* m_orderCreate = nullptr;
+    IExternalLaunchAdapter* m_externalLaunchAdapter = nullptr;
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
     IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
     IUIComponents* m_uiComponents = nullptr;
     ILogger* m_logger = nullptr;
+    QLibrary m_loggerLibrary;
+    QLibrary m_databaseAdapterLibrary;
+    QLibrary m_configLibrary;
+    QLibrary m_permissionLibrary;
+    QLibrary m_uiComponentsLibrary;
+    QLibrary m_runtimeDataCenterLibrary;
+    QLibrary m_homeLibrary;
+    QLibrary m_caseLibrary;
+    QLibrary m_settingsLibrary;
+    QLibrary m_orderWorkspaceLibrary;
+    QLibrary m_orderCreateLibrary;
+    QLibrary m_externalLaunchAdapterLibrary;
     QWidget* m_homeWidget = nullptr;
     QWidget* m_caseWidget = nullptr;
     QWidget* m_settingsWidget = nullptr;
+    QWidget* m_orderWorkspaceWidget = nullptr;
+    QWidget* m_orderCreateWidget = nullptr;
     QWidget* m_waitWidget = nullptr;
     QWidget* m_contentRoot = nullptr;
     QWidget* m_activeWidget = nullptr;
@@ -201,6 +282,9 @@ private:
     bool m_homeInitialized = false;
     bool m_caseInitialized = false;
     bool m_settingsInitialized = false;
+    bool m_orderWorkspaceInitialized = false;
+    bool m_orderCreateInitialized = false;
+    bool m_externalLaunchAdapterInitialized = false;
     bool m_loggerInitialized = false;
     int m_settingsOpenSource = SettingsOpenSourceHome;
 };

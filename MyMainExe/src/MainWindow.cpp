@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QRegExp>
 #include <QStatusBar>
 #include <QString>
 #include <QStringList>
@@ -21,6 +22,7 @@
 
 #include <windows.h>
 #include <cstring>
+#include <vector>
 
 #include "DatabaseQtAdapter.h"
 #include "Logger.h"
@@ -36,23 +38,33 @@ const char* Name = "MeyerScan_MainExe";
 const char* Version = "MeyerScan_MainExe v0.1.0 (2026-06-25)";
 }
 
-const char* kDefaultVersionModules[] = {
-    "MeyerScan.exe",
-    "MeyerLoginWidget.dll",
-    "MeyerScan_Logger.dll",
-    "MeyerScan_Database.dll",
-    "MeyerScan_DatabaseQtAdapter.dll",
-    "MeyerScan_ConfigCenter.dll",
-    "MeyerScan_Permission.dll",
-    "MeyerScan_UIComponents.dll",
-    "MeyerScan_HomeUI.dll",
-    "MeyerScan_CaseUI.dll",
-    "MeyerScan_SettingsUI.dll",
-    "MeyerScan_CaseOrderService.dll",
-    "MeyerScan_RuntimeDataCenter.dll",
-    "MeyerScan_OrderScanWorkspaceShell.dll",
-    "MeyerScan_Calibration3DUI.dll",
-    "MeyerScan_CalibrationColorUI.dll",
+struct VersionModuleEntry {
+    const char* file;
+    const char* versionFunction;
+};
+
+const VersionModuleEntry kDefaultVersionModules[] = {
+    {"MeyerScan.exe", ""},
+    {"MeyerLoginWidget.dll", ""},
+    {"MeyerScan_Logger.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_Database.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DatabaseQtAdapter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_ConfigCenter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_Permission.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_UIComponents.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_HomeUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaseUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_SettingsUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaseOrderService.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_RuntimeDataCenter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_OrderCreateUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_OrderScanWorkspaceShell.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_ExternalLaunchAdapter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_Calibration3DUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CalibrationColorUI.dll", "GetMeyerModuleVersion"},
+    {"ScanReconstructStudio.exe", "GetMeyerModuleVersion"},
+    {"MeyerScan_ScanWorkflowUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DataProcessUI.dll", "GetMeyerModuleVersion"},
 };
 }
 
@@ -105,6 +117,18 @@ MainWindow::~MainWindow() {
     if (m_settings) {
         m_settings->Shutdown();
     }
+    if (m_orderCreate) {
+        // 建单 UI 只持有临时表单状态，先于工作台壳释放，避免壳子还引用已 Shutdown 的页面。
+        m_orderCreate->Shutdown();
+    }
+    if (m_orderWorkspace) {
+        // 工作台壳只做容器和导航，关闭时不应反向释放全局基础设施。
+        m_orderWorkspace->Shutdown();
+    }
+    if (m_externalLaunchAdapter) {
+        // 第三方适配器不保存业务数据，关闭时只清路径和日志引用。
+        m_externalLaunchAdapter->Shutdown();
+    }
     if (m_runtimeDataCenter) {
         // 运行时数据中心借用 Database/Logger，必须在 Database/Logger 关闭前释放缓存引用。
         m_runtimeDataCenter->Shutdown();
@@ -120,7 +144,7 @@ MainWindow::~MainWindow() {
     }
 
     // Database 通过 QtAdapter 收尾，MainExe 不直接包含 Database.h。
-    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    IDatabaseQtAdapter* databaseAdapter = DatabaseAdapterModule();
     if (databaseAdapter) {
         databaseAdapter->Disconnect();
         databaseAdapter->Shutdown();
@@ -166,11 +190,79 @@ void MainWindow::StartWithoutLoginForSmoke() {
     // 先覆盖首页打开设置，再覆盖浏览页和扫描前资源释放，防止入口回调断链后人工才发现。
     QTimer::singleShot(400, this, [this]() { ShowSettings(SettingsOpenSourceHome); });
     QTimer::singleShot(800, this, [this]() { ShowHome(); });
-    QTimer::singleShot(1200, this, [this]() { ShowCase(); });
-    QTimer::singleShot(1400, this, [this]() { ShowHome(); });
-    QTimer::singleShot(1600, this, [this]() { ShowCase(); });
+    QTimer::singleShot(1200, this, [this]() { ShowOrderWorkspace(); });
+    QTimer::singleShot(1600, this, [this]() { ShowHome(); });
+    QTimer::singleShot(2000, this, [this]() { ShowCase(); });
     // 最后模拟打开扫描重建前的资源释放要求。
-    QTimer::singleShot(2000, this, [this]() { PrepareForScanReconstruct(); });
+    QTimer::singleShot(2400, this, [this]() { PrepareForScanReconstruct(); });
+}
+
+// 第三方拉起入口。
+// 该流程内部仍初始化 MainExe 基础设施，并后台准备首页“创建”入口；
+// 客户视觉上不显示首页，只看到等待页之后直接进入建单/扫描工作台。
+void MainWindow::StartExternalOrder(const QString& inputJsonPath, const QString& thirdPartyType) {
+    ShowWaitPage(tr("Preparing external order"));
+    InitInfrastructure();
+
+    QString normalizedContextJson;
+    if (!NormalizeExternalOrderContext(inputJsonPath, thirdPartyType, &normalizedContextJson)) {
+        // 归一化失败时保留主窗口等待/错误状态，不跳到首页，避免第三方流程误进入手工操作。
+        HideWaitPage();
+        WriteStatus(tr("External order failed"));
+        show();
+        return;
+    }
+
+    // 第三方拉起是自动建单入口，当前框架阶段跳过登录，用于打通外部启动链路。
+    // 后续若需要登录态/授权校验，可在这里加入云端账号或离线许可判断，但仍不显示首页。
+    m_loginCompleted = true;
+    InitPages();
+
+    if (!PrepareHomeCreateEntryForExternalOrder()) {
+        // 外部拉起本质仍是自动点击首页“创建”入口。
+        // 如果创建入口被权限禁用，不能绕过首页入口规则直接进入建单。
+        HideWaitPage();
+        WriteStatus(tr("Create entry is disabled"));
+        show();
+        return;
+    }
+
+    // 记录自动创建入口，便于日志中把外部拉起和人工点击创建区分开。
+    WriteUserAction("HomeEntryAutoCreate",
+                    QString("External order enters create workspace, thirdPartyType=%1").arg(thirdPartyType));
+    ShowOrderWorkspace(normalizedContextJson);
+    show();
+}
+
+// 第三方启动时不显示首页，但仍后台准备 HomeUI 的创建入口规则。
+// 这样外部启动和用户在首页点击“Create”共用 order.create 的权限/配置语义。
+bool MainWindow::PrepareHomeCreateEntryForExternalOrder() {
+    // EnsureHomePage 会初始化 HomeUI、设置入口回调并调用 ApplyHomeEntryRules。
+    // 它创建出来的首页 widget 不会挂到内容区显示，随后立即释放，因此客户看不到首页闪现。
+    if (!EnsureHomePage()) {
+        WriteUserAction("ExternalOrderFailed", "Home create entry preparation failed");
+        return false;
+    }
+
+    const char* featureId = HomeEntryFeatureId(HomeEntryCreate);
+    if (featureId && !IsFeatureVisible(featureId, nullptr, true)) {
+        // visible=false 表示当前产品包/权限结果不开放创建入口。
+        // 外部第三方自动拉起也必须尊重这个结果，否则会形成“首页隐藏但外部可进”的漏洞。
+        WriteUserAction("PermissionDenied", QString("External order create hidden: %1").arg(featureId));
+        ReleaseHomePage();
+        return false;
+    }
+    if (featureId && !IsFeatureEnabled(featureId, true)) {
+        // 外部启动也不能越过 enabled=false。
+        // enabled=false 表示功能当前不可执行，即使入口可见也只能展示禁用态。
+        WriteUserAction("PermissionDenied", QString("External order create disabled: %1").arg(featureId));
+        ReleaseHomePage();
+        return false;
+    }
+
+    // 释放未显示的首页，避免后台创建的入口页占用资源。
+    ReleaseHomePage();
+    return true;
 }
 
 // 登录参数必须基于应用目录构造。
@@ -262,25 +354,25 @@ void MainWindow::InitInfrastructure() {
     InitLoggerEarly();
 
     // ConfigCenter 管产品默认配置，例如某些入口默认是否显示、数据库类型默认值等。
-    m_config = GetConfigCenter();
+    m_config = ConfigCenterModule();
     if (m_config) {
         m_config->Init(m_appDirUtf8.constData());
     }
 
     // Permission 在配置默认值之上做授权过滤，例如客户版本功能阉割。
-    m_permission = GetPermission();
+    m_permission = PermissionModule();
     if (m_permission) {
         m_permission->Init(m_appDirUtf8.constData());
     }
 
     // UIComponents 负责等待页、通用控件和后续统一缩放/样式能力。
-    m_uiComponents = GetUIComponents();
+    m_uiComponents = UIComponentsModule();
     if (m_uiComponents) {
         m_uiComponents->Init(m_appDirUtf8.constData());
     }
 
     // Database 仍由 MainExe 统一初始化和连接，但 Qt 侧只通过 DatabaseQtAdapter 访问。
-    DatabaseQtAdapter* databaseAdapter = GetDatabaseQtAdapter();
+    IDatabaseQtAdapter* databaseAdapter = DatabaseAdapterModule();
     QString databaseError;
     if (databaseAdapter && !m_databaseConfigPathUtf8.isEmpty()) {
         char databaseType[32] = {0};
@@ -311,7 +403,7 @@ void MainWindow::InitInfrastructure() {
 
     // RuntimeDataCenter 在数据库连接后初始化。
     // 它负责把常用本地表和云端诊所信息缓存成 JSON 快照，UI/建单模块后续只读取稳定 domain。
-    m_runtimeDataCenter = GetRuntimeDataCenter();
+    m_runtimeDataCenter = RuntimeDataCenterModule();
     if (m_runtimeDataCenter) {
         const bool runtimeDataInitOk = m_runtimeDataCenter->Init(m_databaseConfigPathUtf8.constData(),
                                                                  m_logDirUtf8.constData());
@@ -362,7 +454,7 @@ void MainWindow::ShowWaitPage(const QString& message) {
     }
     if (!m_waitWidget) {
         // 优先使用共享 UI 组件模块创建等待页，保证后续所有等待界面风格一致。
-        m_uiComponents = GetUIComponents();
+        m_uiComponents = UIComponentsModule();
         if (m_uiComponents) {
             const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
             m_uiComponents->Init(appDirBytes.constData());
@@ -420,6 +512,14 @@ void MainWindow::OnSettingsAction(void* context, int actionId) {
     }
 }
 
+// C ABI 回调转发：OrderCreateUI 不直接依赖 MainWindow 类型。
+void MainWindow::OnOrderCreateAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleOrderCreateAction(actionId);
+    }
+}
+
 // 首页入口统一从这里分发，避免 HomeUI 自己切换其他模块页面。
 void MainWindow::HandleHomeEntryClicked(int entryId) {
     // 每一次客户点击都先写日志，再进入具体页面流程。
@@ -443,6 +543,9 @@ void MainWindow::HandleHomeEntryClicked(int entryId) {
         ShowSettings(SettingsOpenSourceHome);
         break;
     case HomeEntryCreate:
+        // 创建入口进入统一建单/扫描工作台，工作台第一步挂载 OrderCreateUI。
+        ShowOrderWorkspace();
+        break;
     case HomeEntryPractice:
     default:
         WriteStatus(tr("Home entry %1 is not implemented yet").arg(entryId));
@@ -517,6 +620,42 @@ void MainWindow::HandleSettingsAction(int actionId) {
     }
 }
 
+// 建单页面动作统一由 MainExe 分发。
+// OrderCreateUI 只负责表单和动作 ID，不保存数据库、不启动扫描进程。
+void MainWindow::HandleOrderCreateAction(int actionId) {
+    WriteUserAction("OrderCreateAction", QString("Order create action clicked: %1").arg(actionId));
+
+    switch (actionId) {
+    case OrderCreateActionCancel:
+    case OrderCreateActionPrevious:
+        // 当前初版把取消/上一步都回到首页。
+        // 后续如果从浏览页或第三方入口进入，可在上下文中记录 returnPage 再做精确返回。
+        ShowHome();
+        break;
+    case OrderCreateActionConfirm:
+        // 保存订单应由 CaseOrderService / ScanSchemaService 完成，本轮只记录流程已到达。
+        WriteStatus(tr("Order create confirmed"));
+        break;
+    case OrderCreateActionNext:
+        // 下一步正式进入扫描前必须经过 OrderWorkflowService 决策。
+        // 当前骨架只切换工作台步骤，证明 Shell 可以承载后续扫描页。
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepScan);
+        }
+        WriteStatus(tr("Scan step is not implemented yet"));
+        break;
+    case OrderCreateActionClearAllTeeth:
+        WriteStatus(tr("Tooth selection cleared"));
+        break;
+    case OrderCreateActionToothSelectionChanged:
+        WriteStatus(tr("Tooth selection changed"));
+        break;
+    default:
+        WriteStatus(tr("Order create action %1 is not implemented yet").arg(actionId));
+        break;
+    }
+}
+
 // 数据库配置只从发布目录 config/db_config.json 读取。
 QString MainWindow::ResolveDatabaseConfigPath() const {
     // 只查发布目录 config/db_config.json。
@@ -541,6 +680,7 @@ void MainWindow::ShowHome() {
         ReplaceContentWidget(m_homeWidget, "Home");
         ReleaseCasePage();
         ReleaseSettingsPage();
+        ReleaseOrderWorkspacePage();
         ReleaseWaitPage();
     }
 }
@@ -552,6 +692,7 @@ void MainWindow::ShowCase() {
         ReplaceContentWidget(m_caseWidget, "Case Management");
         ReleaseHomePage();
         ReleaseSettingsPage();
+        ReleaseOrderWorkspacePage();
         ReleaseWaitPage();
     }
 }
@@ -569,6 +710,19 @@ void MainWindow::ShowSettings(int openSource) {
         // 设置页是独立主页面，打开后释放来源页面 widget，避免不可见页面占资源。
         ReleaseHomePage();
         ReleaseCasePage();
+        ReleaseOrderWorkspacePage();
+        ReleaseWaitPage();
+    }
+}
+
+// 显示建单/扫描工作台。
+// 首页手工点击“创建”和第三方自动拉起最终都走这里，避免两套建单 UI 创建流程。
+void MainWindow::ShowOrderWorkspace(const QString& orderContextJson) {
+    if (EnsureOrderWorkspacePage(orderContextJson)) {
+        ReplaceContentWidget(m_orderWorkspaceWidget, "Order Workspace");
+        ReleaseHomePage();
+        ReleaseCasePage();
+        ReleaseSettingsPage();
         ReleaseWaitPage();
     }
 }
@@ -581,6 +735,7 @@ void MainWindow::PrepareForScanReconstruct() {
     // 这样 ReleaseCasePage 的保护条件允许释放案例页。
     ShowWaitPage(tr("Preparing scan reconstruct"));
     ReleaseCasePage();
+    ReleaseOrderWorkspacePage();
     // deleteLater 需要事件循环处理 DeferredDelete。
     // singleShot(0) 把后续动作排到当前事件处理结束后执行。
     QTimer::singleShot(0, this, [this]() {
@@ -601,8 +756,8 @@ bool MainWindow::EnsureHomePage() {
         // 复用只发生在当前页面未被释放的短周期内；离开页面后 ReleaseHomePage 会清空指针。
         return true;
     }
-    // GetHomeUI 返回 HomeUI DLL 内部单例。
-    m_home = GetHomeUI();
+    // HomeUI 运行时从 DLL 工厂函数获取，MainExe 不再链接 HomeUI import lib。
+    m_home = HomeUIModule();
     if (!m_home) {
         // DLL 加载失败、导出函数缺失或依赖 DLL 缺失都可能导致这里为空。
         WriteStatus(tr("HomeUI unavailable"));
@@ -637,8 +792,8 @@ bool MainWindow::EnsureCasePage() {
         // 页面已创建时直接复用，切换回来不会重新初始化整个模块。
         return true;
     }
-    // GetCaseUI 返回 CaseUI DLL 内部单例。
-    m_case = GetCaseUI();
+    // CaseUI 运行时从 DLL 工厂函数获取，MainExe 不再链接 CaseUI import lib。
+    m_case = CaseUIModule();
     if (!m_case) {
         // CaseUI 是独立 DLL，返回空说明模块或依赖没有正确复制到发布目录。
         WriteStatus(tr("CaseUI unavailable"));
@@ -674,7 +829,7 @@ bool MainWindow::EnsureSettingsPage() {
         // 因此来源变化和校准入口状态仍能刷新。
         return true;
     }
-    m_settings = GetSettingsUI();
+    m_settings = SettingsUIModule();
     if (!m_settings) {
         // 设置模块缺失时只提示状态，主程序仍可继续停留在来源页面。
         WriteStatus(tr("SettingsUI unavailable"));
@@ -697,6 +852,65 @@ bool MainWindow::EnsureSettingsPage() {
         return false;
     }
     WriteUserAction("PageCreate", "Settings page created");
+    return true;
+}
+
+// 创建建单/扫描工作台页面。
+// MainExe 只做容器编排：先创建 OrderCreateUI，再挂入 OrderScanWorkspaceShell 的建单步骤。
+bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
+    if (m_orderWorkspaceWidget) {
+        // 页面已经存在时，如果外部传入新上下文，直接刷新建单 UI。
+        // 当前 ShowOrderWorkspace 每次离开都会释放页面，所以这里主要是防御重复调用。
+        if (!orderContextJson.isEmpty() && m_orderCreate) {
+            m_orderCreate->SetOrderContextJson(orderContextJson.toUtf8().constData());
+        }
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
+        }
+        return true;
+    }
+
+    m_orderWorkspace = OrderWorkspaceModule();
+    if (!m_orderWorkspace) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return false;
+    }
+    m_orderCreate = OrderCreateUIModule();
+    if (!m_orderCreate) {
+        WriteStatus(tr("OrderCreateUI unavailable"));
+        return false;
+    }
+
+    if (!m_orderWorkspaceInitialized) {
+        m_orderWorkspaceInitialized = m_orderWorkspace->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+    if (!m_orderCreateInitialized) {
+        m_orderCreateInitialized = m_orderCreate->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+
+    // 建单页面动作仍回到 MainExe 分发，不能由 OrderCreateUI 直接切换 Shell 或主窗口。
+    m_orderCreate->SetActionCallback(&MainWindow::OnOrderCreateAction, this);
+    if (!orderContextJson.isEmpty()) {
+        // 在 QWidget 创建前先传上下文，让 OrderCreateUI 能缓存并在 CreateWidget 后立即应用。
+        m_orderCreate->SetOrderContextJson(orderContextJson.toUtf8().constData());
+    }
+
+    m_orderWorkspaceWidget = m_orderWorkspace->CreateWidget(this);
+    if (!m_orderWorkspaceWidget) {
+        WriteStatus(tr("Order workspace widget create failed"));
+        return false;
+    }
+
+    m_orderCreateWidget = m_orderCreate->CreateWidget(m_orderWorkspaceWidget);
+    if (!m_orderCreateWidget) {
+        WriteStatus(tr("Order create widget create failed"));
+        return false;
+    }
+
+    // Shell 只接收 QWidget 页面并管理步骤栈，不知道建单字段和第三方来源。
+    m_orderWorkspace->AttachStepWidget(WorkspaceStepOrderCreate, m_orderCreateWidget);
+    m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
+    WriteUserAction("PageCreate", "Order workspace page created");
     return true;
 }
 
@@ -745,6 +959,28 @@ void MainWindow::ReleaseSettingsPage() {
         m_settings->DestroyWidget();
     }
     ReleasePageWidget(m_settingsWidget, "Settings", false);
+}
+
+// 释放建单/扫描工作台页面。
+// 工作台根 widget 释放后，挂在其中的 OrderCreateUI widget 会随 Qt 父子树一起释放。
+void MainWindow::ReleaseOrderWorkspacePage() {
+    if (m_orderCreate && m_orderCreateWidget && m_activeWidget != m_orderWorkspaceWidget) {
+        // OrderCreateUI 没有单独 DestroyWidget 接口，当前通过 Shutdown 清理弱引用。
+        // 下一次打开时 EnsureOrderWorkspacePage 会重新 Init 并创建新 widget。
+        m_orderCreate->Shutdown();
+        m_orderCreateInitialized = false;
+        m_orderCreateWidget = nullptr;
+    }
+    if (m_orderWorkspace && m_orderWorkspaceWidget && m_activeWidget != m_orderWorkspaceWidget) {
+        // Shell 内部缓存步骤 widget 弱引用，释放根 widget 前先 Shutdown 清空缓存。
+        m_orderWorkspace->Shutdown();
+        m_orderWorkspaceInitialized = false;
+    }
+    ReleasePageWidget(m_orderWorkspaceWidget, "OrderWorkspace", false);
+    if (!m_orderWorkspaceWidget) {
+        // 根页面逻辑释放后，建单 widget 已由父子树接管删除，成员弱引用必须同步清空。
+        m_orderCreateWidget = nullptr;
+    }
 }
 
 // 释放页面 widget 的统一函数。
@@ -816,6 +1052,68 @@ void MainWindow::ReplaceContentWidget(QWidget* widget, const QString& pageName) 
     m_contentRoot->update();
     WriteUserAction("PageSwitch", QString("Switch to %1").arg(pageName));
     WriteStatus(pageName);
+}
+
+// 调用第三方拉起适配器，把外部 JSON 文件归一化为 OrderCreateUI 标准上下文。
+bool MainWindow::NormalizeExternalOrderContext(const QString& inputJsonPath,
+                                               const QString& thirdPartyType,
+                                               QString* outputContextJson) {
+    if (outputContextJson) {
+        outputContextJson->clear();
+    }
+    if (inputJsonPath.trimmed().isEmpty()) {
+        WriteUserAction("ExternalOrderFailed", "External order json path is empty");
+        return false;
+    }
+
+    m_externalLaunchAdapter = ExternalLaunchAdapterModule();
+    if (!m_externalLaunchAdapter) {
+        WriteUserAction("ExternalOrderFailed", "ExternalLaunchAdapter unavailable");
+        WriteStatus(tr("External launch adapter unavailable"));
+        return false;
+    }
+
+    if (!m_externalLaunchAdapterInitialized) {
+        m_externalLaunchAdapterInitialized = m_externalLaunchAdapter->Init(m_appDirUtf8.constData(),
+                                                                           m_logDirUtf8.constData());
+    }
+
+    // 先给 64KB 缓冲区。患者/订单/扫描方案字段正常远小于这个尺寸；
+    // 若第三方字段扩展导致不够，适配器会通过 requiredBufferSize 告诉调用方重新分配。
+    std::vector<char> outputBuffer(64 * 1024, '\0');
+    ExternalLaunchResult result = {};
+    const QByteArray inputPathBytes = QDir::fromNativeSeparators(inputJsonPath).toUtf8();
+    const QByteArray thirdPartyTypeBytes = thirdPartyType.toUtf8();
+    bool ok = m_externalLaunchAdapter->NormalizeOrderFile(inputPathBytes.constData(),
+                                                          thirdPartyTypeBytes.constData(),
+                                                          outputBuffer.data(),
+                                                          static_cast<int>(outputBuffer.size()),
+                                                          &result);
+    if (!ok && result.errorCode == 5 && result.requiredBufferSize > static_cast<int>(outputBuffer.size())) {
+        // 缓冲区不足是可恢复错误，按适配器提示大小重试一次。
+        outputBuffer.assign(static_cast<size_t>(result.requiredBufferSize), '\0');
+        ok = m_externalLaunchAdapter->NormalizeOrderFile(inputPathBytes.constData(),
+                                                         thirdPartyTypeBytes.constData(),
+                                                         outputBuffer.data(),
+                                                         static_cast<int>(outputBuffer.size()),
+                                                         &result);
+    }
+
+    if (!ok) {
+        const QString message = QString::fromUtf8(result.message);
+        WriteUserAction("ExternalOrderFailed", message.isEmpty() ? "Normalize external order failed" : message);
+        WriteStatus(tr("External order failed"));
+        return false;
+    }
+
+    if (outputContextJson) {
+        *outputContextJson = QString::fromUtf8(outputBuffer.data());
+    }
+    WriteUserAction("ExternalOrderNormalized",
+                    QString("thirdPartyType=%1, sourceSystem=%2")
+                        .arg(QString::fromUtf8(result.thirdPartyType))
+                        .arg(QString::fromUtf8(result.sourceSystem)));
+    return true;
 }
 
 // 下发首页入口规则。
@@ -926,24 +1224,43 @@ void MainWindow::WriteVersionList() {
     }
 
     QJsonArray modules;
-    const QStringList moduleFiles = LoadVersionManifest(manifestPath);
-    for (const QString& moduleFile : moduleFiles) {
+    const QList<QPair<QString, QString>> moduleEntries = LoadVersionManifest(manifestPath);
+    for (const QPair<QString, QString>& moduleEntry : moduleEntries) {
+        const QString moduleFile = moduleEntry.first;
+        const QString versionFunctionName = moduleEntry.second;
         // manifest 中只写文件名或相对路径，最终都以 appDir 为根解析。
         QFileInfo fileInfo(QDir(appDirPath).filePath(moduleFile));
         QJsonObject module;
         // name 便于人工快速查看，path 便于工具定位实际文件。
         module.insert("name", moduleFile);
+        module.insert("versionFunction", versionFunctionName);
         module.insert("path", QDir::fromNativeSeparators(fileInfo.absoluteFilePath()));
         module.insert("exists", fileInfo.exists());
         if (fileInfo.exists()) {
             // 某些 DLL 没有 Windows 版本资源，ReadFileVersion 会返回空字符串。
-            module.insert("fileVersion", ReadFileVersion(fileInfo.absoluteFilePath()));
+            const QString fileVersion = ReadFileVersion(fileInfo.absoluteFilePath());
+            QString codeVersionError;
+            const QString codeVersion = moduleFile.compare("MeyerScan.exe", Qt::CaseInsensitive) == 0
+                ? QString::fromLatin1(ModuleInfo::Version)
+                : ReadCodeVersion(fileInfo.absoluteFilePath(), versionFunctionName, &codeVersionError);
+            module.insert("fileVersion", fileVersion);
+            module.insert("codeVersion", codeVersion);
+            if (!versionFunctionName.isEmpty() || moduleFile.compare("MeyerScan.exe", Qt::CaseInsensitive) == 0) {
+                // versionMatch 只对有代码版本来源的模块有意义。
+                // 对没有统一版本函数的外部模块不写 true/false，避免误导维护者。
+                module.insert("versionMatch", AreVersionsConsistent(fileVersion, codeVersion));
+            }
+            if (!codeVersionError.isEmpty()) {
+                module.insert("codeVersionError", codeVersionError);
+            }
             // JSON 没有 64 位整数的稳定跨解析器表示，这里转 double 足够记录文件大小。
             module.insert("size", static_cast<double>(fileInfo.size()));
             module.insert("lastModified", fileInfo.lastModified().toString(Qt::ISODate));
         } else {
             // 缺失项仍写入清单，方便安装包阶段发现模块漏复制。
             module.insert("fileVersion", QString());
+            module.insert("codeVersion", QString());
+            module.insert("versionMatch", false);
             module.insert("size", 0);
             module.insert("lastModified", QString());
         }
@@ -954,11 +1271,14 @@ void MainWindow::WriteVersionList() {
     root.insert("generatedAt", QDateTime::currentDateTime().toString(Qt::ISODate));
     root.insert("appDir", QDir::fromNativeSeparators(appDirPath));
     root.insert("generator", QString::fromLatin1(ModuleInfo::Version));
+    root.insert("schemaVersion", 2);
     root.insert("manifest", QDir::fromNativeSeparators(manifestPath));
     root.insert("modules", modules);
 
-    // 文件名带时间戳，每次启动保留一份现场版本快照。
-    const QString stamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    // 文件名带毫秒时间戳，每次启动保留一份现场版本快照。
+    // smoke 或第三方拉起测试可能在同一秒内连续启动两个 MeyerScan.exe；
+    // 如果只精确到秒，后一次启动会覆盖前一次版本清单，现场追溯时会少一份启动快照。
+    const QString stamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
     const QString versionListPath = versionDir.filePath(QString("versionList_%1.json").arg(stamp));
     QFile file(versionListPath);
     const bool opened = file.open(QIODevice::WriteOnly | QIODevice::Truncate);
@@ -983,35 +1303,44 @@ void MainWindow::WriteVersionList() {
 
 // 读取版本清单 manifest。
 // JSON 不允许写注释，字段解释写在 config/version_modules.md 中；这里仅解析机器可读字段。
-QStringList MainWindow::LoadVersionManifest(const QString& manifestPath) const {
+QList<QPair<QString, QString>> MainWindow::LoadVersionManifest(const QString& manifestPath) const {
     QFile file(manifestPath);
     if (!file.open(QIODevice::ReadOnly)) {
         // 读不到 manifest 时返回空列表；启动不中断，后续日志/版本清单会暴露缺失。
-        return QStringList();
+        return QList<QPair<QString, QString>>();
     }
 
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     if (!document.isObject()) {
         // JSON 格式错误时不猜测内容，避免把第三方 DLL 全扫进去。
-        return QStringList();
+        return QList<QPair<QString, QString>>();
     }
 
-    QStringList modules;
+    QList<QPair<QString, QString>> modules;
     const QJsonArray items = document.object().value("modules").toArray();
     for (const QJsonValue& item : items) {
         if (item.isString()) {
-            // 当前主格式：modules 数组中直接写文件名字符串。
+            // 兼容旧格式：modules 数组中直接写文件名字符串。
+            // 旧格式没有 versionFunction，因此只能记录文件版本，不能读取代码版本。
             const QString name = item.toString().trimmed();
             if (!name.isEmpty()) {
                 // manifest 中按顺序追加，版本清单输出顺序也保持一致，方便人工比对。
-                modules.append(name);
+                modules.append(qMakePair(name, QString()));
             }
         } else if (item.isObject()) {
-            // 兼容未来扩展格式：{ "file": "...", "note": "..." }。
-            const QString name = item.toObject().value("file").toString().trimmed();
+            // 当前主格式：{ "file": "...", "versionFunction": "GetMeyerModuleVersion" }。
+            // 旧字段 factory 记录的是业务工厂函数，例如 GetHomeUI / GetLogger。
+            // 业务工厂返回的是接口对象指针，不能按 const char* 版本函数调用。
+            // 因此旧配置只作为“该自研模块有代码版本来源”的提示，实际仍尝试读取统一版本函数。
+            const QJsonObject object = item.toObject();
+            const QString name = object.value("file").toString().trimmed();
+            QString versionFunction = object.value("versionFunction").toString().trimmed();
+            if (versionFunction.isEmpty() && !object.value("factory").toString().trimmed().isEmpty()) {
+                versionFunction = "GetMeyerModuleVersion";
+            }
             if (!name.isEmpty()) {
                 // note 等说明字段只给人看，不进入版本扫描路径。
-                modules.append(name);
+                modules.append(qMakePair(name, versionFunction));
             }
         }
     }
@@ -1033,13 +1362,17 @@ void MainWindow::EnsureDefaultVersionManifest(const QString& manifestPath) const
     }
 
     QJsonArray modules;
-    for (const char* moduleName : kDefaultVersionModules) {
+    for (const VersionModuleEntry& moduleEntry : kDefaultVersionModules) {
         // 默认清单只包含拆分出来的自研模块，不包含 Qt、VC runtime、OpenSSL 等第三方库。
-        modules.append(QString::fromLatin1(moduleName));
+        QJsonObject module;
+        module.insert("file", QString::fromLatin1(moduleEntry.file));
+        module.insert("versionFunction", QString::fromLatin1(moduleEntry.versionFunction));
+        modules.append(module);
     }
 
     QJsonObject root;
     root.insert("description", "MeyerScan split modules recorded in startup versionList");
+    root.insert("schemaVersion", 2);
     root.insert("modules", modules);
 
     QFile file(manifestPath);
@@ -1085,6 +1418,308 @@ QString MainWindow::ReadFileVersion(const QString& filePath) const {
         .arg(LOWORD(info->dwFileVersionLS));
 }
 
+// 从模块 DLL 读取代码版本。
+// versionFunctionName 为空时表示该文件没有统一版本函数，只记录文件版本即可。
+QString MainWindow::ReadCodeVersion(const QString& filePath,
+                                    const QString& versionFunctionName,
+                                    QString* errorMessage) const {
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    if (versionFunctionName.trimmed().isEmpty()) {
+        return QString();
+    }
+
+    QLibrary library(filePath);
+    // PreventUnloadHint 让版本读取阶段加载的 DLL 保持驻留。
+    // 后续如果 MainExe 再通过成员 QLibrary 加载同一 DLL，可复用系统已加载模块。
+    library.setLoadHints(QLibrary::PreventUnloadHint);
+    if (!library.load()) {
+        if (errorMessage) {
+            *errorMessage = library.errorString();
+        }
+        return QString();
+    }
+
+    const QByteArray functionBytes = versionFunctionName.toLatin1();
+    QFunctionPointer pointer = library.resolve(functionBytes.constData());
+    if (!pointer) {
+        if (errorMessage) {
+            *errorMessage = QString("Version function not found: %1").arg(versionFunctionName);
+        }
+        return QString();
+    }
+
+    // 统一版本函数签名固定为 const char* (*)()。
+    // 它只返回模块静态版本字符串，不创建业务接口对象，避免版本扫描和业务初始化耦合。
+    typedef const char* (*VersionFunction)();
+    VersionFunction readVersion = reinterpret_cast<VersionFunction>(pointer);
+    const char* version = readVersion ? readVersion() : nullptr;
+    return version ? QString::fromUtf8(version) : QString();
+}
+
+// 把不同来源的版本字符串归一化为可比较的数字版本。
+QString MainWindow::NormalizeVersionText(const QString& versionText) const {
+    // 先把 rc 文件里偶尔出现的逗号版本 "1, 3, 0, 0" 归一成点号。
+    QString normalized = versionText;
+    normalized.replace(",", ".");
+
+    // 从代码版本字符串中抓取第一个数字版本，例如:
+    // "MeyerScan_UIComponents v0.4.0 (2026-07-05)" -> "0.4.0"。
+    QRegExp expression("(\\d+(\\.\\d+)+)");
+    if (expression.indexIn(normalized) >= 0) {
+        return expression.cap(1);
+    }
+    return normalized.trimmed();
+}
+
+// 比较 Windows 文件版本和模块代码版本是否一致。
+bool MainWindow::AreVersionsConsistent(const QString& fileVersion, const QString& codeVersion) const {
+    const QString file = NormalizeVersionText(fileVersion);
+    const QString code = NormalizeVersionText(codeVersion);
+    if (file.isEmpty() || code.isEmpty()) {
+        return false;
+    }
+    if (file == code) {
+        return true;
+    }
+
+    // rc 文件常用四段版本 0.4.0.0，代码版本常用三段语义版本 0.4.0。
+    // 只允许文件版本比代码版本多一个末尾 .0，避免 0.4.1 和 0.4.0 被误判一致。
+    return file == code + ".0";
+}
+
+// 统一加载 MeyerScan.exe 同目录下的自研 DLL，并解析指定 C ABI 工厂函数。
+QFunctionPointer MainWindow::ResolveFactory(QLibrary& library,
+                                            const char* dllName,
+                                            const char* factoryName,
+                                            QString* errorMessage) const {
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    if (!dllName || !dllName[0] || !factoryName || !factoryName[0]) {
+        if (errorMessage) {
+            *errorMessage = "DLL name or factory name is empty";
+        }
+        return nullptr;
+    }
+
+    // QLibrary 默认按进程当前目录和 PATH 查找；这里显式给出 EXE 同目录绝对路径，
+    // 避免第三方软件从其它 current directory 拉起 MeyerScan.exe 时加载错 DLL。
+    if (library.fileName().isEmpty()) {
+        library.setFileName(QDir(QCoreApplication::applicationDirPath()).filePath(QString::fromLatin1(dllName)));
+        library.setLoadHints(QLibrary::PreventUnloadHint);
+    }
+
+    if (!library.isLoaded() && !library.load()) {
+        if (errorMessage) {
+            *errorMessage = library.errorString();
+        }
+        return nullptr;
+    }
+
+    QFunctionPointer pointer = library.resolve(factoryName);
+    if (!pointer && errorMessage) {
+        *errorMessage = QString("Factory not found: %1 in %2").arg(factoryName).arg(dllName);
+    }
+    return pointer;
+}
+
+// 动态加载 Logger.dll 并返回 ILogger 单例。
+ILogger* MainWindow::LoggerModule() {
+    if (m_logger) {
+        return m_logger;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_loggerLibrary, "MeyerScan_Logger.dll", "GetLogger", &error);
+    if (!pointer) {
+        WriteStatus(tr("Logger unavailable"));
+        return nullptr;
+    }
+    typedef ILogger* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 DatabaseQtAdapter.dll。
+IDatabaseQtAdapter* MainWindow::DatabaseAdapterModule() {
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_databaseAdapterLibrary,
+                                              "MeyerScan_DatabaseQtAdapter.dll",
+                                              "GetDatabaseQtAdapter",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Database adapter unavailable"));
+        return nullptr;
+    }
+    typedef DatabaseQtAdapter* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 ConfigCenter.dll。
+IConfigCenter* MainWindow::ConfigCenterModule() {
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_configLibrary,
+                                              "MeyerScan_ConfigCenter.dll",
+                                              "GetConfigCenter",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Config center unavailable"));
+        return nullptr;
+    }
+    typedef IConfigCenter* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 Permission.dll。
+IPermission* MainWindow::PermissionModule() {
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_permissionLibrary,
+                                              "MeyerScan_Permission.dll",
+                                              "GetPermission",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Permission unavailable"));
+        return nullptr;
+    }
+    typedef IPermission* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 UIComponents.dll。
+IUIComponents* MainWindow::UIComponentsModule() {
+    if (m_uiComponents) {
+        return m_uiComponents;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_uiComponentsLibrary,
+                                              "MeyerScan_UIComponents.dll",
+                                              "GetUIComponents",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("UI components unavailable"));
+        return nullptr;
+    }
+    typedef IUIComponents* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 RuntimeDataCenter.dll。
+IRuntimeDataCenter* MainWindow::RuntimeDataCenterModule() {
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_runtimeDataCenterLibrary,
+                                              "MeyerScan_RuntimeDataCenter.dll",
+                                              "GetRuntimeDataCenter",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Runtime data center unavailable"));
+        return nullptr;
+    }
+    typedef IRuntimeDataCenter* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 HomeUI.dll。
+IHomeUI* MainWindow::HomeUIModule() {
+    if (m_home) {
+        return m_home;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_homeLibrary, "MeyerScan_HomeUI.dll", "GetHomeUI", &error);
+    if (!pointer) {
+        WriteStatus(tr("HomeUI unavailable"));
+        return nullptr;
+    }
+    typedef IHomeUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 CaseUI.dll。
+ICaseUI* MainWindow::CaseUIModule() {
+    if (m_case) {
+        return m_case;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_caseLibrary, "MeyerScan_CaseUI.dll", "GetCaseUI", &error);
+    if (!pointer) {
+        WriteStatus(tr("CaseUI unavailable"));
+        return nullptr;
+    }
+    typedef ICaseUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 SettingsUI.dll。
+ISettingsUI* MainWindow::SettingsUIModule() {
+    if (m_settings) {
+        return m_settings;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_settingsLibrary,
+                                              "MeyerScan_SettingsUI.dll",
+                                              "GetSettingsUI",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("SettingsUI unavailable"));
+        return nullptr;
+    }
+    typedef ISettingsUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 OrderScanWorkspaceShell.dll。
+IOrderScanWorkspaceShell* MainWindow::OrderWorkspaceModule() {
+    if (m_orderWorkspace) {
+        return m_orderWorkspace;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_orderWorkspaceLibrary,
+                                              "MeyerScan_OrderScanWorkspaceShell.dll",
+                                              "GetOrderScanWorkspaceShell",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return nullptr;
+    }
+    typedef IOrderScanWorkspaceShell* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 OrderCreateUI.dll。
+IOrderCreateUI* MainWindow::OrderCreateUIModule() {
+    if (m_orderCreate) {
+        return m_orderCreate;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_orderCreateLibrary,
+                                              "MeyerScan_OrderCreateUI.dll",
+                                              "GetOrderCreateUI",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("OrderCreateUI unavailable"));
+        return nullptr;
+    }
+    typedef IOrderCreateUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 ExternalLaunchAdapter.dll。
+IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
+    if (m_externalLaunchAdapter) {
+        return m_externalLaunchAdapter;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_externalLaunchAdapterLibrary,
+                                              "MeyerScan_ExternalLaunchAdapter.dll",
+                                              "GetExternalLaunchAdapter",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("External launch adapter unavailable"));
+        return nullptr;
+    }
+    typedef IExternalLaunchAdapter* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
 // 写客户操作日志。日志对象使用构造期缓存的 m_logger，避免每次重新 GetLogger()。
 void MainWindow::WriteUserAction(const QString& operation, const QString& content) {
     if (!m_logger) {
@@ -1124,8 +1759,8 @@ void MainWindow::InitLoggerEarly() {
     const QString logDir = ResolveLogDir();
     QDir().mkpath(logDir);
     m_logDirUtf8 = QDir::fromNativeSeparators(logDir).toUtf8();
-    // GetLogger 来自静态链接/导入的 Logger 模块，返回进程内单例。
-    m_logger = GetLogger();
+    // Logger 也走运行时动态加载，保证 MainExe 启动期不再依赖 Logger.lib。
+    m_logger = LoggerModule();
     if (m_logger && m_logger->Init(m_logDirUtf8.constData(), LogLevel::Info)) {
         m_loggerInitialized = true;
         m_logger->Write(LogLevel::Info, ModuleInfo::Name, "Startup", "", "", "", "Logger initialized early");

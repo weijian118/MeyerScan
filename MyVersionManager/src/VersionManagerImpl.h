@@ -3,8 +3,9 @@
 #include "VersionManager.h"
 
 #include <QByteArray>
+#include <QList>
+#include <QPair>
 #include <QString>
-#include <QStringList>
 
 // VersionManagerImpl 读取 MeyerScan.exe 同级 config/version_modules.json，
 // 只记录清单中声明的拆分模块 EXE/DLL，生成可排查、可追踪的版本清单 JSON。
@@ -39,9 +40,20 @@ private:
     // 没有版本资源时返回空字符串，不把它当作错误。
     QString ReadFileVersion(const QString& filePath) const;
 
+    // 通过统一 C ABI 版本函数读取模块代码版本。
+    QString ReadCodeVersion(const QString& filePath,
+                            const QString& versionFunctionName,
+                            QString* errorMessage) const;
+
+    // 从 "MeyerScan_Logger v1.1.0 (2026-06-24)" 中提取可比较的数字版本。
+    QString NormalizeVersionText(const QString& versionText) const;
+
+    // 判断 Windows 文件版本和代码版本是否一致。
+    bool AreVersionsConsistent(const QString& fileVersion, const QString& codeVersion) const;
+
     // 读取 config/version_modules.json 中声明的拆分模块文件。
     // 历史 VersionManager 也使用清单驱动，避免误扫 Qt/OpenSSL/AWS 等第三方库。
-    QStringList LoadVersionManifest(const QString& manifestPath) const;
+    QList<QPair<QString, QString>> LoadVersionManifest(const QString& manifestPath) const;
 
     // 首次运行缺少清单时写入默认拆分模块列表。
     // 后续新增模块只维护 JSON 清单，不改扫描代码。

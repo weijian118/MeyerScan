@@ -8,6 +8,7 @@
 - 本模块负责顶部步骤、页面容器、当前步骤切换和后续进程/窗口嵌入的统一边界。
 - `OrderCreateUI`、`ScanReconstructStudio.exe`、处理页和发送页后续作为工作台内页面或进程容器接入。
 - 本模块是 Qt Widgets UI 容器模块，可以使用 `QWidget`、`QStackedWidget`、Qt Layout、信号槽、`QString` 和 `QMap` 组织界面；建单保存、加载规则、扫描采集和数据处理不进入本模块。跨进程同步扫描状态时必须收敛为 IPC/POD/UTF-8 JSON。
+- 当前 MainExe 已把 `OrderCreateUI` 挂载到 `WorkspaceStepOrderCreate`；首页点击“Create”和第三方自动拉起建单都进入本工作台壳。
 
 ## 边界
 
@@ -17,6 +18,7 @@
 - 不做扫描采集、算法重建或设备通信。
 - 重资源释放仍由 MainExe 和 ScanReconstructStudio 的生命周期规则统一控制。
 - 不负责把 Qt 对象跨进程传给 ScanReconstructStudio；扫描进程只接收订单 ID、上下文 JSON/文件路径和状态命令。
+- 不知道第三方来源字段含义；第三方字段只在 ExternalLaunchAdapter 和 OrderCreateUI 标准上下文中处理。
 
 ## 构建
 

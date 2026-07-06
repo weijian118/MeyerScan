@@ -1,4 +1,20 @@
-# MeyerScan Database 变更记录
+﻿# MeyerScan Database 变更记录
+
+## 2026-07-06
+
+- 修正 `Database.h` 中容易造成边界回退的旧说明：Database 只作为纯 C++ 数据库基础设施，供 DatabaseQtAdapter、领域服务、迁移工具、统计/导出等数据访问边界使用；Permission/UI 等上层模块不得绕过 Adapter 或 Service 直接执行业务 SQL。
+- 复核当前实现仍不包含 QtCore、QtSql、QString、QSqlDatabase、QSqlQuery 或 QMutex，SQLite 继续通过原生 `sqlite3.dll` C API 动态加载。
+- 已在根聚合 CMake `Release` 构建中验证 Database 与 DatabaseTest 可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
+
+## 2026-07-05
+
+- 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
+
+## 2026-07-04
+
+- 补充 `DatabaseImpl.cpp` 中文注释和阅读重点，重点说明纯 C++ ABI、POD/UTF-8 边界、SQLite 动态加载、跨 DLL 字符串生命周期、调用方缓冲区、路径解析、手写轻量 JSON 解析和 SQLite 查询序列化技巧。
+- 本轮仅补充注释，不改变数据库连接、事务、备份、SQLite 查询或配置解析行为。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
 
 ## 2026-07-03
 
