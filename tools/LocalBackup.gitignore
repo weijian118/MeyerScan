@@ -61,6 +61,14 @@ libmysql.dll
 libmysqld.dll
 sqlite.dll
 sqlite3.dll
+opencv*.dll
+vtk*.dll
+pcl*.dll
+boost*.dll
+flann*.dll
+qhull*.dll
+OpenNI*.dll
+tbb*.dll
 aws-*.dll
 zlib*.dll
 zlib1.dll
