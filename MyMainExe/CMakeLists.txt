@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.1.0 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.1.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
@@ -28,6 +28,8 @@ target_include_directories(MeyerScan PRIVATE
     ../MySettingsUI/include
     ../MyOrderCreateUI/include
     ../MyOrderScanWorkspaceShell/include
+    ../MyScanWorkflowUI/include
+    ../MyDataProcessUI/include
     ../MyExternalLaunchAdapter/include
     ../MyConfigCenter/include
     ../MyPermission/include

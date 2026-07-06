@@ -4,11 +4,13 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QList>
 #include <QMap>
 
 #include "Logger.h"
 
 class QLabel;
+class QPushButton;
 class QStackedWidget;
 
 // OrderScanWorkspaceShellImpl 是建单/扫描统一工作区壳子的骨架实现。
@@ -38,6 +40,15 @@ public:
     // 清理壳子状态。
     void Shutdown() override;
 
+    // 设置创建/练习模式。
+    void SetWorkspaceMode(int mode) override;
+
+    // 设置右上角最小化/关闭按钮回调。
+    void SetShellActionCallback(void (*callback)(void* context, int actionId), void* context) override;
+
+    // 设置步骤变化回调。
+    void SetStepChangedCallback(void (*callback)(void* context, int step), void* context) override;
+
 private:
     // 构造/析构私有化，保证单例生命周期。
     OrderScanWorkspaceShellImpl() = default;
@@ -50,11 +61,29 @@ private:
     // 根据步骤 ID 返回页面标题。
     QString StepTitle(int step) const;
 
+    // 根据当前工作台模式返回需要显示的步骤列表。
+    QList<int> VisibleSteps() const;
+
+    // 判断步骤在当前模式中是否允许显示/切换。
+    bool IsStepAllowed(int step) const;
+
+    // 根据当前模式返回默认步骤。
+    int DefaultStepForMode() const;
+
     // 为暂未接入的步骤创建占位页面。
     QWidget* CreatePlaceholder(int step, QWidget* parent) const;
 
     // 刷新顶部当前步骤标签。
     void RefreshStepLabel();
+
+    // 刷新顶部步骤按钮的选中状态。
+    void RefreshStepButtons();
+
+    // 顶部步骤按钮点击入口。
+    void HandleStepButtonClicked(int step);
+
+    // 右上角壳按钮点击入口。
+    void EmitShellAction(int actionId);
 
     // 写壳子模块日志。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
@@ -81,6 +110,24 @@ private:
     // stepId -> QWidget 的映射，用于切换和替换步骤页面。
     QMap<int, QWidget*> m_stepWidgets;
 
+    // stepId -> QPushButton 的映射，用于同步顶部导航按钮状态。
+    QMap<int, QPushButton*> m_stepButtons;
+
+    // 当前工作台模式，默认是正式创建订单流程。
+    int m_workspaceMode = WorkspaceModeOrderCreate;
+
     // 当前步骤，默认从建单开始。
     int m_currentStep = WorkspaceStepOrderCreate;
+
+    // 壳子右上角按钮动作回调。
+    void (*m_shellActionCallback)(void* context, int actionId) = nullptr;
+
+    // 壳子右上角按钮回调上下文，一般是 MainWindow 指针。
+    void* m_shellActionContext = nullptr;
+
+    // 步骤变化回调。
+    void (*m_stepChangedCallback)(void* context, int step) = nullptr;
+
+    // 步骤变化回调上下文，一般是 MainWindow 指针。
+    void* m_stepChangedContext = nullptr;
 };

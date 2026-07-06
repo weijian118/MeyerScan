@@ -174,8 +174,8 @@ int main(int argc, char* argv[]) {
 
     if (smoke || smokeMain || smokeExternalOrder) {
         // 冒烟测试必须自动退出，避免命令行构建/测试流程卡在 Qt 事件循环。
-        // 3 秒给登录窗口、首页/案例切换和资源释放留出基本事件处理时间。
-        QTimer::singleShot(3000, &app, SLOT(quit()));
+        // 5 秒给登录窗口、首页/创建/练习/案例切换和资源释放留出基本事件处理时间。
+        QTimer::singleShot(5000, &app, SLOT(quit()));
     }
 
     // 进入 Qt 事件循环。窗口关闭或 smoke 定时器触发后返回退出码。

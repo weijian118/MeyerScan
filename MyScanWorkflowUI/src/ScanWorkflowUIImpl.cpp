@@ -33,7 +33,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanWorkflowUI";
 
 // Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_ScanWorkflowUI v0.1.0 (2026-07-05)";
+const char* Version = "MeyerScan_ScanWorkflowUI v0.1.1 (2026-07-07)";
 }
 
 const char* kPageBackground = "#dfe4ea";
@@ -80,7 +80,8 @@ QWidget* ScanWorkflowUIImpl::CreateWidget(QWidget* parent) {
     // The shell/test host owns the returned QWidget through the Qt parent tree.
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanScanWorkflowUIRoot");
-    root->setMinimumSize(1280, 720);
+    root->setMinimumSize(960, 600);
+    root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     root->setStyleSheet(QString(
         "#MeyerScanScanWorkflowUIRoot{background:%1;}"
         "QLabel{color:#1f2b36;font-size:13px;}"
@@ -287,7 +288,8 @@ QWidget* ScanWorkflowUIImpl::CreateBottomControlBar(QWidget* parent) {
 QWidget* ScanWorkflowUIImpl::CreateHintPanel(QWidget* parent) {
     auto* frame = new QFrame(parent);
     frame->setProperty("panel", true);
-    frame->setFixedSize(230, 170);
+    frame->setMinimumSize(190, 140);
+    frame->setMaximumWidth(230);
 
     auto* layout = new QVBoxLayout(frame);
     layout->setContentsMargins(12, 12, 12, 12);
@@ -314,7 +316,7 @@ QWidget* ScanWorkflowUIImpl::CreateViewerArea(QWidget* parent) {
     // QVTKWidget is the Qt 5.6 / VTK 8 bridge widget used by the legacy stack.
     m_vtkWidget = new QVTKWidget(parent);
     m_vtkWidget->setObjectName("ScanWorkflowVTKWidget");
-    m_vtkWidget->setMinimumSize(640, 420);
+    m_vtkWidget->setMinimumSize(520, 340);
     m_vtkWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     BuildPlaceholderScene();
     return m_vtkWidget;

@@ -12,10 +12,12 @@
 #include "ExternalLaunchAdapter.h"
 #include "HomeUI.h"
 #include "MeyerLoginWidget.h"
+#include "DataProcessUI.h"
 #include "OrderCreateUI.h"
 #include "OrderScanWorkspaceShell.h"
 #include "Permission.h"
 #include "RuntimeDataCenter.h"
+#include "ScanWorkflowUI.h"
 #include "SettingsUI.h"
 #include "UIComponents.h"
 
@@ -68,6 +70,18 @@ private:
     // OrderCreateUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
     static void OnOrderCreateAction(void* context, int actionId);
 
+    // OrderScanWorkspaceShell 右上角按钮回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnWorkspaceShellAction(void* context, int actionId);
+
+    // OrderScanWorkspaceShell 步骤变化回调，MainExe 用它懒加载扫描/处理页面。
+    static void OnWorkspaceStepChanged(void* context, int step);
+
+    // ScanWorkflowUI 动作回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnScanWorkflowAction(void* context, int actionId);
+
+    // DataProcessUI 动作回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnDataProcessAction(void* context, int actionId);
+
     // 处理首页入口点击，例如浏览、创建、练习、设置。
     void HandleHomeEntryClicked(int entryId);
 
@@ -79,6 +93,18 @@ private:
 
     // 处理建单页面动作，例如取消、确认、下一步或牙位变化。
     void HandleOrderCreateAction(int actionId);
+
+    // 处理工作台右上角按钮动作，例如最小化或关闭工作台。
+    void HandleWorkspaceShellAction(int actionId);
+
+    // 处理工作台步骤变化，并按步骤懒加载/释放重资源页面。
+    void HandleWorkspaceStepChanged(int step);
+
+    // 处理扫描页面动作，例如上一页、下一页或扫描工具切换。
+    void HandleScanWorkflowAction(int actionId);
+
+    // 处理数据处理页面动作，例如上一页、下一页或处理工具切换。
+    void HandleDataProcessAction(int actionId);
 
     // 第三方拉起建单时，后台准备首页创建入口并复用同一套权限/配置规则。
     bool PrepareHomeCreateEntryForExternalOrder();
@@ -98,6 +124,9 @@ private:
     // 显示建单/扫描工作台，并把建单 UI 挂入工作台第一步。
     void ShowOrderWorkspace(const QString& orderContextJson = QString());
 
+    // 显示练习工作台，只包含 Scan 和 Process 两步，订单信息使用默认上下文。
+    void ShowPracticeWorkspace();
+
     // 进入扫描重建前释放案例管理页，把内存/显存资源留给扫描重建。
     void PrepareForScanReconstruct();
 
@@ -112,6 +141,15 @@ private:
 
     // 确保建单/扫描工作台和建单 UI 已初始化并已创建 QWidget。
     bool EnsureOrderWorkspacePage(const QString& orderContextJson);
+
+    // 确保练习工作台、扫描页和处理页入口已初始化。
+    bool EnsurePracticeWorkspacePage();
+
+    // 确保扫描步骤页面已创建并挂入工作台。
+    bool EnsureScanWorkflowPage();
+
+    // 确保数据处理步骤页面已创建并挂入工作台。
+    bool EnsureDataProcessPage();
 
     // 根据设置来源返回设置关闭后应该回到的页面名称。
     QString SettingsReturnPageName(int openSource) const;
@@ -133,6 +171,12 @@ private:
 
     // 释放建单/扫描工作台和建单 UI。
     void ReleaseOrderWorkspacePage();
+
+    // 释放扫描页面根控件和 VTK/OpenGL 资源。
+    void ReleaseScanWorkflowPage();
+
+    // 释放数据处理页面根控件和 VTK/OpenGL 资源。
+    void ReleaseDataProcessPage();
 
     // 释放指定页面指针。allowActive=false 时不会释放当前正在显示的页面。
     void ReleasePageWidget(QWidget*& pageWidget, const QString& pageName, bool allowActive);
@@ -226,7 +270,12 @@ private:
     ISettingsUI* SettingsUIModule();
     IOrderScanWorkspaceShell* OrderWorkspaceModule();
     IOrderCreateUI* OrderCreateUIModule();
+    IScanWorkflowUI* ScanWorkflowModule();
+    IDataProcessUI* DataProcessModule();
     IExternalLaunchAdapter* ExternalLaunchAdapterModule();
+
+    // 构造练习/默认扫描上下文 JSON，供 ScanWorkflowUI/DataProcessUI 暂时使用。
+    QString BuildDefaultWorkspaceContextJson(const QString& mode) const;
 
     // 写入客户操作日志。
     void WriteUserAction(const QString& operation, const QString& content);
@@ -245,6 +294,8 @@ private:
     ISettingsUI* m_settings = nullptr;
     IOrderScanWorkspaceShell* m_orderWorkspace = nullptr;
     IOrderCreateUI* m_orderCreate = nullptr;
+    IScanWorkflowUI* m_scanWorkflow = nullptr;
+    IDataProcessUI* m_dataProcess = nullptr;
     IExternalLaunchAdapter* m_externalLaunchAdapter = nullptr;
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
@@ -262,12 +313,16 @@ private:
     QLibrary m_settingsLibrary;
     QLibrary m_orderWorkspaceLibrary;
     QLibrary m_orderCreateLibrary;
+    QLibrary m_scanWorkflowLibrary;
+    QLibrary m_dataProcessLibrary;
     QLibrary m_externalLaunchAdapterLibrary;
     QWidget* m_homeWidget = nullptr;
     QWidget* m_caseWidget = nullptr;
     QWidget* m_settingsWidget = nullptr;
     QWidget* m_orderWorkspaceWidget = nullptr;
     QWidget* m_orderCreateWidget = nullptr;
+    QWidget* m_scanWorkflowWidget = nullptr;
+    QWidget* m_dataProcessWidget = nullptr;
     QWidget* m_waitWidget = nullptr;
     QWidget* m_contentRoot = nullptr;
     QWidget* m_activeWidget = nullptr;
@@ -284,7 +339,11 @@ private:
     bool m_settingsInitialized = false;
     bool m_orderWorkspaceInitialized = false;
     bool m_orderCreateInitialized = false;
+    bool m_scanWorkflowInitialized = false;
+    bool m_dataProcessInitialized = false;
     bool m_externalLaunchAdapterInitialized = false;
     bool m_loggerInitialized = false;
     int m_settingsOpenSource = SettingsOpenSourceHome;
+    int m_currentWorkspaceMode = WorkspaceModeOrderCreate;
+    QString m_workspaceContextJson;
 };

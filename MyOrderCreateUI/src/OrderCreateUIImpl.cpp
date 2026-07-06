@@ -39,7 +39,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.2.1 (2026-07-05)";
+const char* Version = "MeyerScan_OrderCreateUI v0.2.2 (2026-07-07)";
 }
 
 // 建单界面仍保留少量业务专属颜色，例如牙位选中态和页面容器色。
@@ -161,12 +161,15 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     // 每次 CreateWidget 都创建新的 QWidget，由调用方决定嵌入到哪个容器。
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanOrderCreateUIRoot");
-    root->setMinimumSize(1280, 720);
+    // 根界面不再按 1920x1080 方案写死大尺寸。
+    // 工作台壳负责全屏显示，本页只给出可用下限，低分辨率时由滚动区和布局共同适配。
+    root->setMinimumSize(960, 600);
+    root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // 根布局使用三栏：左基本信息，中间牙位规划，右订单摘要。
     auto* pageLayout = new QVBoxLayout(root);
-    pageLayout->setContentsMargins(20, 18, 20, 20);
-    pageLayout->setSpacing(14);
+    pageLayout->setContentsMargins(12, 10, 12, 12);
+    pageLayout->setSpacing(10);
 
     // 样式只限定在本模块根对象下，避免污染其它模块的控件外观。
     root->setStyleSheet(QString(
@@ -180,12 +183,12 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
         "QScrollArea{background:transparent;border:0;}"
         "QRadioButton{color:%4;font-size:13px;spacing:6px;}"
         "QCheckBox{color:%4;font-size:13px;spacing:6px;}"
-        "QPushButton[typeButton=\"true\"],QPushButton[toothButton=\"true\"]{border:1px solid #cfd8dc;border-radius:4px;background:#f6f8fa;color:%4;min-height:34px;padding:7px 12px;}"
+        "QPushButton[typeButton=\"true\"],QPushButton[toothButton=\"true\"]{border:1px solid #cfd8dc;border-radius:4px;background:#f6f8fa;color:%4;min-height:32px;padding:6px 9px;}"
         "QPushButton[typeButton=\"true\"]:hover,QPushButton[toothButton=\"true\"]:hover{background:#edf2f5;border-color:#b7c5ce;}"
         "QPushButton[typeButton=\"true\"]:pressed,QPushButton[toothButton=\"true\"]:pressed{background:#e1e8ec;}"
         "QPushButton[typeSelected=\"true\"],QPushButton[toothSelected=\"true\"]{background:%6;border-color:%6;color:#ffffff;font-weight:600;}"
         "QPushButton[typeSelected=\"true\"]:hover,QPushButton[toothSelected=\"true\"]:hover{background:%7;border-color:%7;}"
-        "QPushButton[toothButton=\"true\"]{font-weight:600;min-height:42px;}"
+        "QPushButton[toothButton=\"true\"]{font-weight:600;min-height:34px;}"
     ).arg(kPageBackground,
           kPanelBackground,
           kBorderColor,
@@ -221,13 +224,13 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
 
     auto* rootLayout = new QHBoxLayout();
     rootLayout->setContentsMargins(0, 0, 0, 0);
-    rootLayout->setSpacing(18);
+    rootLayout->setSpacing(12);
     pageLayout->addLayout(rootLayout, 1);
 
     // 左侧信息栏固定一个舒适宽度，文本较长时由输入框内部显示，不挤压牙位区。
     QWidget* basicPanel = CreateBasicInfoPanel(root);
-    basicPanel->setMinimumWidth(380);
-    basicPanel->setMaximumWidth(440);
+    basicPanel->setMinimumWidth(300);
+    basicPanel->setMaximumWidth(410);
     rootLayout->addWidget(basicPanel, 0);
 
     // 中间牙位区占用最大空间，保证多显示器/高分辨率下牙位按钮仍有良好点击区域。
@@ -236,8 +239,8 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
 
     // 右侧摘要区宽度和左侧相近，便于用户边选牙位边确认明细。
     QWidget* summaryPanel = CreateOrderSummaryPanel(root);
-    summaryPanel->setMinimumWidth(350);
-    summaryPanel->setMaximumWidth(430);
+    summaryPanel->setMinimumWidth(300);
+    summaryPanel->setMaximumWidth(410);
     rootLayout->addWidget(summaryPanel, 0);
 
     // 保存弱引用，不接管 root 生命周期，真实释放由 Qt 父子关系或调用方完成。
@@ -408,8 +411,8 @@ void OrderCreateUIImpl::Shutdown() {
 // 创建左侧患者和订单基本信息区。
 QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     auto* outerLayout = new QVBoxLayout();
-    outerLayout->setContentsMargins(16, 18, 16, 16);
-    outerLayout->setSpacing(11);
+    outerLayout->setContentsMargins(12, 14, 12, 12);
+    outerLayout->setSpacing(8);
 
     // 患者编号由上层建单流程生成，初版设为只读，避免用户误改主键类字段。
     m_patientIdEdit = CreateStandardLineEdit(parent, "20260704103001");
@@ -508,7 +511,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Contact")));
     outerLayout->addWidget(m_contactEdit);
 
-    m_patientNoteEdit = CreateStandardTextEdit(parent, 62);
+    m_patientNoteEdit = CreateStandardTextEdit(parent, 52);
     m_patientNoteEdit->setObjectName("OrderCreatePatientNoteEdit");
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Patient Note")));
     outerLayout->addWidget(m_patientNoteEdit);
@@ -534,12 +537,12 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
 // 创建中间牙位扫描方案区。
 QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
     auto* mainLayout = new QVBoxLayout();
-    mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
+    mainLayout->setSpacing(10);
 
     // 类型选择区域放在牙位上方，用户先选类型再点牙位，符合原界面的使用习惯。
     auto* typeRow = new QHBoxLayout();
-    typeRow->setSpacing(8);
+    typeRow->setSpacing(6);
     typeRow->addWidget(CreateTypeButton(parent, tr("Crown"), "crown", true));
     typeRow->addWidget(CreateTypeButton(parent, tr("Missing Tooth"), "missing", false));
     typeRow->addWidget(CreateTypeButton(parent, tr("Inlay"), "inlay", false));
@@ -554,8 +557,8 @@ QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
     mainLayout->addWidget(hint);
 
     auto* toothGrid = new QGridLayout();
-    toothGrid->setSpacing(7);
-    toothGrid->setContentsMargins(18, 10, 18, 10);
+    toothGrid->setSpacing(5);
+    toothGrid->setContentsMargins(8, 8, 8, 8);
 
     // 牙位使用 FDI 编号。初版用规整网格表达上下颌，后续可替换为更接近截图的牙弓绘制控件。
     AddToothRow(toothGrid, 0, QList<int>() << 18 << 17 << 16 << 15 << 14 << 13 << 12 << 11 << 21 << 22 << 23 << 24 << 25 << 26 << 27 << 28);
@@ -567,7 +570,7 @@ QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
 
     auto* clearButton = CreateStandardButton(parent, tr("Clear All"), MeyerButtonRoleSecondary);
     clearButton->setObjectName("OrderCreateClearAllButton");
-    clearButton->setMinimumWidth(180);
+    clearButton->setMinimumWidth(120);
     QObject::connect(clearButton, &QPushButton::clicked, [this]() {
         // 清空牙位是局部 UI 操作，同时向外抛动作，便于上层记录用户行为或刷新流程状态。
         ClearAllTeeth();
@@ -583,8 +586,8 @@ QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
 // 创建右侧订单摘要和确认区。
 QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     auto* mainLayout = new QVBoxLayout();
-    mainLayout->setContentsMargins(16, 18, 16, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(12, 14, 12, 12);
+    mainLayout->setSpacing(9);
 
     // 基本摘要让用户不用回到左侧表单也能确认姓名、医生、订单编号。
     auto* summaryGroup = new QGroupBox(tr("Summary"), parent);
@@ -618,7 +621,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     m_selectionTable->setColumnCount(4);
     m_selectionTable->setHorizontalHeaderLabels(QStringList() << tr("Tooth") << tr("Type") << tr("Material") << tr("Shade"));
     m_selectionTable->setSelectionMode(QAbstractItemView::NoSelection);
-    m_selectionTable->setMinimumHeight(220);
+    m_selectionTable->setMinimumHeight(160);
     mainLayout->addWidget(m_selectionTable, 1);
 
     // 标信息区域先搭骨架，后续可改成颜色模块/材料规则驱动。
@@ -643,7 +646,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     mainLayout->addWidget(shadeGroup);
 
     // 订单备注放在右侧确认前，便于最终提交前补充说明。
-    m_orderNoteEdit = CreateStandardTextEdit(parent, 72);
+    m_orderNoteEdit = CreateStandardTextEdit(parent, 56);
     m_orderNoteEdit->setObjectName("OrderCreateOrderNoteEdit");
     mainLayout->addWidget(CreateStandardFieldLabel(parent, tr("Order Note")));
     mainLayout->addWidget(m_orderNoteEdit);
@@ -714,7 +717,8 @@ QPushButton* OrderCreateUIImpl::CreateCheckButton(QWidget* parent, const QString
 QPushButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked) {
     auto* button = new QPushButton(text, parent);
     button->setObjectName(QString("OrderCreateType_%1_Button").arg(code));
-    button->setMinimumWidth(118);
+    button->setMinimumWidth(92);
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     button->setCheckable(true);
     button->setChecked(checked);
     button->setProperty("typeButton", true);
@@ -732,7 +736,7 @@ QPushButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString&
 QPushButton* OrderCreateUIImpl::CreateToothButton(QWidget* parent, int toothNumber) {
     auto* button = new QPushButton(QString::number(toothNumber), parent);
     button->setObjectName(QString("OrderCreateTooth%1Button").arg(toothNumber));
-    button->setMinimumSize(42, 42);
+    button->setMinimumSize(34, 34);
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     button->setProperty("toothButton", true);
     button->setProperty("toothSelected", false);

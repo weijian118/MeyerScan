@@ -7,6 +7,7 @@
 - 提供数据处理阶段完整页面：模型选择栏、右侧处理工具栏、底部状态栏和 VTK/QVTK 显示区。
 - 提供截图、编辑、颈缘、倒凹、色彩、测量等工具入口。
 - 进入页面时创建 `QVTKWidget` / `vtkRenderer` 等重资源；离开页面时通过 `DeactivateAndRelease()` 主动释放。
+- 当前已被 MainExe 的练习工作台接入；页面最小尺寸按 960x600 收敛，便于嵌入 `OrderScanWorkspaceShell` 的 Process 步骤。
 - 通过稳定整数动作 ID 向 `ScanReconstructStudio.exe` 上报用户意图。
 
 ## 边界

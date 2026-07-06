@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <cstdio>
 #include <cstring>
 
@@ -32,6 +33,9 @@ int main(int argc, char* argv[]) {
     const QString runtimeDir = QDir(QCoreApplication::applicationDirPath()).filePath("ConfigCenterTestRuntime");
     // mkpath 递归创建目录；目录已存在时不会删除旧文件。
     QDir().mkpath(runtimeDir);
+    // 本测试要验证“首次生成默认配置”的代码路径，因此先删除上次测试留下的配置文件。
+    // QFile::remove 对不存在的文件返回 false，但这里不影响后续 Init 自动创建新文件。
+    QFile::remove(QDir(runtimeDir).filePath("config/runtime_config.json"));
 
     // 工厂函数是 DLL 的边界入口，先确认导出函数和链接关系正确。
     IConfigCenter* config = GetConfigCenter();
@@ -59,8 +63,8 @@ int main(int argc, char* argv[]) {
                "database.type 默认字符串可读取")) {
         return 5;
     }
-    // 这里不固定具体数据库类型，只要求默认配置能给出非空字符串。
-    if (!Check(std::strlen(buffer) > 0, "database.type 读取结果非空")) {
+    // 当前重构主链路默认走 SQLite；这里固定断言，避免默认配置以后又漂回旧 MySQL 口径。
+    if (!Check(std::strcmp(buffer, "sqlite") == 0, "database.type 默认值为 sqlite")) {
         return 6;
     }
 

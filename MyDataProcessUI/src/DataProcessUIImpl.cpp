@@ -32,7 +32,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_DataProcessUI";
 
 // Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_DataProcessUI v0.1.0 (2026-07-05)";
+const char* Version = "MeyerScan_DataProcessUI v0.1.1 (2026-07-07)";
 }
 
 const char* kPageBackground = "#dfe4ea";
@@ -77,7 +77,8 @@ QWidget* DataProcessUIImpl::CreateWidget(QWidget* parent) {
     // The shell/test host owns the returned QWidget through the Qt parent tree.
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanDataProcessUIRoot");
-    root->setMinimumSize(1280, 720);
+    root->setMinimumSize(960, 600);
+    root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     root->setStyleSheet(QString(
         "#MeyerScanDataProcessUIRoot{background:%1;}"
         "QLabel{color:#1f2b36;font-size:13px;}"
@@ -260,7 +261,7 @@ QWidget* DataProcessUIImpl::CreateViewerArea(QWidget* parent) {
     // QVTKWidget is the Qt 5.6 / VTK 8 bridge widget used by the legacy stack.
     m_vtkWidget = new QVTKWidget(parent);
     m_vtkWidget->setObjectName("DataProcessVTKWidget");
-    m_vtkWidget->setMinimumSize(720, 460);
+    m_vtkWidget->setMinimumSize(540, 340);
     m_vtkWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     BuildPlaceholderScene();
     return m_vtkWidget;

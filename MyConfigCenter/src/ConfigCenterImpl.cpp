@@ -184,11 +184,11 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
         return;
     }
 
-    // 默认数据库类型先写 mysql，保持与当前已安装口扫软件默认部署一致。
+    // 新架构当前默认走 SQLite，避免新电脑首次运行时误回到旧 MySQL 部署口径。
     QJsonObject root;
     QJsonObject database;
     // insert 会覆盖同名字段；这里是新对象，所以效果等同于写入一项。
-    database.insert("type", "mysql");
+    database.insert("type", "sqlite");
 
     // feature 只表达产品/客户默认显示策略，不表达授权。
     // 授权结果由 Permission 的 permission_rules.json 再过滤。

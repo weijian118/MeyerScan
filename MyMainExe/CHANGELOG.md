@@ -1,7 +1,17 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-07
+
+- 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本，保证运行时版本清单能区分本轮工作台集成改动。
+- 复核创建工作台、练习工作台、Scan/Process 懒加载和重资源释放链路；当前 MainExe 直接挂载 `MeyerScan_ScanWorkflowUI.dll` / `MeyerScan_DataProcessUI.dll` 是阶段性集成方案，用于先跑通创建/练习流程，后续真实扫描仍保持 `ScanReconstructStudio.exe` 独立进程边界。
+- `--smoke-main` 保持覆盖首页、设置、创建工作台、练习工作台、Scan/Process 切换、案例管理和扫描前资源释放。
+
 ## 2026-07-06
 
+- 首页 Practice 入口接入练习工作台：MainExe 复用 `MeyerScan_OrderScanWorkspaceShell.dll` 的练习模式，只显示 Scan / Process，并挂载 `MeyerScan_ScanWorkflowUI.dll` 与 `MeyerScan_DataProcessUI.dll`。
+- 创建工作台和练习工作台右上角统一只保留 `Minimize` / `Close`；`Minimize` 最小化主窗口，`Close` 关闭当前工作台并返回首页，不退出 MeyerScan.exe。
+- Scan / Process 页面改为按步骤懒加载；切换离开时通过 `Shutdown()` / `DeactivateAndRelease()` 释放 QVTK/VTK/OpenGL 重资源，并用占位页替换旧步骤，避免壳子持有待删除 QWidget。
+- `--smoke-main` 覆盖范围扩大到创建工作台、练习工作台、Scan/Process 切换和重资源释放，自动退出时间调整为 5 秒。
 - CMake 构建入口完成实际验证：使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 和 VS2015 x64 生成器，根聚合工程 `Release` 配置与构建通过。
 - CMake PostBuild 补齐运行目录配置复制：`db_config.json`、`version_modules.json/.md`、`runtime_config.json/.md`、`permission_rules.json/.md` 和第三方建单样例都会同步到 `MeyerScan.exe` 同级目录。
 - MainExe 运行目录补齐扫描 UI 所需的 VTK/OpenCV 运行库复制；这些 DLL 只作为运行依赖存在，不进入 `logs/versionList`。

@@ -7,6 +7,7 @@
 - 提供扫描阶段完整页面：扫描对象选择、右侧扫描工具、底部扫描控制、提示区和 VTK/QVTK 显示区。
 - 后续承接连接设备、抓取下位机数据、把数据传给算法、接收重建结果并刷新显示的 UI 边界。
 - 进入页面时创建 `QVTKWidget` / `vtkRenderer` 等重资源；离开页面时通过 `DeactivateAndRelease()` 主动释放。
+- 当前已被 MainExe 的练习工作台接入；页面最小尺寸按 960x600 收敛，便于嵌入 `OrderScanWorkspaceShell` 的 Scan 步骤。
 - 通过稳定整数动作 ID 向 `ScanReconstructStudio.exe` 上报用户意图。
 
 ## 边界

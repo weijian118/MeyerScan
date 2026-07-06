@@ -17,6 +17,20 @@ enum OrderScanWorkspaceStep {
     WorkspaceStepSend = 4,
 };
 
+// 工作台模式枚举。
+// 创建模式展示 Order/Scan/Process/Send；练习模式只展示 Scan/Process。
+enum OrderScanWorkspaceMode {
+    WorkspaceModeOrderCreate = 1,
+    WorkspaceModePractice = 2,
+};
+
+// 工作台右上角按钮动作。
+// 壳子只上报动作 ID，真正最小化或关闭回首页由 MainExe 统一执行。
+enum OrderScanWorkspaceShellAction {
+    WorkspaceShellActionMinimize = 1,
+    WorkspaceShellActionClose = 2,
+};
+
 // IOrderScanWorkspaceShell 是建单模块和扫描重建模块之间的统一工作区壳子。
 // 设计目的:
 //   - 统一建单、扫描、处理、发送几个页面的外观和切换体验。
@@ -48,6 +62,18 @@ public:
 
     // 关闭模块并清理缓存。
     virtual void Shutdown() = 0;
+
+    // 设置工作台模式。
+    // 注意：该虚函数追加在接口末尾，避免破坏旧虚表顺序；调用方应优先在 CreateWidget 前设置。
+    virtual void SetWorkspaceMode(int mode) = 0;
+
+    // 设置右上角壳按钮动作回调。
+    // callback(context, actionId) 中 actionId 使用 OrderScanWorkspaceShellAction。
+    virtual void SetShellActionCallback(void (*callback)(void* context, int actionId), void* context) = 0;
+
+    // 设置步骤变化回调。
+    // MainExe 用它懒加载 Scan/DataProcess 页面，并在离开重资源页面时释放对应资源。
+    virtual void SetStepChangedCallback(void (*callback)(void* context, int step), void* context) = 0;
 };
 
 // C ABI 工厂函数，便于后续按插件方式动态加载。

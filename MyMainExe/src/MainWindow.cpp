@@ -35,7 +35,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.0 (2026-06-25)";
+const char* Version = "MeyerScan_MainExe v0.1.1 (2026-07-07)";
 }
 
 struct VersionModuleEntry {
@@ -121,6 +121,14 @@ MainWindow::~MainWindow() {
         // 建单 UI 只持有临时表单状态，先于工作台壳释放，避免壳子还引用已 Shutdown 的页面。
         m_orderCreate->Shutdown();
     }
+    if (m_scanWorkflow) {
+        // 扫描页持有 QVTK/OpenGL 资源，退出时必须主动释放。
+        m_scanWorkflow->Shutdown();
+    }
+    if (m_dataProcess) {
+        // 数据处理页也持有 QVTK/OpenGL 资源，退出时必须主动释放。
+        m_dataProcess->Shutdown();
+    }
     if (m_orderWorkspace) {
         // 工作台壳只做容器和导航，关闭时不应反向释放全局基础设施。
         m_orderWorkspace->Shutdown();
@@ -191,10 +199,21 @@ void MainWindow::StartWithoutLoginForSmoke() {
     QTimer::singleShot(400, this, [this]() { ShowSettings(SettingsOpenSourceHome); });
     QTimer::singleShot(800, this, [this]() { ShowHome(); });
     QTimer::singleShot(1200, this, [this]() { ShowOrderWorkspace(); });
-    QTimer::singleShot(1600, this, [this]() { ShowHome(); });
-    QTimer::singleShot(2000, this, [this]() { ShowCase(); });
+    QTimer::singleShot(1600, this, [this]() {
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepScan);
+        }
+    });
+    QTimer::singleShot(2000, this, [this]() { ShowPracticeWorkspace(); });
+    QTimer::singleShot(2400, this, [this]() {
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepProcess);
+        }
+    });
+    QTimer::singleShot(2800, this, [this]() { ShowHome(); });
+    QTimer::singleShot(3200, this, [this]() { ShowCase(); });
     // 最后模拟打开扫描重建前的资源释放要求。
-    QTimer::singleShot(2400, this, [this]() { PrepareForScanReconstruct(); });
+    QTimer::singleShot(3600, this, [this]() { PrepareForScanReconstruct(); });
 }
 
 // 第三方拉起入口。
@@ -520,6 +539,38 @@ void MainWindow::OnOrderCreateAction(void* context, int actionId) {
     }
 }
 
+// C ABI 回调转发：工作台壳不直接依赖 MainWindow 类型。
+void MainWindow::OnWorkspaceShellAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleWorkspaceShellAction(actionId);
+    }
+}
+
+// C ABI 回调转发：壳子步骤变化统一交给 MainExe 做懒加载和资源释放。
+void MainWindow::OnWorkspaceStepChanged(void* context, int step) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleWorkspaceStepChanged(step);
+    }
+}
+
+// C ABI 回调转发：ScanWorkflowUI 不直接依赖 MainWindow 类型。
+void MainWindow::OnScanWorkflowAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleScanWorkflowAction(actionId);
+    }
+}
+
+// C ABI 回调转发：DataProcessUI 不直接依赖 MainWindow 类型。
+void MainWindow::OnDataProcessAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleDataProcessAction(actionId);
+    }
+}
+
 // 首页入口统一从这里分发，避免 HomeUI 自己切换其他模块页面。
 void MainWindow::HandleHomeEntryClicked(int entryId) {
     // 每一次客户点击都先写日志，再进入具体页面流程。
@@ -547,6 +598,9 @@ void MainWindow::HandleHomeEntryClicked(int entryId) {
         ShowOrderWorkspace();
         break;
     case HomeEntryPractice:
+        // 练习入口进入同一个工作台壳，但只显示 Scan/Process 两步。
+        ShowPracticeWorkspace();
+        break;
     default:
         WriteStatus(tr("Home entry %1 is not implemented yet").arg(entryId));
         break;
@@ -638,11 +692,12 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         break;
     case OrderCreateActionNext:
         // 下一步正式进入扫描前必须经过 OrderWorkflowService 决策。
-        // 当前骨架只切换工作台步骤，证明 Shell 可以承载后续扫描页。
+        // 当前骨架先确保扫描页可用，再切换工作台步骤，证明 Shell 可以承载后续扫描页。
         if (m_orderWorkspace) {
+            EnsureScanWorkflowPage();
             m_orderWorkspace->SetStep(WorkspaceStepScan);
         }
-        WriteStatus(tr("Scan step is not implemented yet"));
+        WriteStatus(tr("Scan step opened"));
         break;
     case OrderCreateActionClearAllTeeth:
         WriteStatus(tr("Tooth selection cleared"));
@@ -652,6 +707,113 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         break;
     default:
         WriteStatus(tr("Order create action %1 is not implemented yet").arg(actionId));
+        break;
+    }
+}
+
+// 处理工作台右上角按钮动作。
+// Minimize 操作主窗口；Close 关闭当前工作台并返回首页，不退出整个 MeyerScan。
+void MainWindow::HandleWorkspaceShellAction(int actionId) {
+    WriteUserAction("WorkspaceShellAction", QString("Workspace shell action clicked: %1").arg(actionId));
+    switch (actionId) {
+    case WorkspaceShellActionMinimize:
+        showMinimized();
+        break;
+    case WorkspaceShellActionClose:
+        ShowHome();
+        break;
+    default:
+        WriteStatus(tr("Workspace action %1 is not implemented yet").arg(actionId));
+        break;
+    }
+}
+
+// 工作台步骤变化后的资源调度。
+// 进入 Scan/Process 时懒加载对应页面；离开时释放隐藏页的 VTK/OpenGL 资源。
+void MainWindow::HandleWorkspaceStepChanged(int step) {
+    WriteUserAction("WorkspaceStepChanged", QString("Workspace step changed: %1").arg(step));
+
+    if (step == WorkspaceStepScan) {
+        // 进入扫描页时确保页面挂载，并让扫描模块恢复必要状态。
+        if (!EnsureScanWorkflowPage()) {
+            // 扫描页加载失败时不要继续释放当前可用页面。
+            // 例如运行目录缺失扫描 DLL 时，保留原页面比把工作台切成空占位页更容易排查。
+            WriteStatus(tr("Scan workflow unavailable"));
+            return;
+        }
+        if (m_scanWorkflow) {
+            m_scanWorkflow->Activate();
+        }
+        // 处理页不可见时释放整个处理页面，让 QVTK/OpenGL 资源真正归还。
+        ReleaseDataProcessPage();
+        WriteStatus(tr("Scan"));
+        return;
+    }
+
+    if (step == WorkspaceStepProcess) {
+        // 进入处理页时确保页面挂载，并释放扫描页重资源。
+        if (!EnsureDataProcessPage()) {
+            // 数据处理页加载失败时同样不释放扫描页。
+            // 这样用户还能回到上一步，并且日志中会保留真实失败原因。
+            WriteStatus(tr("Data process unavailable"));
+            return;
+        }
+        if (m_dataProcess) {
+            m_dataProcess->Activate();
+        }
+        ReleaseScanWorkflowPage();
+        WriteStatus(tr("Process"));
+        return;
+    }
+
+    // 回到建单或发送步骤时，扫描/处理两个重页面都不应继续占用显存。
+    ReleaseScanWorkflowPage();
+    ReleaseDataProcessPage();
+}
+
+// 处理扫描页面动作。
+// 当前只把流程推进/回退接起来，真实设备和算法动作仍留在扫描模块内部。
+void MainWindow::HandleScanWorkflowAction(int actionId) {
+    WriteUserAction("ScanWorkflowAction", QString("Scan workflow action clicked: %1").arg(actionId));
+    switch (actionId) {
+    case ScanWorkflowActionPrevious:
+        if (m_orderWorkspace && m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
+            m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
+        }
+        break;
+    case ScanWorkflowActionNext:
+    case ScanWorkflowActionComplete:
+        if (m_orderWorkspace) {
+            EnsureDataProcessPage();
+            m_orderWorkspace->SetStep(WorkspaceStepProcess);
+        }
+        break;
+    default:
+        WriteStatus(tr("Scan action %1 recorded").arg(actionId));
+        break;
+    }
+}
+
+// 处理数据处理页面动作。
+// 当前骨架只支持回到 Scan 或记录工具动作，发送模块后续接入后再推进到 Send。
+void MainWindow::HandleDataProcessAction(int actionId) {
+    WriteUserAction("DataProcessAction", QString("Data process action clicked: %1").arg(actionId));
+    switch (actionId) {
+    case DataProcessActionPrevious:
+        if (m_orderWorkspace) {
+            EnsureScanWorkflowPage();
+            m_orderWorkspace->SetStep(WorkspaceStepScan);
+        }
+        break;
+    case DataProcessActionNext:
+        if (m_orderWorkspace && m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
+            m_orderWorkspace->SetStep(WorkspaceStepSend);
+        } else {
+            WriteStatus(tr("Practice process completed"));
+        }
+        break;
+    default:
+        WriteStatus(tr("Process action %1 recorded").arg(actionId));
         break;
     }
 }
@@ -718,8 +880,34 @@ void MainWindow::ShowSettings(int openSource) {
 // 显示建单/扫描工作台。
 // 首页手工点击“创建”和第三方自动拉起最终都走这里，避免两套建单 UI 创建流程。
 void MainWindow::ShowOrderWorkspace(const QString& orderContextJson) {
+    if (m_orderWorkspaceWidget && m_currentWorkspaceMode != WorkspaceModeOrderCreate) {
+        // 工作台模式决定顶部步骤按钮结构。
+        // 已创建的练习壳子不能直接改成创建壳子，先切到等待页再释放旧工作台，避免旧 Scan/Process 按钮残留。
+        ShowWaitPage(tr("Preparing order workspace"));
+        ReleaseOrderWorkspacePage();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
     if (EnsureOrderWorkspacePage(orderContextJson)) {
         ReplaceContentWidget(m_orderWorkspaceWidget, "Order Workspace");
+        ReleaseHomePage();
+        ReleaseCasePage();
+        ReleaseSettingsPage();
+        ReleaseWaitPage();
+    }
+}
+
+// 显示练习工作台。
+// 练习工作台复用 OrderScanWorkspaceShell，但模式只允许 Scan/Process 两步。
+void MainWindow::ShowPracticeWorkspace() {
+    if (m_orderWorkspaceWidget && m_currentWorkspaceMode != WorkspaceModePractice) {
+        // 已创建的正式建单壳子包含 Order/Send 步骤，不能直接拿来显示练习。
+        // 先用等待页占位，再释放旧工作台，保证客户不会看到按钮结构突然变形。
+        ShowWaitPage(tr("Preparing practice"));
+        ReleaseOrderWorkspacePage();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+    if (EnsurePracticeWorkspacePage()) {
+        ReplaceContentWidget(m_orderWorkspaceWidget, "Practice Workspace");
         ReleaseHomePage();
         ReleaseCasePage();
         ReleaseSettingsPage();
@@ -861,14 +1049,22 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
     if (m_orderWorkspaceWidget) {
         // 页面已经存在时，如果外部传入新上下文，直接刷新建单 UI。
         // 当前 ShowOrderWorkspace 每次离开都会释放页面，所以这里主要是防御重复调用。
+        m_currentWorkspaceMode = WorkspaceModeOrderCreate;
         if (!orderContextJson.isEmpty() && m_orderCreate) {
             m_orderCreate->SetOrderContextJson(orderContextJson.toUtf8().constData());
+            m_workspaceContextJson = orderContextJson;
         }
         if (m_orderWorkspace) {
+            m_orderWorkspace->SetWorkspaceMode(WorkspaceModeOrderCreate);
             m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
         }
         return true;
     }
+
+    m_currentWorkspaceMode = WorkspaceModeOrderCreate;
+    m_workspaceContextJson = orderContextJson.isEmpty()
+        ? BuildDefaultWorkspaceContextJson("order")
+        : orderContextJson;
 
     m_orderWorkspace = OrderWorkspaceModule();
     if (!m_orderWorkspace) {
@@ -888,11 +1084,15 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
         m_orderCreateInitialized = m_orderCreate->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
 
+    // CreateWidget 前先设置模式，避免壳子创建出错误的步骤按钮集合。
+    m_orderWorkspace->SetWorkspaceMode(WorkspaceModeOrderCreate);
+    m_orderWorkspace->SetShellActionCallback(&MainWindow::OnWorkspaceShellAction, this);
+
     // 建单页面动作仍回到 MainExe 分发，不能由 OrderCreateUI 直接切换 Shell 或主窗口。
     m_orderCreate->SetActionCallback(&MainWindow::OnOrderCreateAction, this);
-    if (!orderContextJson.isEmpty()) {
+    if (!m_workspaceContextJson.isEmpty()) {
         // 在 QWidget 创建前先传上下文，让 OrderCreateUI 能缓存并在 CreateWidget 后立即应用。
-        m_orderCreate->SetOrderContextJson(orderContextJson.toUtf8().constData());
+        m_orderCreate->SetOrderContextJson(m_workspaceContextJson.toUtf8().constData());
     }
 
     m_orderWorkspaceWidget = m_orderWorkspace->CreateWidget(this);
@@ -900,6 +1100,9 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
         WriteStatus(tr("Order workspace widget create failed"));
         return false;
     }
+    // 根 widget 创建完成后再注册步骤变化回调。
+    // 这样回调里懒加载 Scan/DataProcess 时能安全使用 m_orderWorkspaceWidget 作为父对象。
+    m_orderWorkspace->SetStepChangedCallback(&MainWindow::OnWorkspaceStepChanged, this);
 
     m_orderCreateWidget = m_orderCreate->CreateWidget(m_orderWorkspaceWidget);
     if (!m_orderCreateWidget) {
@@ -911,6 +1114,112 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
     m_orderWorkspace->AttachStepWidget(WorkspaceStepOrderCreate, m_orderCreateWidget);
     m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
     WriteUserAction("PageCreate", "Order workspace page created");
+    return true;
+}
+
+// 创建练习工作台页面。
+// 练习只需要扫描和数据处理，订单上下文使用默认 JSON，占位后续真实练习参数。
+bool MainWindow::EnsurePracticeWorkspacePage() {
+    if (m_orderWorkspaceWidget) {
+        m_currentWorkspaceMode = WorkspaceModePractice;
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetWorkspaceMode(WorkspaceModePractice);
+            m_orderWorkspace->SetStep(WorkspaceStepScan);
+        }
+        return true;
+    }
+
+    m_currentWorkspaceMode = WorkspaceModePractice;
+    m_workspaceContextJson = BuildDefaultWorkspaceContextJson("practice");
+
+    m_orderWorkspace = OrderWorkspaceModule();
+    if (!m_orderWorkspace) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return false;
+    }
+    if (!m_orderWorkspaceInitialized) {
+        m_orderWorkspaceInitialized = m_orderWorkspace->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+
+    // 练习模式只显示 Scan/Process，因此必须在 CreateWidget 前设置。
+    m_orderWorkspace->SetWorkspaceMode(WorkspaceModePractice);
+    m_orderWorkspace->SetShellActionCallback(&MainWindow::OnWorkspaceShellAction, this);
+
+    m_orderWorkspaceWidget = m_orderWorkspace->CreateWidget(this);
+    if (!m_orderWorkspaceWidget) {
+        WriteStatus(tr("Practice workspace widget create failed"));
+        return false;
+    }
+    m_orderWorkspace->SetStepChangedCallback(&MainWindow::OnWorkspaceStepChanged, this);
+
+    if (!EnsureScanWorkflowPage()) {
+        return false;
+    }
+    m_orderWorkspace->SetStep(WorkspaceStepScan);
+    WriteUserAction("PageCreate", "Practice workspace page created");
+    return true;
+}
+
+// 确保扫描步骤页面已创建并挂入工作台。
+// ScanWorkflowUI 通过 QLibrary 动态加载，MainExe 只依赖接口头。
+bool MainWindow::EnsureScanWorkflowPage() {
+    if (m_scanWorkflowWidget) {
+        return true;
+    }
+    if (!m_orderWorkspace || !m_orderWorkspaceWidget) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return false;
+    }
+
+    m_scanWorkflow = ScanWorkflowModule();
+    if (!m_scanWorkflow) {
+        WriteStatus(tr("Scan workflow unavailable"));
+        return false;
+    }
+    if (!m_scanWorkflowInitialized) {
+        m_scanWorkflowInitialized = m_scanWorkflow->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+
+    m_scanWorkflow->SetActionCallback(&MainWindow::OnScanWorkflowAction, this);
+    m_scanWorkflow->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    m_scanWorkflowWidget = m_scanWorkflow->CreateWidget(m_orderWorkspaceWidget);
+    if (!m_scanWorkflowWidget) {
+        WriteStatus(tr("Scan workflow widget create failed"));
+        return false;
+    }
+    m_orderWorkspace->AttachStepWidget(WorkspaceStepScan, m_scanWorkflowWidget);
+    WriteUserAction("PageCreate", "Scan workflow page created");
+    return true;
+}
+
+// 确保数据处理步骤页面已创建并挂入工作台。
+bool MainWindow::EnsureDataProcessPage() {
+    if (m_dataProcessWidget) {
+        return true;
+    }
+    if (!m_orderWorkspace || !m_orderWorkspaceWidget) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return false;
+    }
+
+    m_dataProcess = DataProcessModule();
+    if (!m_dataProcess) {
+        WriteStatus(tr("Data process unavailable"));
+        return false;
+    }
+    if (!m_dataProcessInitialized) {
+        m_dataProcessInitialized = m_dataProcess->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+
+    m_dataProcess->SetActionCallback(&MainWindow::OnDataProcessAction, this);
+    m_dataProcess->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    m_dataProcessWidget = m_dataProcess->CreateWidget(m_orderWorkspaceWidget);
+    if (!m_dataProcessWidget) {
+        WriteStatus(tr("Data process widget create failed"));
+        return false;
+    }
+    m_orderWorkspace->AttachStepWidget(WorkspaceStepProcess, m_dataProcessWidget);
+    WriteUserAction("PageCreate", "Data process page created");
     return true;
 }
 
@@ -964,6 +1273,11 @@ void MainWindow::ReleaseSettingsPage() {
 // 释放建单/扫描工作台页面。
 // 工作台根 widget 释放后，挂在其中的 OrderCreateUI widget 会随 Qt 父子树一起释放。
 void MainWindow::ReleaseOrderWorkspacePage() {
+    // 先释放扫描/处理页重资源，再释放工作台壳子。
+    // 这样工作台根 widget 删除时，不会带着仍绑定 OpenGL/VTK 的子控件一起悬挂到事件队列。
+    ReleaseScanWorkflowPage();
+    ReleaseDataProcessPage();
+
     if (m_orderCreate && m_orderCreateWidget && m_activeWidget != m_orderWorkspaceWidget) {
         // OrderCreateUI 没有单独 DestroyWidget 接口，当前通过 Shutdown 清理弱引用。
         // 下一次打开时 EnsureOrderWorkspacePage 会重新 Init 并创建新 widget。
@@ -980,7 +1294,45 @@ void MainWindow::ReleaseOrderWorkspacePage() {
     if (!m_orderWorkspaceWidget) {
         // 根页面逻辑释放后，建单 widget 已由父子树接管删除，成员弱引用必须同步清空。
         m_orderCreateWidget = nullptr;
+        m_scanWorkflowWidget = nullptr;
+        m_dataProcessWidget = nullptr;
+        m_workspaceContextJson.clear();
+        m_currentWorkspaceMode = WorkspaceModeOrderCreate;
     }
+}
+
+// 释放扫描页面。
+// 如果工作台仍存在，先用占位页替换扫描步骤，避免 Shell 内部继续持有待删除 QWidget。
+void MainWindow::ReleaseScanWorkflowPage() {
+    if (!m_scanWorkflow || !m_scanWorkflowWidget) {
+        return;
+    }
+    if (m_orderWorkspace && m_orderWorkspaceWidget) {
+        auto* placeholder = new QLabel(tr("Scan placeholder"), m_orderWorkspaceWidget);
+        placeholder->setAlignment(Qt::AlignCenter);
+        placeholder->setObjectName("WorkspaceScanReleasedPlaceholder");
+        m_orderWorkspace->AttachStepWidget(WorkspaceStepScan, placeholder);
+    }
+    m_scanWorkflow->Shutdown();
+    m_scanWorkflowInitialized = false;
+    m_scanWorkflowWidget = nullptr;
+}
+
+// 释放数据处理页面。
+// 处理页同样可能持有 QVTK/OpenGL 资源，不可只 hide。
+void MainWindow::ReleaseDataProcessPage() {
+    if (!m_dataProcess || !m_dataProcessWidget) {
+        return;
+    }
+    if (m_orderWorkspace && m_orderWorkspaceWidget) {
+        auto* placeholder = new QLabel(tr("Process placeholder"), m_orderWorkspaceWidget);
+        placeholder->setAlignment(Qt::AlignCenter);
+        placeholder->setObjectName("WorkspaceProcessReleasedPlaceholder");
+        m_orderWorkspace->AttachStepWidget(WorkspaceStepProcess, placeholder);
+    }
+    m_dataProcess->Shutdown();
+    m_dataProcessInitialized = false;
+    m_dataProcessWidget = nullptr;
 }
 
 // 释放页面 widget 的统一函数。
@@ -1210,7 +1562,7 @@ const char* MainWindow::CaseActionFeatureId(int actionId) const {
 // 清单写入 logs/versionList，内容只包含 manifest 中列出的拆分模块 EXE/DLL。
 void MainWindow::WriteVersionList() {
     // appDirPath 是发布目录。版本清单不再无差别扫描同级 EXE/DLL，
-    // 因为发布目录中会有大量 Qt、OpenSSL、AWS、VC 运行库等第三方依赖。
+    // 因为发布目录中会有大量 Qt、VTK、OpenCV、OpenSSL、AWS、VC 运行库等第三方依赖。
     const QString appDirPath = QCoreApplication::applicationDirPath();
     const QString logDirPath = ResolveLogDir();
     const QString manifestPath = QDir(appDirPath).filePath("config/version_modules.json");
@@ -1702,6 +2054,42 @@ IOrderCreateUI* MainWindow::OrderCreateUIModule() {
     return reinterpret_cast<Factory>(pointer)();
 }
 
+// 动态加载 ScanWorkflowUI.dll。
+IScanWorkflowUI* MainWindow::ScanWorkflowModule() {
+    if (m_scanWorkflow) {
+        return m_scanWorkflow;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_scanWorkflowLibrary,
+                                              "MeyerScan_ScanWorkflowUI.dll",
+                                              "GetScanWorkflowUI",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Scan workflow unavailable"));
+        return nullptr;
+    }
+    typedef IScanWorkflowUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
+// 动态加载 DataProcessUI.dll。
+IDataProcessUI* MainWindow::DataProcessModule() {
+    if (m_dataProcess) {
+        return m_dataProcess;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_dataProcessLibrary,
+                                              "MeyerScan_DataProcessUI.dll",
+                                              "GetDataProcessUI",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Data process unavailable"));
+        return nullptr;
+    }
+    typedef IDataProcessUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
 // 动态加载 ExternalLaunchAdapter.dll。
 IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
     if (m_externalLaunchAdapter) {
@@ -1718,6 +2106,30 @@ IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
     }
     typedef IExternalLaunchAdapter* (*Factory)();
     return reinterpret_cast<Factory>(pointer)();
+}
+
+// 构造工作台默认上下文。
+// 这里用 JSON 作为跨模块轻量载体：模块只读取需要的字段，新增字段不会破坏旧模块。
+QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const {
+    QJsonObject patient;
+    patient.insert("id", "PRACTICE_PATIENT");
+    patient.insert("name", mode == "practice" ? "Practice Patient" : "Test Patient");
+    patient.insert("gender", "unknown");
+    patient.insert("age", 0);
+
+    QJsonObject order;
+    order.insert("id", mode == "practice" ? "PRACTICE_ORDER" : "LOCAL_ORDER");
+    order.insert("source", mode);
+    order.insert("doctor", "Default Doctor");
+    order.insert("lab", "Default Lab");
+
+    QJsonObject context;
+    context.insert("schemaVersion", 1);
+    context.insert("mode", mode);
+    context.insert("patient", patient);
+    context.insert("order", order);
+    context.insert("createdAt", QDateTime::currentDateTime().toString(Qt::ISODate));
+    return QString::fromUtf8(QJsonDocument(context).toJson(QJsonDocument::Compact));
 }
 
 // 写客户操作日志。日志对象使用构造期缓存的 m_logger，避免每次重新 GetLogger()。

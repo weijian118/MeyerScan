@@ -13,14 +13,15 @@
 8. 调用既有 `MeyerLoginWidget.dll` 显示登录界面。
 9. 登录成功后加载 `MyHomeUI` 首页模块。
 10. HomeUI 发出入口点击事件，MainExe 集中切换到 `MyCaseUI` 案例管理模块，或从“Create”入口进入 `OrderScanWorkspaceShell + OrderCreateUI`。
-11. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
-12. 第三方拉起时可通过 `--external-order <json> --external-order-type <type>` 进入建单链路，客户视觉上只看到建单工作区。
+11. HomeUI 的“Practice”入口进入 `OrderScanWorkspaceShell` 练习模式，只显示 Scan / Process，并挂载 `ScanWorkflowUI` / `DataProcessUI`。
+12. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
+13. 第三方拉起时可通过 `--external-order <json> --external-order-type <type>` 进入建单链路，客户视觉上只看到建单工作区。
 
 ## 当前边界
 
 - MainExe 只做启动、模块编排和窗口容器。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
-- MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
+- MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ScanWorkflowUI、DataProcessUI、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
@@ -38,6 +39,8 @@
 - `MyExternalLaunchAdapter` 只负责把第三方 JSON 转成标准建单上下文，MainExe 不解析各第三方私有字段，OrderCreateUI 也不认识第三方私有字段。
 - 标准建单上下文必须包含 `source.thirdPartyType`，用于区分多个第三方来源；新增第三方优先改 ExternalLaunchAdapter 映射规则。
 - 首页进入浏览、浏览返回首页、浏览进入扫描重建前准备都按“替换当前页面 + 释放离开页面资源”处理，避免隐藏页面长期占用内存/显存。
+- 创建工作台和练习工作台共用 `OrderScanWorkspaceShell`：创建模式显示 Order / Scan / Process / Send；练习模式只显示 Scan / Process。工作台右上角只显示 `Minimize` / `Close`，关闭工作台表示返回首页并释放工作台资源，不退出 MeyerScan.exe。
+- 工作台 Scan / Process 页面由 MainExe 按步骤懒加载；切换离开时主动调用对应模块释放 QVTK/VTK/OpenGL 重资源，并用占位页替换旧步骤，避免壳子继续持有等待删除的 QWidget。
 - UI 显隐和启用态统一由 MainExe 合并 ConfigCenter / Permission 后下发：`visible` 控制是否显示，`enabled` 控制是否可点击；MainExe 收到回调后还会按 `enabled` 二次复核。
 - 运行时版本清单只记录 `config/version_modules.json` 中声明的拆分模块 EXE/DLL，不再扫描第三方库；当前清单使用 `{ file, versionFunction }` 格式，自研模块通过统一导出函数 `GetMeyerModuleVersion()` 记录 `fileVersion`、`codeVersion` 和 `versionMatch`；字段说明见同目录 `config/version_modules.md`。
 - `version_modules.json` 中声明的模块必须同步进入 MainExe Release 目录或后续安装包；缺失模块会在 `logs/versionList` 中记录为 `exists=false`，用于发现 PostBuild/打包漏复制。
@@ -70,7 +73,7 @@ cd F:\MeyerScan\MyMainExe\bin\Release
 ```
 
 - `--smoke`：按正式流程初始化日志/数据库并拉起登录模块，3 秒后退出。
-- `--smoke-main`：跳过登录，自动覆盖等待页、首页、浏览、返回首页、再次浏览、扫描前资源释放链路，3 秒后退出，用于验证主界面模块装载、页面切换和 CaseUI 释放。
+- `--smoke-main`：跳过登录，自动覆盖等待页、首页、设置、创建工作台、练习工作台、Scan/Process 切换、浏览和扫描前资源释放链路，5 秒后退出，用于验证主界面模块装载、页面切换和重资源释放。
 - `--smoke-external-order`：跳过登录，走 ExternalLaunchAdapter → 后台首页 Create 入口复核 → OrderScanWorkspaceShell → OrderCreateUI 链路，3 秒后退出。
 
 ## 第三方拉起模拟

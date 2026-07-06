@@ -4,6 +4,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QLabel>
+#include <QPushButton>
+#include <QStackedWidget>
 #include <QWidget>
 #include <cstdio>
 
@@ -64,23 +66,76 @@ int main(int argc, char* argv[]) {
     scanPage->setObjectName("OrderScanWorkspaceShellTestScanPage");
     // AttachStepWidget 把外部模块页面接入指定步骤槽位。
     shell->AttachStepWidget(WorkspaceStepScan, scanPage);
+    // 测试宿主通过对象名找到顶部按钮和页面栈，验证真实点击能触发切换。
+    auto* scanButton = widget->findChild<QPushButton*>("WorkspaceStep2Button");
+    if (!Check(scanButton != nullptr, "能找到 Scan 步骤按钮")) {
+        return 5;
+    }
+    auto* processButton = widget->findChild<QPushButton*>("WorkspaceStep3Button");
+    if (!Check(processButton != nullptr, "能找到 Process 步骤按钮")) {
+        return 6;
+    }
+    auto* stack = widget->findChild<QStackedWidget*>();
+    if (!Check(stack != nullptr, "能找到工作区页面栈")) {
+        return 7;
+    }
     // 切到扫描步骤，验证已挂载页面可以被选中显示。
-    shell->SetStep(WorkspaceStepScan);
-    // 切到处理步骤，验证未挂载步骤也不会崩溃。
-    shell->SetStep(WorkspaceStepProcess);
+    scanButton->click();
+    if (!Check(stack->currentWidget() == scanPage, "点击 Scan 按钮后切换到扫描页")) {
+        return 8;
+    }
+    if (!Check(scanButton->isChecked(), "Scan 步骤按钮显示选中")) {
+        return 9;
+    }
+    // 切到处理步骤，验证未挂载步骤也能显示占位页，不会崩溃。
+    processButton->click();
+    if (!Check(processButton->isChecked(), "Process 步骤按钮显示选中")) {
+        return 10;
+    }
     // 非法 step 只应写 Warning 日志，不应导致崩溃。
     shell->SetStep(99);
+
+    // 释放第一个根控件后切换到练习模式，验证壳子只显示 Scan/Process 两个步骤。
+    delete widget;
+    shell->Shutdown();
+
+    if (!Check(shell->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+               "OrderScanWorkspaceShell 重新初始化成功")) {
+        return 11;
+    }
+    shell->SetWorkspaceMode(WorkspaceModePractice);
+    QWidget* practiceWidget = shell->CreateWidget();
+    if (!Check(practiceWidget != nullptr, "练习模式能创建根 QWidget")) {
+        return 12;
+    }
+    auto* orderButton = practiceWidget->findChild<QPushButton*>("WorkspaceStep1Button");
+    auto* practiceScanButton = practiceWidget->findChild<QPushButton*>("WorkspaceStep2Button");
+    auto* practiceProcessButton = practiceWidget->findChild<QPushButton*>("WorkspaceStep3Button");
+    auto* sendButton = practiceWidget->findChild<QPushButton*>("WorkspaceStep4Button");
+    if (!Check(orderButton == nullptr, "练习模式不显示 Order 步骤按钮")) {
+        return 13;
+    }
+    if (!Check(practiceScanButton != nullptr && practiceProcessButton != nullptr,
+               "练习模式显示 Scan 和 Process 步骤按钮")) {
+        return 14;
+    }
+    if (!Check(sendButton == nullptr, "练习模式不显示 Send 步骤按钮")) {
+        return 15;
+    }
+    if (!Check(practiceScanButton->isChecked(), "练习模式默认选中 Scan 步骤")) {
+        return 16;
+    }
 
     // --show 用于人工查看壳子界面；默认不进入事件循环，便于自动化测试结束。
     if (QCoreApplication::arguments().contains("--show")) {
         // 使用接近主程序的窗口尺寸观察步骤区域布局。
-        widget->resize(1180, 760);
-        widget->show();
+        practiceWidget->resize(1180, 760);
+        practiceWidget->show();
         return app.exec();
     }
 
-    // 删除根控件会连带释放 scanPage，验证资源释放路径没有悬挂引用。
-    delete widget;
+    // 删除根控件会连带释放占位页，验证资源释放路径没有悬挂引用。
+    delete practiceWidget;
     // Shutdown 释放壳子模块内部状态和日志引用。
     shell->Shutdown();
     std::printf("OrderScanWorkspaceShellTest passed.\n");

@@ -1,5 +1,21 @@
 ﻿# MeyerScan OrderScanWorkspaceShell 变更记录
 
+## 2026-07-07
+
+- 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
+- 复核工作台模式、步骤按钮、右上角 `Minimize` / `Close` 回调和步骤变化回调：创建模式显示 Order / Scan / Process / Send，练习模式只显示 Scan / Process。
+- 明确本模块只负责容器、步骤导航和页面挂载；Scan/Process 页面创建、激活和释放仍由 MainExe 或后续 `ScanReconstructStudio.exe` 生命周期编排。
+
+## 2026-07-06
+
+- 新增工作台模式：`WorkspaceModeOrderCreate` 显示 Order / Scan / Process / Send，`WorkspaceModePractice` 只显示 Scan / Process，用于首页“Practice”入口。
+- 新增右上角壳按钮回调：创建和练习工作台只显示 `Minimize` / `Close`，壳子通过 `WorkspaceShellActionMinimize` / `WorkspaceShellActionClose` 上报 MainExe。
+- 新增步骤变化回调：MainExe 可在切到 Scan/Process 时懒加载真实页面，并在离开时释放 QVTK/VTK 等重资源。
+- `OrderScanWorkspaceShellTest.exe` 增加练习模式验证，覆盖不显示 Order/Send、默认选中 Scan 和 Scan/Process 步骤按钮存在。
+- 修复顶部 Order / Scan / Process / Send 只能展示不能点击的问题：步骤条从 `QLabel` 改为 `QPushButton`，点击按钮后由壳子内部调用 `SetStep()` 切换 `QStackedWidget` 页面。
+- 新增步骤按钮选中态同步，当前步骤按钮保持高亮；测试宿主增加按钮点击验证，覆盖 Scan 和 Process 页面切换。
+- README 补充步骤条必须使用可点击按钮、点击后由壳子内部切换页面的约束。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
@@ -10,7 +26,7 @@
 - README 补充本模块当前与 MainExe、OrderCreateUI、ExternalLaunchAdapter 的集成关系，强调工作台壳不解析第三方字段、不保存建单数据。
 - 补充 `OrderScanWorkspaceShellTest.exe` 测试宿主中文注释，说明 QApplication 初始化、工作区壳根控件创建、步骤页面挂载、非法 step 防崩溃验证、`--show` 人工查看模式和资源释放流程。
 - 本轮仅补充注释，不改变工作区壳子模块页面挂载和步骤切换逻辑。
-- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；本机未发现可用 `cmake.exe`，CMake 构建未能执行。
+- 验证：根方案 `MeyerScan_AllModules.sln` Release x64 构建通过；该日 CMake 未执行，2026-07-06 已使用 CMake 3.31.6 和 VS2015 x64 生成器完成根聚合 Release 补验证。
 
 ## 2026-07-02
 

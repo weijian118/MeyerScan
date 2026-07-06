@@ -1,5 +1,13 @@
 ﻿# MyOrderCreateUI 修改记录
 
+## 2026-07-07
+
+- 版本升级为 `v0.2.2`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
+- 优化 OrderCreateUI 低分辨率适配：根界面最小尺寸从 1280x720 降为 960x600，布局边距、三栏间距、左/右栏宽度、扫描类型按钮、牙位按钮、已选表格高度和备注框高度都做了收敛。
+- 明确分辨率策略：优先使用 Qt Layout、滚动区、伸缩策略和多语言换行，不再按 1920x1080 比例直接缩放所有控件坐标。
+- 保持 UIComponents 复用边界不变：普通按钮、字段标签、输入框、下拉框、日期框、多行备注框和基础表格仍优先走共享 UI DLL；牙位/扫描类型等业务控件仍由本模块维护。
+- 验证：CMake/VS2015 Release 构建通过；`OrderCreateUITest.exe` 返回 0；MainExe `--smoke-main` 集成链路返回 0。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
