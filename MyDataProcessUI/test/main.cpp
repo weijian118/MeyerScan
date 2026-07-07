@@ -1,8 +1,10 @@
-#include "DataProcessUI.h"
+﻿#include "DataProcessUI.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDir>
+#include <QPushButton>
 #include <QWidget>
 #include <cstdio>
 
@@ -51,7 +53,10 @@ int main(int argc, char* argv[]) {
 
     int actionCount = 0;
     process->SetActionCallback(&OnAction, &actionCount);
-    process->SetSessionContextJson("{\"orderId\":\"demo-order\",\"sessionId\":\"process-session-demo\"}");
+    process->SetSessionContextJson("{\"orderId\":\"demo-order\",\"sessionId\":\"process-session-demo\","
+                                   "\"scanProcess\":{\"steps\":["
+                                   "{\"label\":\"Custom maxilla\",\"code\":\"custom_maxilla\"},"
+                                   "{\"label\":\"Custom mandible\",\"code\":\"custom_mandible\"}]}}");
 
     QWidget* widget = process->CreateWidget();
     if (!Check(widget != nullptr, "DataProcessUI created root QWidget")) {
@@ -59,6 +64,42 @@ int main(int argc, char* argv[]) {
     }
     if (!Check(widget->objectName() == "MeyerScanDataProcessUIRoot", "DataProcessUI root object name is correct")) {
         return 4;
+    }
+
+    // 处理页也必须跟随同一份 scanProcess，避免 Scan 和 Process 顶部按钮不一致。
+    // The custom scanProcess should drive the top process buttons.
+    const QList<QPushButton*> buttons = widget->findChildren<QPushButton*>();
+    bool hasCustomMaxilla = false;
+    bool hasCustomMandible = false;
+    QPushButton* customMaxillaButton = nullptr;
+    QPushButton* customMandibleButton = nullptr;
+    for (QPushButton* button : buttons) {
+        if (button->text() == "Custom maxilla") {
+            hasCustomMaxilla = true;
+            customMaxillaButton = button;
+        }
+        if (button->text() == "Custom mandible") {
+            hasCustomMandible = true;
+            customMandibleButton = button;
+        }
+    }
+    if (!Check(hasCustomMaxilla && hasCustomMandible, "DataProcessUI renders session scanProcess buttons")) {
+        return 5;
+    }
+    if (!Check(customMaxillaButton && !customMaxillaButton->toolTip().isEmpty(),
+               "DataProcessUI process button has tooltip")) {
+        return 6;
+    }
+    if (!Check(customMaxillaButton && customMaxillaButton->cursor().shape() == Qt::PointingHandCursor,
+               "DataProcessUI process button uses hand cursor")) {
+        return 7;
+    }
+    if (customMandibleButton) {
+        // click() 直接触发 QPushButton 的 clicked 信号，用来验证处理步骤按钮能切换并上报动作。
+        customMandibleButton->click();
+    }
+    if (!Check(actionCount > 0, "DataProcessUI process button click reports action")) {
+        return 8;
     }
 
     if (QCoreApplication::arguments().contains("--show")) {

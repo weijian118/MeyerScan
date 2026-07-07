@@ -85,6 +85,10 @@
         {
             "file": "MeyerScan_DataProcessUI.dll",
             "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_SendUI.dll",
+            "versionFunction": "GetMeyerModuleVersion"
         }
     ]
 }

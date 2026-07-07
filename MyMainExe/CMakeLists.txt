@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.1.1 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.1.3 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
@@ -30,6 +30,7 @@ target_include_directories(MeyerScan PRIVATE
     ../MyOrderScanWorkspaceShell/include
     ../MyScanWorkflowUI/include
     ../MyDataProcessUI/include
+    ../MySendUI/include
     ../MyExternalLaunchAdapter/include
     ../MyConfigCenter/include
     ../MyPermission/include
@@ -70,12 +71,11 @@ foreach(_meyer_runtime_target
         MeyerScan_CalibrationColorUI
         MeyerScan_ScanWorkflowUI
         MeyerScan_DataProcessUI
+        MeyerScan_SendUI
         ScanReconstructStudio
         MeyerScan_Logger)
     if(TARGET ${_meyer_runtime_target})
-        # MainExe 运行时通过 QLibrary 加载这些自研 DLL。
-        # 这里仅建立构建顺序并把 DLL 复制到 MeyerScan.exe 同级目录，不链接 import lib。
-        add_dependencies(MeyerScan ${_meyer_runtime_target})
+        # MainExe ???????? QLibrary ????????? DLL??        # ?????????????????DLL ?????MeyerScan.exe ???????????? import lib??        add_dependencies(MeyerScan ${_meyer_runtime_target})
         add_custom_command(TARGET MeyerScan POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "$<TARGET_FILE:${_meyer_runtime_target}>"

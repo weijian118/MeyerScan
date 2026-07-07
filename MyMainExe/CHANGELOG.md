@@ -2,6 +2,14 @@
 
 ## 2026-07-07
 
+- 版本升级为 `v0.1.3`，创建模式从 DataProcess 的 Next 动作进入工作台 Send 步骤，并动态加载 `MeyerScan_SendUI.dll`。
+- MainExe 为 SendUI 注入当前工作台订单上下文，并处理 `Previous`、`Export`、`Compress`、`Email Send`、`Upload`、`Finish` 动作；当前只记录动作和流程跳转，真实发送业务后续接服务模块。
+- `version_modules.json`、CMake、VS2015 工程和根聚合方案纳入 `MeyerScan_SendUI.dll`，运行时版本清单开始记录 SendUI 文件版本和代码版本。
+- 进入 Send 步骤前释放 ScanWorkflowUI / DataProcessUI 重资源，避免 QVTK/VTK/OpenGL 资源继续占用。
+- `--smoke-main` 覆盖创建工作台 Scan → Process → Send 链路。
+- 版本升级为 `v0.1.2`，MainExe 增加工作台扫描流程上下文编排：创建模式从 OrderCreateUI 获取 `scanProcess` JSON，合并到 `m_workspaceContextJson` 后转发给 ScanWorkflowUI/DataProcessUI；练习模式固定使用 Natural maxilla / Exchange / Natural mandible / Natural occlusion 默认流程。
+- 工作台切到 Scan 或 Process 前会重新读取建单页最新扫描流程，防止用户直接点击顶部步骤按钮时跳过 Next 按钮导致流程不同步。
+- 若 ScanWorkflowUI/DataProcessUI 已创建，MainExe 更新 `scanProcess` 后会再次调用对应模块的 `SetSessionContextJson()`，保证已有页面按钮可刷新。
 - 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本，保证运行时版本清单能区分本轮工作台集成改动。
 - 复核创建工作台、练习工作台、Scan/Process 懒加载和重资源释放链路；当前 MainExe 直接挂载 `MeyerScan_ScanWorkflowUI.dll` / `MeyerScan_DataProcessUI.dll` 是阶段性集成方案，用于先跑通创建/练习流程，后续真实扫描仍保持 `ScanReconstructStudio.exe` 独立进程边界。
 - `--smoke-main` 保持覆盖首页、设置、创建工作台、练习工作台、Scan/Process 切换、案例管理和扫描前资源释放。

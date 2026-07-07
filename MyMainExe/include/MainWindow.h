@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <QCoreApplication>
+#include <QJsonObject>
 #include <QLibrary>
 #include <QList>
 #include <QMainWindow>
@@ -18,6 +19,7 @@
 #include "Permission.h"
 #include "RuntimeDataCenter.h"
 #include "ScanWorkflowUI.h"
+#include "SendUI.h"
 #include "SettingsUI.h"
 #include "UIComponents.h"
 
@@ -82,6 +84,9 @@ private:
     // DataProcessUI 动作回调，必须用静态函数把 context 转回 MainWindow。
     static void OnDataProcessAction(void* context, int actionId);
 
+    // SendUI 动作回调，必须用静态函数把 context 转回 MainWindow。
+    static void OnSendAction(void* context, int actionId);
+
     // 处理首页入口点击，例如浏览、创建、练习、设置。
     void HandleHomeEntryClicked(int entryId);
 
@@ -105,6 +110,9 @@ private:
 
     // 处理数据处理页面动作，例如上一页、下一页或处理工具切换。
     void HandleDataProcessAction(int actionId);
+
+    // 处理发送页面动作，例如返回处理页、导出、上传或完成。
+    void HandleSendAction(int actionId);
 
     // 第三方拉起建单时，后台准备首页创建入口并复用同一套权限/配置规则。
     bool PrepareHomeCreateEntryForExternalOrder();
@@ -151,6 +159,9 @@ private:
     // 确保数据处理步骤页面已创建并挂入工作台。
     bool EnsureDataProcessPage();
 
+    // 确保发送步骤页面已创建并挂入工作台。
+    bool EnsureSendPage();
+
     // 根据设置来源返回设置关闭后应该回到的页面名称。
     QString SettingsReturnPageName(int openSource) const;
 
@@ -177,6 +188,9 @@ private:
 
     // 释放数据处理页面根控件和 VTK/OpenGL 资源。
     void ReleaseDataProcessPage();
+
+    // 释放发送页面根控件。
+    void ReleaseSendPage();
 
     // 释放指定页面指针。allowActive=false 时不会释放当前正在显示的页面。
     void ReleasePageWidget(QWidget*& pageWidget, const QString& pageName, bool allowActive);
@@ -272,10 +286,20 @@ private:
     IOrderCreateUI* OrderCreateUIModule();
     IScanWorkflowUI* ScanWorkflowModule();
     IDataProcessUI* DataProcessModule();
+    ISendUI* SendUIModule();
     IExternalLaunchAdapter* ExternalLaunchAdapterModule();
 
     // 构造练习/默认扫描上下文 JSON，供 ScanWorkflowUI/DataProcessUI 暂时使用。
     QString BuildDefaultWorkspaceContextJson(const QString& mode) const;
+
+    // 构造默认练习扫描流程，练习模式没有建单页，流程由 MainExe 固定提供。
+    QJsonObject BuildDefaultScanProcessObject() const;
+
+    // 从 OrderCreateUI 读取最新扫描流程并合并到工作台上下文。
+    void RefreshWorkspaceScanProcessFromOrder();
+
+    // 把扫描流程对象写入 m_workspaceContextJson。
+    void SetWorkspaceScanProcess(const QJsonObject& scanProcessObject);
 
     // 写入客户操作日志。
     void WriteUserAction(const QString& operation, const QString& content);
@@ -296,6 +320,7 @@ private:
     IOrderCreateUI* m_orderCreate = nullptr;
     IScanWorkflowUI* m_scanWorkflow = nullptr;
     IDataProcessUI* m_dataProcess = nullptr;
+    ISendUI* m_send = nullptr;
     IExternalLaunchAdapter* m_externalLaunchAdapter = nullptr;
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
@@ -315,6 +340,7 @@ private:
     QLibrary m_orderCreateLibrary;
     QLibrary m_scanWorkflowLibrary;
     QLibrary m_dataProcessLibrary;
+    QLibrary m_sendLibrary;
     QLibrary m_externalLaunchAdapterLibrary;
     QWidget* m_homeWidget = nullptr;
     QWidget* m_caseWidget = nullptr;
@@ -323,6 +349,7 @@ private:
     QWidget* m_orderCreateWidget = nullptr;
     QWidget* m_scanWorkflowWidget = nullptr;
     QWidget* m_dataProcessWidget = nullptr;
+    QWidget* m_sendWidget = nullptr;
     QWidget* m_waitWidget = nullptr;
     QWidget* m_contentRoot = nullptr;
     QWidget* m_activeWidget = nullptr;
@@ -341,6 +368,7 @@ private:
     bool m_orderCreateInitialized = false;
     bool m_scanWorkflowInitialized = false;
     bool m_dataProcessInitialized = false;
+    bool m_sendInitialized = false;
     bool m_externalLaunchAdapterInitialized = false;
     bool m_loggerInitialized = false;
     int m_settingsOpenSource = SettingsOpenSourceHome;

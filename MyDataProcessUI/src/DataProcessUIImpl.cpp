@@ -1,18 +1,30 @@
-#include "DataProcessUIImpl.h"
+﻿#include "DataProcessUIImpl.h"
 
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLabel>
+#include <QLayoutItem>
 #include <QObject>
 #include <QPushButton>
 #include <QSizePolicy>
 #include <QStringList>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <QVariant>
+#include <QWheelEvent>
+#include <QtGlobal>
 
 #include <QVTKWidget.h>
 #include <vtkActor.h>
 #include <vtkAutoInit.h>
+#include <vtkCamera.h>
+#include <vtkConeSource.h>
+#include <vtkCubeSource.h>
+#include <vtkCylinderSource.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderer.h>
@@ -21,6 +33,8 @@
 #include <vtkSmartPointer.h>
 
 #include <opencv2/core.hpp>
+
+#include <cmath>
 
 VTK_MODULE_INIT(vtkRenderingOpenGL2);
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -32,7 +46,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_DataProcessUI";
 
 // Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_DataProcessUI v0.1.1 (2026-07-07)";
+const char* Version = "MeyerScan_DataProcessUI v0.2.1 (2026-07-07)";
 }
 
 const char* kPageBackground = "#dfe4ea";
@@ -41,6 +55,98 @@ const char* kPrimaryColor = "#007d68";
 const char* kMutedText = "#687785";
 const char* kBorderColor = "#cbd5dd";
 }
+
+// 数据处理页的 VTK 视图控件。
+// 它只接管滚轮缩放，把缩放范围和鼠标中心缩放逻辑集中在一个地方。
+class DataProcessViewerWidget : public QVTKWidget {
+public:
+    explicit DataProcessViewerWidget(QWidget* parent = nullptr)
+        : QVTKWidget(parent) {
+        setFocusPolicy(Qt::WheelFocus);
+    }
+
+    // renderer 由 DataProcessUIImpl 拥有；本控件只借用它做事件响应。
+    void SetRenderer(vtkRenderer* renderer) {
+        m_renderer = renderer;
+    }
+
+protected:
+    void wheelEvent(QWheelEvent* event) override {
+        if (!event || !m_renderer || !m_renderer->GetActiveCamera() || !GetRenderWindow()) {
+            QVTKWidget::wheelEvent(event);
+            return;
+        }
+
+        const int delta = event->angleDelta().y();
+        if (delta == 0) {
+            event->accept();
+            return;
+        }
+
+        const double wheelSteps = static_cast<double>(delta) / 120.0;
+        const double zoomRatio = std::pow(1.12, wheelSteps);
+        const double targetZoom = qBound(0.35, m_zoomFactor * zoomRatio, 4.0);
+        const double appliedRatio = targetZoom / m_zoomFactor;
+        if (qFuzzyCompare(appliedRatio, 1.0)) {
+            event->accept();
+            return;
+        }
+
+        vtkCamera* camera = m_renderer->GetActiveCamera();
+        double beforeWorld[4] = {0.0, 0.0, 0.0, 1.0};
+        double afterWorld[4] = {0.0, 0.0, 0.0, 1.0};
+        const QPoint mousePos = event->pos();
+        const int displayX = mousePos.x();
+        const int displayY = height() - mousePos.y();
+        ReadWorldPointAtDisplay(displayX, displayY, beforeWorld);
+
+        camera->Zoom(appliedRatio);
+        m_zoomFactor = targetZoom;
+        ReadWorldPointAtDisplay(displayX, displayY, afterWorld);
+
+        const double dx = beforeWorld[0] - afterWorld[0];
+        const double dy = beforeWorld[1] - afterWorld[1];
+        const double dz = beforeWorld[2] - afterWorld[2];
+        double position[3] = {0.0, 0.0, 0.0};
+        double focalPoint[3] = {0.0, 0.0, 0.0};
+        camera->GetPosition(position);
+        camera->GetFocalPoint(focalPoint);
+        camera->SetPosition(position[0] + dx, position[1] + dy, position[2] + dz);
+        camera->SetFocalPoint(focalPoint[0] + dx, focalPoint[1] + dy, focalPoint[2] + dz);
+
+        m_renderer->ResetCameraClippingRange();
+        GetRenderWindow()->Render();
+        event->accept();
+    }
+
+private:
+    void ReadWorldPointAtDisplay(int displayX, int displayY, double worldPoint[4]) const {
+        if (!m_renderer || !m_renderer->GetActiveCamera()) {
+            return;
+        }
+
+        double focalPoint[4] = {0.0, 0.0, 0.0, 1.0};
+        m_renderer->GetActiveCamera()->GetFocalPoint(focalPoint);
+        m_renderer->SetWorldPoint(focalPoint);
+        m_renderer->WorldToDisplay();
+        double focalDisplay[3] = {0.0, 0.0, 0.0};
+        m_renderer->GetDisplayPoint(focalDisplay);
+
+        m_renderer->SetDisplayPoint(displayX, displayY, focalDisplay[2]);
+        m_renderer->DisplayToWorld();
+        m_renderer->GetWorldPoint(worldPoint);
+        if (!qFuzzyIsNull(worldPoint[3])) {
+            worldPoint[0] /= worldPoint[3];
+            worldPoint[1] /= worldPoint[3];
+            worldPoint[2] /= worldPoint[3];
+            worldPoint[3] = 1.0;
+        }
+    }
+
+private:
+    vtkRenderer* m_renderer = nullptr;
+    double m_zoomFactor = 1.0;
+};
 
 // Returns the data-processing UI singleton owned by this DLL.
 DataProcessUIImpl& DataProcessUIImpl::Instance() {
@@ -100,7 +206,8 @@ QWidget* DataProcessUIImpl::CreateWidget(QWidget* parent) {
     auto* centerLayout = new QHBoxLayout();
     centerLayout->setContentsMargins(0, 0, 0, 0);
     centerLayout->setSpacing(12);
-    centerLayout->addStretch(0);
+    // Process 也保留左下角提示框，但内容与 Scan 页独立，后续可按处理规则单独替换文案。
+    centerLayout->addWidget(CreateHintPanel(root), 0, Qt::AlignBottom);
     centerLayout->addWidget(CreateViewerArea(root), 1);
     centerLayout->addWidget(CreateProcessingToolBar(root), 0, Qt::AlignVCenter);
     mainLayout->addLayout(centerLayout, 1);
@@ -119,6 +226,7 @@ QWidget* DataProcessUIImpl::CreateWidget(QWidget* parent) {
 bool DataProcessUIImpl::SetSessionContextJson(const char* contextJsonUtf8) {
     // Keep JSON opaque here; real model loading can later use order/session IDs.
     m_contextJson = QByteArray(contextJsonUtf8 ? contextJsonUtf8 : "");
+    RefreshScanProcessButtons();
     WriteLog(LogLevel::Info, "SetSessionContextJson",
              QString("Session context bytes: %1").arg(m_contextJson.size()));
     return true;
@@ -134,9 +242,7 @@ void DataProcessUIImpl::SetActionCallback(void (*callback)(void* context, int ac
 // Activates the data-processing stage.
 void DataProcessUIImpl::Activate() {
     // Real implementation will restore active tool and selected model here.
-    if (m_statusLabel) {
-        m_statusLabel->setText(tr("Ready for processing"));
-    }
+    UpdateDisplayedProcessData();
     WriteLog(LogLevel::Info, "Activate", "Data process activated");
 }
 
@@ -178,6 +284,11 @@ void DataProcessUIImpl::Shutdown() {
     }
     m_root = nullptr;
     m_statusLabel = nullptr;
+    m_hintLabel = nullptr;
+    m_modelModeBar = nullptr;
+    m_processButtons.clear();
+    m_processSteps.clear();
+    m_currentStepIndex = -1;
     m_contextJson.clear();
     m_actionCallback = nullptr;
     m_actionContext = nullptr;
@@ -189,33 +300,173 @@ void DataProcessUIImpl::Shutdown() {
 // Creates the model selector bar.
 QWidget* DataProcessUIImpl::CreateModelModeBar(QWidget* parent) {
     auto* frame = new QFrame(parent);
+    m_modelModeBar = frame;
     frame->setProperty("panel", true);
     frame->setMinimumHeight(86);
 
     auto* layout = new QHBoxLayout(frame);
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(16);
+    RefreshScanProcessButtons();
+    return frame;
+}
 
-    const QStringList labels = {
-        tr("True Color"),
-        tr("Upper Jaw"),
-        tr("Occlusion"),
-        tr("Lower Jaw"),
-        tr("Implant"),
-        tr("Denture"),
-    };
+// Rebuilds the model/process button bar from session context.
+void DataProcessUIImpl::RefreshScanProcessButtons() {
+    if (!m_modelModeBar) {
+        return;
+    }
 
-    for (int i = 0; i < labels.size(); ++i) {
-        auto* button = new QPushButton(labels.at(i), frame);
-        button->setMinimumSize(92, 52);
-        button->setProperty("primary", i == 0);
-        QObject::connect(button, &QPushButton::clicked, [this]() {
-            // The UI reports intent; model-state storage will live outside the button.
-            EmitAction(DataProcessActionEdit, "ModelModeChanged");
+    auto* layout = qobject_cast<QHBoxLayout*>(m_modelModeBar->layout());
+    if (!layout) {
+        return;
+    }
+
+    // 清空旧按钮，避免处理页复用时残留上一单流程。
+    // Clear old process buttons before rebuilding the bar.
+    while (QLayoutItem* item = layout->takeAt(0)) {
+        if (item->widget()) {
+            item->widget()->deleteLater();
+        }
+        delete item;
+    }
+    m_processButtons.clear();
+
+    // Process 只消费已有 scanProcess.steps，避免复制建单规则或推导逻辑。
+    m_processSteps = ResolveScanProcessSteps();
+    if (m_currentStepIndex < 0 || m_currentStepIndex >= m_processSteps.size()) {
+        m_currentStepIndex = 0;
+    }
+
+    for (int i = 0; i < m_processSteps.size(); ++i) {
+        const ProcessStepInfo step = m_processSteps.at(i);
+        auto* button = new QPushButton(step.label, m_modelModeBar);
+        button->setObjectName(QString("ProcessStep_%1_Button").arg(step.code));
+        button->setMinimumSize(104, 52);
+        button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+        button->setCheckable(true);
+        button->setEnabled(step.enabled);
+        button->setCursor(step.enabled ? Qt::PointingHandCursor : Qt::ForbiddenCursor);
+        button->setToolTip(tr("Show process data for %1").arg(step.label));
+        QObject::connect(button, &QPushButton::clicked, [this, i]() {
+            // 点击顶部步骤按钮只切换当前显示模型；真实编辑/分析状态后续由处理服务维护。
+            SelectProcessStep(i, "ButtonClicked");
         });
         layout->addWidget(button);
+        m_processButtons.append(button);
     }
-    return frame;
+    RefreshScanProcessButtonStates();
+    UpdateDisplayedProcessData();
+}
+
+// Resolves scan-process steps from JSON context.
+QVector<DataProcessUIImpl::ProcessStepInfo> DataProcessUIImpl::ResolveScanProcessSteps() const {
+    QVector<ProcessStepInfo> steps;
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(m_contextJson, &parseError);
+    if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+        const QJsonObject root = document.object();
+        const QJsonObject scanProcess = root.value("scanProcess").toObject();
+        const QJsonArray jsonSteps = scanProcess.value("steps").toArray();
+        for (const QJsonValue& value : jsonSteps) {
+            const QJsonObject item = value.toObject();
+            const QString label = item.value("label").toString().trimmed();
+            const QString code = item.value("code").toString().trimmed();
+            if (!label.isEmpty()) {
+                ProcessStepInfo step;
+                step.part = item.value("part").toString().trimmed();
+                step.code = code.isEmpty() ? QString("step_%1").arg(steps.size() + 1) : code;
+                step.label = label;
+                step.exchange = item.value("exchange").toBool(false);
+                step.enabled = item.value("enabled").toBool(true);
+                steps.append(step);
+            }
+        }
+    }
+
+    if (steps.isEmpty()) {
+        ProcessStepInfo maxilla;
+        maxilla.part = "maxilla";
+        maxilla.code = "maxilla_natural";
+        maxilla.label = tr("Natural maxilla");
+        steps.append(maxilla);
+
+        ProcessStepInfo exchange;
+        exchange.part = "exchange";
+        exchange.code = "data_exchange";
+        exchange.label = tr("Exchange");
+        exchange.exchange = true;
+        steps.append(exchange);
+
+        ProcessStepInfo mandible;
+        mandible.part = "mandible";
+        mandible.code = "mandible_natural";
+        mandible.label = tr("Natural mandible");
+        steps.append(mandible);
+
+        ProcessStepInfo occlusion;
+        occlusion.part = "occlusion";
+        occlusion.code = "natural_occlusion";
+        occlusion.label = tr("Natural occlusion");
+        steps.append(occlusion);
+    }
+    return steps;
+}
+
+// Switches the active process step.
+void DataProcessUIImpl::SelectProcessStep(int index, const QString& reason) {
+    if (index < 0 || index >= m_processSteps.size()) {
+        WriteLog(LogLevel::Warning, "SelectProcessStep", QString("Invalid process step index: %1").arg(index));
+        return;
+    }
+    if (!m_processSteps.at(index).enabled) {
+        WriteLog(LogLevel::Info, "SelectProcessStep", QString("Disabled process step ignored: %1").arg(index));
+        return;
+    }
+
+    m_currentStepIndex = index;
+    RefreshScanProcessButtonStates();
+    UpdateDisplayedProcessData();
+    EmitAction(DataProcessActionEdit,
+               QString("ProcessStepChanged:%1:%2").arg(reason, m_processSteps.at(index).code));
+}
+
+// Refreshes selected state and style for process buttons.
+void DataProcessUIImpl::RefreshScanProcessButtonStates() {
+    for (int i = 0; i < m_processButtons.size(); ++i) {
+        QPushButton* button = m_processButtons.at(i);
+        if (!button) {
+            continue;
+        }
+
+        const bool checked = i == m_currentStepIndex;
+        button->setChecked(checked);
+        button->setProperty("primary", checked);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->update();
+    }
+}
+
+// Updates placeholder model and status text for the current process step.
+void DataProcessUIImpl::UpdateDisplayedProcessData() {
+    if (m_processSteps.isEmpty()) {
+        m_processSteps = ResolveScanProcessSteps();
+    }
+    if (m_currentStepIndex < 0 || m_currentStepIndex >= m_processSteps.size()) {
+        m_currentStepIndex = 0;
+    }
+
+    const ProcessStepInfo step = m_processSteps.value(m_currentStepIndex);
+    if (m_statusLabel) {
+        m_statusLabel->setText(tr("Processing: %1").arg(step.label));
+        m_statusLabel->setToolTip(tr("Current process step code: %1").arg(step.code));
+    }
+    if (m_hintLabel) {
+        // Process 左下角提示框与 Scan 不共用内容；具体产品文案等待后续补充。
+        m_hintLabel->setText(tr("Select a model step before editing or analysis."));
+    }
+    RebuildStepPlaceholderScene();
 }
 
 // Creates the right-side processing toolbar.
@@ -259,12 +510,36 @@ QWidget* DataProcessUIImpl::CreateProcessingToolBar(QWidget* parent) {
 // Creates the embedded VTK viewer.
 QWidget* DataProcessUIImpl::CreateViewerArea(QWidget* parent) {
     // QVTKWidget is the Qt 5.6 / VTK 8 bridge widget used by the legacy stack.
-    m_vtkWidget = new QVTKWidget(parent);
+    m_vtkWidget = new DataProcessViewerWidget(parent);
     m_vtkWidget->setObjectName("DataProcessVTKWidget");
     m_vtkWidget->setMinimumSize(540, 340);
     m_vtkWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     BuildPlaceholderScene();
     return m_vtkWidget;
+}
+
+// Creates the lower-left process hint panel.
+QWidget* DataProcessUIImpl::CreateHintPanel(QWidget* parent) {
+    auto* frame = new QFrame(parent);
+    frame->setProperty("panel", true);
+    frame->setMinimumSize(190, 140);
+    frame->setMaximumWidth(230);
+
+    auto* layout = new QVBoxLayout(frame);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+
+    auto* title = new QLabel(tr("Process Hint"), frame);
+    title->setStyleSheet("font-weight:600;");
+    layout->addWidget(title);
+
+    m_hintLabel = new QLabel(tr("Select a model step before editing or analysis."), frame);
+    m_hintLabel->setWordWrap(true);
+    m_hintLabel->setProperty("muted", true);
+    layout->addWidget(m_hintLabel);
+
+    layout->addStretch(1);
+    return frame;
 }
 
 // Creates the bottom status/action bar.
@@ -303,26 +578,63 @@ void DataProcessUIImpl::BuildPlaceholderScene() {
     // The renderer owns the camera, background, and the actor list for this page.
     m_renderer = vtkRenderer::New();
     m_renderer->SetBackground(0.87, 0.89, 0.92);
-
-    // Sphere geometry proves that the VTK render path is alive in the frame.
-    vtkSmartPointer<vtkSphereSource> source = vtkSmartPointer<vtkSphereSource>::New();
-    source->SetRadius(1.2);
-    source->SetThetaResolution(96);
-    source->SetPhiResolution(48);
-
-    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(source->GetOutputPort());
-
-    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(mapper);
-    actor->GetProperty()->SetColor(0.92, 0.48, 0.44);
-    actor->GetProperty()->SetSpecular(0.25);
-
-    m_renderer->AddActor(actor);
-    m_renderer->ResetCamera();
+    m_vtkWidget->SetRenderer(m_renderer);
 
     // QVTKWidget exposes the vtkRenderWindow that actually owns OpenGL rendering.
     m_vtkWidget->GetRenderWindow()->AddRenderer(m_renderer);
+    RebuildStepPlaceholderScene();
+}
+
+// Rebuilds lightweight placeholder geometry for the active process step.
+void DataProcessUIImpl::RebuildStepPlaceholderScene() {
+    if (!m_vtkWidget || !m_renderer) {
+        return;
+    }
+
+    // RemoveAllViewProps 只清除旧 actor，不删除 renderer/camera。
+    // 后续真实模型接入时，这里会改为按 step.code 切换对应处理数据。
+    m_renderer->RemoveAllViewProps();
+
+    const ProcessStepInfo step = m_processSteps.value(m_currentStepIndex);
+    const QString part = step.part.toLower();
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+
+    if (part == "mandible") {
+        vtkSmartPointer<vtkCylinderSource> source = vtkSmartPointer<vtkCylinderSource>::New();
+        source->SetRadius(0.95);
+        source->SetHeight(1.4);
+        source->SetResolution(72);
+        mapper->SetInputConnection(source->GetOutputPort());
+        actor->GetProperty()->SetColor(0.18, 0.48, 0.76);
+    } else if (part == "exchange") {
+        vtkSmartPointer<vtkCubeSource> source = vtkSmartPointer<vtkCubeSource>::New();
+        source->SetXLength(1.2);
+        source->SetYLength(1.2);
+        source->SetZLength(1.2);
+        mapper->SetInputConnection(source->GetOutputPort());
+        actor->GetProperty()->SetColor(0.0, 0.49, 0.41);
+    } else if (part == "occlusion") {
+        vtkSmartPointer<vtkConeSource> source = vtkSmartPointer<vtkConeSource>::New();
+        source->SetHeight(1.6);
+        source->SetRadius(1.1);
+        source->SetResolution(72);
+        mapper->SetInputConnection(source->GetOutputPort());
+        actor->GetProperty()->SetColor(0.86, 0.64, 0.24);
+    } else {
+        vtkSmartPointer<vtkSphereSource> source = vtkSmartPointer<vtkSphereSource>::New();
+        source->SetRadius(1.2);
+        source->SetThetaResolution(96);
+        source->SetPhiResolution(48);
+        mapper->SetInputConnection(source->GetOutputPort());
+        actor->GetProperty()->SetColor(0.92, 0.48, 0.44);
+    }
+
+    actor->GetProperty()->SetSpecular(0.25);
+    m_renderer->AddActor(actor);
+    m_renderer->ResetCamera();
+    m_renderer->ResetCameraClippingRange();
     m_vtkWidget->GetRenderWindow()->Render();
 }
 

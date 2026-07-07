@@ -2,6 +2,14 @@
 
 ## 2026-07-07
 
+- 版本升级为 `v0.2.1`，顶部处理流程按钮补充手型 hover、tooltip、选中态刷新和点击切换当前处理部位显示数据。
+- Process 页新增独立的 `Process Hint` 提示框，不复用 Scan 页左下角提示内容；底部不增加扫描页的 `Start / Pause` 控制。
+- QVTK 显示区滚轮缩放改为以鼠标位置为中心，并在最小/最大缩放范围内夹紧实际缩放比例，避免越界后再被拉回。
+- `DataProcessUITest.exe` 增加 tooltip、手型光标和点击回调断言。
+- 修复自定义 `DataProcessViewerWidget` 放在匿名命名空间导致 VS2015 与头文件前置声明类型不一致的编译问题。
+- 版本升级为 `v0.2.0`，新增从 session JSON 的 `scanProcess.steps` 渲染顶部处理流程按钮；未传入流程时回退为练习默认流程。
+- `SetSessionContextJson()` 现在会在页面已创建时刷新流程按钮，保证 Process 页面与 Scan 页面使用同一份建单扫描流程。
+- `DataProcessUITest.exe` 补充自定义 `scanProcess` 按钮渲染断言，避免处理页继续硬编码旧模型按钮。
 - 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
 - 复核 MainExe / OrderScanWorkspaceShell 阶段性集成链路：处理页可被练习工作台和创建工作台懒加载，离开页面时释放 QVTK/VTK/OpenGL 重资源。
 - 当前仍只做数据处理阶段 UI、工具入口、动作上报和显示占位，不实现真实编辑、测量、颈缘或后处理算法。

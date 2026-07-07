@@ -1,8 +1,10 @@
-#include "ScanWorkflowUI.h"
+﻿#include "ScanWorkflowUI.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDir>
+#include <QPushButton>
 #include <QWidget>
 #include <cstdio>
 
@@ -51,7 +53,10 @@ int main(int argc, char* argv[]) {
 
     int actionCount = 0;
     scan->SetActionCallback(&OnAction, &actionCount);
-    scan->SetSessionContextJson("{\"orderId\":\"demo-order\",\"sessionId\":\"scan-session-demo\"}");
+    scan->SetSessionContextJson("{\"orderId\":\"demo-order\",\"sessionId\":\"scan-session-demo\","
+                                "\"scanProcess\":{\"steps\":["
+                                "{\"label\":\"Custom maxilla\",\"code\":\"custom_maxilla\"},"
+                                "{\"label\":\"Custom mandible\",\"code\":\"custom_mandible\"}]}}");
 
     QWidget* widget = scan->CreateWidget();
     if (!Check(widget != nullptr, "ScanWorkflowUI created root QWidget")) {
@@ -59,6 +64,42 @@ int main(int argc, char* argv[]) {
     }
     if (!Check(widget->objectName() == "MeyerScanScanWorkflowUIRoot", "ScanWorkflowUI root object name is correct")) {
         return 4;
+    }
+
+    // 自定义 scanProcess 只有两个步骤，所以顶部扫描流程按钮至少应包含这两个自定义按钮。
+    // The custom scanProcess should drive the top process buttons.
+    const QList<QPushButton*> buttons = widget->findChildren<QPushButton*>();
+    bool hasCustomMaxilla = false;
+    bool hasCustomMandible = false;
+    QPushButton* customMaxillaButton = nullptr;
+    QPushButton* customMandibleButton = nullptr;
+    for (QPushButton* button : buttons) {
+        if (button->text() == "Custom maxilla") {
+            hasCustomMaxilla = true;
+            customMaxillaButton = button;
+        }
+        if (button->text() == "Custom mandible") {
+            hasCustomMandible = true;
+            customMandibleButton = button;
+        }
+    }
+    if (!Check(hasCustomMaxilla && hasCustomMandible, "ScanWorkflowUI renders session scanProcess buttons")) {
+        return 5;
+    }
+    if (!Check(customMaxillaButton && !customMaxillaButton->toolTip().isEmpty(),
+               "ScanWorkflowUI process button has tooltip")) {
+        return 6;
+    }
+    if (!Check(customMaxillaButton && customMaxillaButton->cursor().shape() == Qt::PointingHandCursor,
+               "ScanWorkflowUI process button uses hand cursor")) {
+        return 7;
+    }
+    if (customMandibleButton) {
+        // click() 直接触发 QPushButton 的 clicked 信号，用来验证步骤按钮能切换并上报动作。
+        customMandibleButton->click();
+    }
+    if (!Check(actionCount > 0, "ScanWorkflowUI process button click reports action")) {
+        return 8;
     }
 
     if (QCoreApplication::arguments().contains("--show")) {

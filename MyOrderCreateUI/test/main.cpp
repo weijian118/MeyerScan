@@ -9,6 +9,8 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTimer>
@@ -224,6 +226,40 @@ int main(int argc, char* argv[]) {
     confirmButton->click();
     if (!Check(counter.confirmCount == 1, "确认动作回调触发一次")) {
         return 14;
+    }
+
+    // 新增扫描流程控件必须存在，建单页通过这些输入影响后续 Scan/Process 按钮。
+    auto* maxillaDiffRod = widget->findChild<QCheckBox*>("OrderCreateMaxillaDiffRodSwitch");
+    auto* maxillaSegmentedRod = widget->findChild<QCheckBox*>("OrderCreateMaxillaSegmentedRodSwitch");
+    auto* occlusionCombo = widget->findChild<QComboBox*>("OrderCreateOcclusionTypeCombo");
+    if (!Check(maxillaDiffRod != nullptr && maxillaSegmentedRod != nullptr && occlusionCombo != nullptr,
+               "能找到扫描流程配置开关和咬合类型下拉框")) {
+        return 16;
+    }
+
+    // 模拟用户选择上颌异性扫描杆、上颌分段和咬合记录，验证输出 JSON 中包含对应流程按钮。
+    maxillaDiffRod->setChecked(true);
+    maxillaSegmentedRod->setChecked(true);
+    const int biteRecordIndex = occlusionCombo->findData("record");
+    if (biteRecordIndex >= 0) {
+        occlusionCombo->setCurrentIndex(biteRecordIndex);
+    }
+    const QByteArray scanProcessBytes(orderCreate->GetCurrentScanProcessJson());
+    const QJsonDocument scanProcessDocument = QJsonDocument::fromJson(scanProcessBytes);
+    const QJsonArray scanSteps = scanProcessDocument.object().value("steps").toArray();
+    bool hasDiffRod2 = false;
+    bool hasBiteRecord = false;
+    for (const QJsonValue& stepValue : scanSteps) {
+        const QJsonObject step = stepValue.toObject();
+        if (step.value("code").toString() == "maxilla_diff_rod_2") {
+            hasDiffRod2 = true;
+        }
+        if (step.value("code").toString() == "bite_record") {
+            hasBiteRecord = true;
+        }
+    }
+    if (!Check(hasDiffRod2 && hasBiteRecord, "扫描流程 JSON 根据建单控件生成异性杆分段和咬合记录步骤")) {
+        return 17;
     }
 
     // 自动化模式下删除根控件，验证模块不依赖父对象才可退出。

@@ -38,6 +38,7 @@ add_subdirectory(MyExternalLaunchAdapter)
 add_subdirectory(MyVersionManager)
 add_subdirectory(MyScanWorkflowUI)
 add_subdirectory(MyDataProcessUI)
+add_subdirectory(MySendUI)
 add_subdirectory(MyScanReconstructStudio)
 
 # UI layer modules.

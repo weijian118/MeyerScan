@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.2.2 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.3.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -26,7 +26,6 @@ if(TARGET MeyerScan_UIComponents)
                 "$<TARGET_FILE_DIR:MeyerScan_OrderCreateUI>/MeyerScan_UIComponents.dll"
     )
 endif()
-
 option(MEYER_BUILD_ORDERCREATEUITEST "Build OrderCreateUITest.exe" ON)
 if(MEYER_BUILD_ORDERCREATEUITEST)
     add_executable(OrderCreateUITest test/main.cpp)

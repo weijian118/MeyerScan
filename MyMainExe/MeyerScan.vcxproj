@@ -43,7 +43,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_MainExe";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MySendUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -106,6 +106,7 @@ xcopy /Y /D "$(ProjectDir)..\MyCalibration3DUI\bin\$(Configuration)\MeyerScan_Ca
 xcopy /Y /D "$(ProjectDir)..\MyCalibrationColorUI\bin\$(Configuration)\MeyerScan_CalibrationColorUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyScanWorkflowUI\bin\$(Configuration)\MeyerScan_ScanWorkflowUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDataProcessUI\bin\$(Configuration)\MeyerScan_DataProcessUI.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MySendUI\bin\$(Configuration)\MeyerScan_SendUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyScanReconstructStudio\bin\$(Configuration)\ScanReconstructStudio.exe" "$(OutDir)"
 xcopy /Y /D "$(VtkRoot)\bin\*.dll" "$(OutDir)"
 xcopy /Y /D "$(OpenCVBinDir)\opencv_world330.dll" "$(OutDir)"

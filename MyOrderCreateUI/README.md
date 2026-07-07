@@ -7,7 +7,7 @@
 - 本模块负责建单 UI：患者基本信息、订单基本信息、扫描类型、牙位选择、已选明细和确认操作。
 - 初版把原“基本信息”和“扫描方案”的主要内容放在同一个工作台界面内，减少页面切换。
 - 本模块是 Qt Widgets UI 模块，可以使用 `QWidget`、Qt Layout、信号槽和 `QString`。
-- 本模块不直接保存数据库，不加载订单规则，不决定扫描流程；后续保存应通过 `CaseOrderService / RuntimeDataCenter / MyDatabaseQtAdapter / MyDatabase`。
+- 本模块不直接保存数据库，不加载订单规则，不启动扫描；但会根据建单页输入生成当前订单的扫描流程 JSON，供 MainExe 转发给 Scan/Process 页面。
 - 对外动作通过 `OrderCreateActionId` 回调抛出，避免外部模块直接绑定内部按钮对象。
 - 支持 `SetOrderContextJson(const char*)` 接收标准建单上下文；第三方拉起、HIS/Worklist 和手工建单补全后都应收敛到同一套上下文结构。
 - 通用按钮、字段标签、输入框、下拉框、日期框、多行备注框和已选牙位表格基础样式优先通过 `MeyerScan_UIComponents.dll` 创建；牙位按钮、扫描类型按钮、扫描方案联动等业务控件留在本模块内部。
@@ -21,8 +21,40 @@
 - 不写数据库。
 - 不直接读取云端或 HIS/worklist。
 - 不做扫描采集、算法重建、设备通信。
+- 不直接切换到 Scan/Process 页面；进入下一步仍由 MainExe/OrderScanWorkspaceShell 编排。
 - 不跨 DLL 传递 `QWidget*` 以外的复杂业务对象；患者/订单数据后续应使用专门 DTO 或 JSON/UTF-8 文本结构承载。
 - 不解析第三方私有字段；第三方差异统一由 `MyExternalLaunchAdapter` 按 `source.thirdPartyType` 映射成标准字段。
+
+## 扫描流程创建
+
+- 建单页新增四个开关：`Maxilla special scanbody`、`Mandible special scanbody`、`Maxilla segmented scanbody`、`Mandible segmented scanbody`。
+- 建单页新增 `Occlusion Type` 下拉框：`Natural occlusion`、`Maxilla temporary occlusion`、`Mandible temporary occlusion`、`Full temporary occlusion`、`Bite record`。
+- `GetCurrentScanProcessJson()` 会读取牙位类型、种植牙位、上述开关和咬合类型，生成 `scanProcess` JSON。
+- `Segmented scanbody` 只表示对应颌第二扫描杆/第二异性扫描杆是否显示；普通扫描杆流程仍由该颌是否存在 `implant` 牙位触发，避免用户只勾选分段时凭空生成种植扫描流程。
+- `OrderCreateActionScanProcessChanged` 只表示流程输入变化；MainExe 收到后读取 JSON 并合并到工作台上下文。
+- ScanWorkflowUI 和 DataProcessUI 只读取 `scanProcess.steps` 渲染按钮，不反向解析建单页开关，也不复制建单流程规则。
+
+```json
+{
+  "schemaVersion": 1,
+  "source": "OrderCreateUI",
+  "config": {
+    "maxillaDiffRod": false,
+    "mandibleDiffRod": false,
+    "maxillaSegmentedRod": false,
+    "mandibleSegmentedRod": false,
+    "occlusionType": "natural",
+    "maxillaHasImplant": true,
+    "mandibleHasImplant": false
+  },
+  "steps": [
+    { "part": "maxilla", "code": "maxilla_natural", "label": "Natural maxilla", "enabled": true },
+    { "part": "exchange", "code": "data_exchange", "label": "Exchange", "exchange": true, "enabled": true },
+    { "part": "mandible", "code": "mandible_natural", "label": "Natural mandible", "enabled": true },
+    { "part": "occlusion", "code": "natural_occlusion", "label": "Natural occlusion", "enabled": true }
+  ]
+}
+```
 
 ## 标准建单上下文
 
@@ -84,6 +116,7 @@
 - CMake/VSCode：默认开启 `OrderCreateUITest` 测试目标，可通过 `MEYER_BUILD_ORDERCREATEUITEST` 控制。
 - 双击 `OrderCreateUITest.exe` 默认打开建单界面，便于人工验收。
 - `OrderCreateUITest.exe --smoke` 执行自动冒烟测试并立即退出，适合命令行/批量验证。
+- 当前 smoke 覆盖扫描流程控件存在性和 `GetCurrentScanProcessJson()` 输出。
 
 ## 维护记录要求
 

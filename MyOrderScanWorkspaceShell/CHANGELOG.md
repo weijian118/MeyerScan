@@ -5,6 +5,7 @@
 - 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
 - 复核工作台模式、步骤按钮、右上角 `Minimize` / `Close` 回调和步骤变化回调：创建模式显示 Order / Scan / Process / Send，练习模式只显示 Scan / Process。
 - 明确本模块只负责容器、步骤导航和页面挂载；Scan/Process 页面创建、激活和释放仍由 MainExe 或后续 `ScanReconstructStudio.exe` 生命周期编排。
+- 文档补充 SendUI 挂载边界：壳子只提供 Send 步骤容器和步骤变化回调，`MeyerScan_SendUI.dll` 由 MainExe 懒加载并注入上下文，真实发送业务不进入壳子。
 
 ## 2026-07-06
 

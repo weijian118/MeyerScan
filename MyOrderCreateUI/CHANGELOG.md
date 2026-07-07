@@ -2,6 +2,11 @@
 
 ## 2026-07-07
 
+- 版本升级为 `v0.3.0`，新增建单页扫描流程创建功能，并同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
+- 在建单页新增扫描流程输入控件：上颌异性扫描杆、下颌异性扫描杆、上颌扫描杆分段、下颌扫描杆分段四个开关，以及咬合类型下拉框（自然牙咬合、上颌临时牙咬合、下颌临时牙咬合、全口临时牙咬合、咬合记录）。
+- 新增 `GetCurrentScanProcessJson()`，根据牙位/种植类型和扫描流程输入生成标准 `scanProcess` JSON；MainExe 只读取并转发该 JSON，不解析具体规则。
+- 扫描流程 JSON 中包含 `schemaVersion/source/config/steps`，`steps` 为 ScanWorkflowUI/DataProcessUI 需要渲染的按钮列表；新增 `OrderCreateActionScanProcessChanged` 用于通知外部流程更新。
+- `OrderCreateUITest.exe --smoke` 补充扫描流程控件和 JSON 生成断言，覆盖异性杆分段和咬合记录步骤。
 - 版本升级为 `v0.2.2`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
 - 优化 OrderCreateUI 低分辨率适配：根界面最小尺寸从 1280x720 降为 960x600，布局边距、三栏间距、左/右栏宽度、扫描类型按钮、牙位按钮、已选表格高度和备注框高度都做了收敛。
 - 明确分辨率策略：优先使用 Qt Layout、滚动区、伸缩策略和多语言换行，不再按 1920x1080 比例直接缩放所有控件坐标。

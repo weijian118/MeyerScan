@@ -35,7 +35,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.1 (2026-07-07)";
+const char* Version = "MeyerScan_MainExe v0.1.3 (2026-07-07)";
 }
 
 struct VersionModuleEntry {
@@ -65,6 +65,7 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"ScanReconstructStudio.exe", "GetMeyerModuleVersion"},
     {"MeyerScan_ScanWorkflowUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DataProcessUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_SendUI.dll", "GetMeyerModuleVersion"},
 };
 }
 
@@ -128,6 +129,10 @@ MainWindow::~MainWindow() {
     if (m_dataProcess) {
         // 数据处理页也持有 QVTK/OpenGL 资源，退出时必须主动释放。
         m_dataProcess->Shutdown();
+    }
+    if (m_send) {
+        // 发送页只持有轻量 UI 状态，但仍按模块生命周期统一 Shutdown。
+        m_send->Shutdown();
     }
     if (m_orderWorkspace) {
         // 工作台壳只做容器和导航，关闭时不应反向释放全局基础设施。
@@ -204,16 +209,26 @@ void MainWindow::StartWithoutLoginForSmoke() {
             m_orderWorkspace->SetStep(WorkspaceStepScan);
         }
     });
-    QTimer::singleShot(2000, this, [this]() { ShowPracticeWorkspace(); });
-    QTimer::singleShot(2400, this, [this]() {
+    QTimer::singleShot(2000, this, [this]() {
         if (m_orderWorkspace) {
             m_orderWorkspace->SetStep(WorkspaceStepProcess);
         }
     });
-    QTimer::singleShot(2800, this, [this]() { ShowHome(); });
-    QTimer::singleShot(3200, this, [this]() { ShowCase(); });
+    QTimer::singleShot(2400, this, [this]() {
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepSend);
+        }
+    });
+    QTimer::singleShot(2800, this, [this]() { ShowPracticeWorkspace(); });
+    QTimer::singleShot(3200, this, [this]() {
+        if (m_orderWorkspace) {
+            m_orderWorkspace->SetStep(WorkspaceStepProcess);
+        }
+    });
+    QTimer::singleShot(3600, this, [this]() { ShowHome(); });
+    QTimer::singleShot(4000, this, [this]() { ShowCase(); });
     // 最后模拟打开扫描重建前的资源释放要求。
-    QTimer::singleShot(3600, this, [this]() { PrepareForScanReconstruct(); });
+    QTimer::singleShot(4400, this, [this]() { PrepareForScanReconstruct(); });
 }
 
 // 第三方拉起入口。
@@ -571,6 +586,14 @@ void MainWindow::OnDataProcessAction(void* context, int actionId) {
     }
 }
 
+// C ABI 回调转发：SendUI 不直接依赖 MainWindow 类型。
+void MainWindow::OnSendAction(void* context, int actionId) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (window) {
+        window->HandleSendAction(actionId);
+    }
+}
+
 // 首页入口统一从这里分发，避免 HomeUI 自己切换其他模块页面。
 void MainWindow::HandleHomeEntryClicked(int entryId) {
     // 每一次客户点击都先写日志，再进入具体页面流程。
@@ -694,6 +717,7 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         // 下一步正式进入扫描前必须经过 OrderWorkflowService 决策。
         // 当前骨架先确保扫描页可用，再切换工作台步骤，证明 Shell 可以承载后续扫描页。
         if (m_orderWorkspace) {
+            RefreshWorkspaceScanProcessFromOrder();
             EnsureScanWorkflowPage();
             m_orderWorkspace->SetStep(WorkspaceStepScan);
         }
@@ -704,6 +728,10 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         break;
     case OrderCreateActionToothSelectionChanged:
         WriteStatus(tr("Tooth selection changed"));
+        break;
+    case OrderCreateActionScanProcessChanged:
+        RefreshWorkspaceScanProcessFromOrder();
+        WriteStatus(tr("Scan process updated"));
         break;
     default:
         WriteStatus(tr("Order create action %1 is not implemented yet").arg(actionId));
@@ -734,6 +762,9 @@ void MainWindow::HandleWorkspaceStepChanged(int step) {
     WriteUserAction("WorkspaceStepChanged", QString("Workspace step changed: %1").arg(step));
 
     if (step == WorkspaceStepScan) {
+        if (m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
+            RefreshWorkspaceScanProcessFromOrder();
+        }
         // 进入扫描页时确保页面挂载，并让扫描模块恢复必要状态。
         if (!EnsureScanWorkflowPage()) {
             // 扫描页加载失败时不要继续释放当前可用页面。
@@ -746,11 +777,15 @@ void MainWindow::HandleWorkspaceStepChanged(int step) {
         }
         // 处理页不可见时释放整个处理页面，让 QVTK/OpenGL 资源真正归还。
         ReleaseDataProcessPage();
+        ReleaseSendPage();
         WriteStatus(tr("Scan"));
         return;
     }
 
     if (step == WorkspaceStepProcess) {
+        if (m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
+            RefreshWorkspaceScanProcessFromOrder();
+        }
         // 进入处理页时确保页面挂载，并释放扫描页重资源。
         if (!EnsureDataProcessPage()) {
             // 数据处理页加载失败时同样不释放扫描页。
@@ -762,13 +797,29 @@ void MainWindow::HandleWorkspaceStepChanged(int step) {
             m_dataProcess->Activate();
         }
         ReleaseScanWorkflowPage();
+        ReleaseSendPage();
         WriteStatus(tr("Process"));
+        return;
+    }
+
+    if (step == WorkspaceStepSend) {
+        // 发送页是轻量 UI，但进入发送前扫描/处理重资源都要释放，给后续导出/上传留出资源。
+        if (!EnsureSendPage()) {
+            WriteStatus(tr("Send page unavailable"));
+            return;
+        }
+        ReleaseScanWorkflowPage();
+        ReleaseDataProcessPage();
+        WriteStatus(tr("Send"));
         return;
     }
 
     // 回到建单或发送步骤时，扫描/处理两个重页面都不应继续占用显存。
     ReleaseScanWorkflowPage();
     ReleaseDataProcessPage();
+    if (step != WorkspaceStepSend) {
+        ReleaseSendPage();
+    }
 }
 
 // 处理扫描页面动作。
@@ -807,6 +858,7 @@ void MainWindow::HandleDataProcessAction(int actionId) {
         break;
     case DataProcessActionNext:
         if (m_orderWorkspace && m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
+            EnsureSendPage();
             m_orderWorkspace->SetStep(WorkspaceStepSend);
         } else {
             WriteStatus(tr("Practice process completed"));
@@ -814,6 +866,38 @@ void MainWindow::HandleDataProcessAction(int actionId) {
         break;
     default:
         WriteStatus(tr("Process action %1 recorded").arg(actionId));
+        break;
+    }
+}
+
+// 处理发送页面动作。
+// 当前初版只负责页面流转和日志记录，真实导出/压缩/上传后续接服务模块。
+void MainWindow::HandleSendAction(int actionId) {
+    WriteUserAction("SendAction", QString("Send action clicked: %1").arg(actionId));
+    switch (actionId) {
+    case SendUIActionPrevious:
+        if (m_orderWorkspace) {
+            EnsureDataProcessPage();
+            m_orderWorkspace->SetStep(WorkspaceStepProcess);
+        }
+        break;
+    case SendUIActionExport:
+        WriteStatus(tr("Export action recorded"));
+        break;
+    case SendUIActionCompress:
+        WriteStatus(tr("Compress action recorded"));
+        break;
+    case SendUIActionEmailSend:
+        WriteStatus(tr("Email send action recorded"));
+        break;
+    case SendUIActionUpload:
+        WriteStatus(tr("Upload action recorded"));
+        break;
+    case SendUIActionFinish:
+        ShowHome();
+        break;
+    default:
+        WriteStatus(tr("Send action %1 recorded").arg(actionId));
         break;
     }
 }
@@ -1223,6 +1307,37 @@ bool MainWindow::EnsureDataProcessPage() {
     return true;
 }
 
+// 确保发送步骤页面已创建并挂入工作台。
+bool MainWindow::EnsureSendPage() {
+    if (m_sendWidget) {
+        return true;
+    }
+    if (!m_orderWorkspace || !m_orderWorkspaceWidget) {
+        WriteStatus(tr("Order workspace unavailable"));
+        return false;
+    }
+
+    m_send = SendUIModule();
+    if (!m_send) {
+        WriteStatus(tr("SendUI unavailable"));
+        return false;
+    }
+    if (!m_sendInitialized) {
+        m_sendInitialized = m_send->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+
+    m_send->SetActionCallback(&MainWindow::OnSendAction, this);
+    m_send->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    m_sendWidget = m_send->CreateWidget(m_orderWorkspaceWidget);
+    if (!m_sendWidget) {
+        WriteStatus(tr("Send widget create failed"));
+        return false;
+    }
+    m_orderWorkspace->AttachStepWidget(WorkspaceStepSend, m_sendWidget);
+    WriteUserAction("PageCreate", "Send page created");
+    return true;
+}
+
 // 根据设置来源返回设置关闭后应该回到的页面名称。
 // 当前用于日志/后续刷新预留；页面切换仍在 HandleSettingsAction 中按枚举分发。
 QString MainWindow::SettingsReturnPageName(int openSource) const {
@@ -1277,6 +1392,7 @@ void MainWindow::ReleaseOrderWorkspacePage() {
     // 这样工作台根 widget 删除时，不会带着仍绑定 OpenGL/VTK 的子控件一起悬挂到事件队列。
     ReleaseScanWorkflowPage();
     ReleaseDataProcessPage();
+    ReleaseSendPage();
 
     if (m_orderCreate && m_orderCreateWidget && m_activeWidget != m_orderWorkspaceWidget) {
         // OrderCreateUI 没有单独 DestroyWidget 接口，当前通过 Shutdown 清理弱引用。
@@ -1296,6 +1412,7 @@ void MainWindow::ReleaseOrderWorkspacePage() {
         m_orderCreateWidget = nullptr;
         m_scanWorkflowWidget = nullptr;
         m_dataProcessWidget = nullptr;
+        m_sendWidget = nullptr;
         m_workspaceContextJson.clear();
         m_currentWorkspaceMode = WorkspaceModeOrderCreate;
     }
@@ -1333,6 +1450,23 @@ void MainWindow::ReleaseDataProcessPage() {
     m_dataProcess->Shutdown();
     m_dataProcessInitialized = false;
     m_dataProcessWidget = nullptr;
+}
+
+// 释放发送页面。
+// 发送页当前是轻量 UI，但仍要清理 Shell 内部弱引用，避免回到其它步骤后继续显示旧页面。
+void MainWindow::ReleaseSendPage() {
+    if (!m_send || !m_sendWidget) {
+        return;
+    }
+    if (m_orderWorkspace && m_orderWorkspaceWidget) {
+        auto* placeholder = new QLabel(tr("Send placeholder"), m_orderWorkspaceWidget);
+        placeholder->setAlignment(Qt::AlignCenter);
+        placeholder->setObjectName("WorkspaceSendReleasedPlaceholder");
+        m_orderWorkspace->AttachStepWidget(WorkspaceStepSend, placeholder);
+    }
+    m_send->Shutdown();
+    m_sendInitialized = false;
+    m_sendWidget = nullptr;
 }
 
 // 释放页面 widget 的统一函数。
@@ -2090,6 +2224,24 @@ IDataProcessUI* MainWindow::DataProcessModule() {
     return reinterpret_cast<Factory>(pointer)();
 }
 
+// 动态加载 SendUI.dll。
+ISendUI* MainWindow::SendUIModule() {
+    if (m_send) {
+        return m_send;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_sendLibrary,
+                                              "MeyerScan_SendUI.dll",
+                                              "GetSendUI",
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("SendUI unavailable"));
+        return nullptr;
+    }
+    typedef ISendUI* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
 // 动态加载 ExternalLaunchAdapter.dll。
 IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
     if (m_externalLaunchAdapter) {
@@ -2128,8 +2280,94 @@ QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const 
     context.insert("mode", mode);
     context.insert("patient", patient);
     context.insert("order", order);
+    context.insert("scanProcess", BuildDefaultScanProcessObject());
     context.insert("createdAt", QDateTime::currentDateTime().toString(Qt::ISODate));
     return QString::fromUtf8(QJsonDocument(context).toJson(QJsonDocument::Compact));
+}
+
+// 构造默认练习扫描流程。
+QJsonObject MainWindow::BuildDefaultScanProcessObject() const {
+    QJsonArray steps;
+
+    auto appendStep = [&steps](const QString& part, const QString& code, const QString& label, bool exchange) {
+        QJsonObject item;
+        item.insert("part", part);
+        item.insert("code", code);
+        item.insert("label", label);
+        item.insert("exchange", exchange);
+        item.insert("enabled", true);
+        steps.append(item);
+    };
+
+    appendStep("maxilla", "maxilla_natural", tr("Natural maxilla"), false);
+    appendStep("exchange", "data_exchange", tr("Exchange"), true);
+    appendStep("mandible", "mandible_natural", tr("Natural mandible"), false);
+    appendStep("occlusion", "natural_occlusion", tr("Natural occlusion"), false);
+
+    QJsonObject config;
+    config.insert("occlusionType", "natural");
+    config.insert("practiceDefault", true);
+
+    QJsonObject scanProcess;
+    scanProcess.insert("schemaVersion", 1);
+    scanProcess.insert("source", "MainExePracticeDefault");
+    scanProcess.insert("config", config);
+    scanProcess.insert("steps", steps);
+    return scanProcess;
+}
+
+// 从建单页面读取最新扫描流程并合并到工作台上下文。
+void MainWindow::RefreshWorkspaceScanProcessFromOrder() {
+    if (!m_orderCreate) {
+        return;
+    }
+
+    const char* scanProcessJson = m_orderCreate->GetCurrentScanProcessJson();
+    if (!scanProcessJson || !scanProcessJson[0]) {
+        WriteUserAction("ScanProcessRefresh", "OrderCreateUI returned empty scan process");
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(QByteArray(scanProcessJson), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        WriteUserAction("ScanProcessRefresh", QString("Invalid scan process json: %1").arg(parseError.errorString()));
+        return;
+    }
+
+    SetWorkspaceScanProcess(document.object());
+    WriteUserAction("ScanProcessRefresh", "Workspace scan process refreshed from OrderCreateUI");
+}
+
+// 把扫描流程对象写入工作台上下文，并同步已经创建的 Scan/Process 页面。
+void MainWindow::SetWorkspaceScanProcess(const QJsonObject& scanProcessObject) {
+    QJsonObject context;
+    if (!m_workspaceContextJson.isEmpty()) {
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(m_workspaceContextJson.toUtf8(), &parseError);
+        if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+            context = document.object();
+        }
+    }
+
+    if (context.isEmpty()) {
+        const QJsonDocument fallback = QJsonDocument::fromJson(BuildDefaultWorkspaceContextJson("order").toUtf8());
+        context = fallback.object();
+    }
+
+    context.insert("scanProcess", scanProcessObject);
+    m_workspaceContextJson = QString::fromUtf8(QJsonDocument(context).toJson(QJsonDocument::Compact));
+
+    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+    if (m_scanWorkflow) {
+        m_scanWorkflow->SetSessionContextJson(contextBytes.constData());
+    }
+    if (m_dataProcess) {
+        m_dataProcess->SetSessionContextJson(contextBytes.constData());
+    }
+    if (m_send) {
+        m_send->SetSessionContextJson(contextBytes.constData());
+    }
 }
 
 // 写客户操作日志。日志对象使用构造期缓存的 m_logger，避免每次重新 GetLogger()。

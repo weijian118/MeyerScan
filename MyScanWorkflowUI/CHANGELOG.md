@@ -2,6 +2,13 @@
 
 ## 2026-07-07
 
+- 版本升级为 `v0.2.1`，顶部扫描流程按钮补充手型 hover、tooltip、选中态刷新和点击切换当前扫描部位显示数据。
+- QVTK 显示区滚轮缩放改为以鼠标位置为中心，并在最小/最大缩放范围内夹紧实际缩放比例，避免越界后再被拉回。
+- `ScanWorkflowUITest.exe` 增加 tooltip、手型光标和点击回调断言。
+- 修复自定义 `ScanWorkflowViewerWidget` 放在匿名命名空间导致 VS2015 与头文件前置声明类型不一致的编译问题。
+- 版本升级为 `v0.2.0`，新增从 session JSON 的 `scanProcess.steps` 渲染顶部扫描流程按钮；未传入流程时回退为练习默认流程：Natural maxilla / Exchange / Natural mandible / Natural occlusion。
+- `SetSessionContextJson()` 现在会在页面已创建时刷新流程按钮，保证建单页修改扫描流程后，Scan 页面按钮能同步变化。
+- `ScanWorkflowUITest.exe` 补充自定义 `scanProcess` 按钮渲染断言，验证 Scan 页面不再硬编码固定扫描对象按钮。
 - 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
 - 复核 MainExe / OrderScanWorkspaceShell 阶段性集成链路：扫描页可被练习工作台和创建工作台懒加载，离开页面时释放 QVTK/VTK/OpenGL 重资源。
 - 当前仍只做扫描阶段 UI、动作上报和显示占位，不连接真实设备、不实现扫描算法。

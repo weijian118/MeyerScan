@@ -9,11 +9,13 @@
 #include <QLibrary>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 
 #include "Logger.h"
 #include "UIComponents.h"
 
 class QButtonGroup;
+class QCheckBox;
 class QComboBox;
 class QDateEdit;
 class QGridLayout;
@@ -52,6 +54,9 @@ public:
 
     // 清理模块状态。
     void Shutdown() override;
+
+    // 生成并返回当前扫描流程 JSON。
+    const char* GetCurrentScanProcessJson() override;
 
 private:
     // 构造/析构私有化，模块使用单例承载当前 UI 状态。
@@ -103,6 +108,9 @@ private:
 
     // 把标准上下文里的扫描方案 items 应用到牙位状态。
     void ApplyScanPlanItems(const QJsonObject& scanPlanObject);
+
+    // 把标准上下文里的扫描流程配置应用到新增控件。
+    void ApplyScanProcessConfig(const QJsonObject& scanProcessObject);
 
     // 清理弱引用，避免 QWidget 被外部释放后模块还保留悬空控件指针。
     void ResetWidgetReferences();
@@ -157,6 +165,40 @@ private:
 
     // 创建统一表格；共享 UI 不可用时返回本地降级表格。
     QTableWidget* CreateStandardTableWidget(QWidget* parent) const;
+
+    // 创建扫描流程配置开关。
+    QCheckBox* CreateScanProcessSwitch(QWidget* parent, const QString& text, const QString& objectName) const;
+
+    // 创建扫描流程配置区；这些输入只存在于正式建单页，练习模式使用 MainExe 默认流程。
+    QWidget* CreateScanProcessConfigPanel(QWidget* parent);
+
+    // 根据当前页面控件和牙位类型推导扫描流程配置。
+    QJsonObject BuildScanProcessConfigObject() const;
+
+    // 根据扫描流程配置生成完整按钮步骤数组。
+    QJsonArray BuildScanProcessSteps(const QJsonObject& configObject) const;
+
+    // 向步骤数组追加一条扫描按钮定义。
+    void AppendScanProcessStep(QJsonArray* steps,
+                               const QString& part,
+                               const QString& code,
+                               const QString& label,
+                               bool exchangeStep = false) const;
+
+    // 判断当前牙位方案是否包含上颌/下颌种植，用于决定是否生成扫描杆位点。
+    bool HasImplantTooth(bool maxilla) const;
+
+    // 判断某一颌是否应按临时牙逻辑生成流程。
+    bool IsJawTemporary(bool maxilla) const;
+
+    // 当前咬合类型编码。
+    QString CurrentOcclusionTypeCode() const;
+
+    // 咬合类型编码转显示文本。
+    QString OcclusionTypeText(const QString& code) const;
+
+    // 扫描流程输入变化后统一刷新 JSON 缓存、预览和动作回调。
+    void RefreshScanProcessPreview(bool emitAction);
 
 private:
     // MeyerScan.exe 所在目录。
@@ -230,5 +272,26 @@ private:
     QTextEdit* m_patientNoteEdit = nullptr;
     QTextEdit* m_orderNoteEdit = nullptr;
     QString m_sourceSummary;
+
+    // 扫描流程配置控件：上颌异性扫描杆。
+    QCheckBox* m_maxillaDiffRodSwitch = nullptr;
+
+    // 扫描流程配置控件：下颌异性扫描杆。
+    QCheckBox* m_mandibleDiffRodSwitch = nullptr;
+
+    // 扫描流程配置控件：上颌扫描杆分段。
+    QCheckBox* m_maxillaSegmentedRodSwitch = nullptr;
+
+    // 扫描流程配置控件：下颌扫描杆分段。
+    QCheckBox* m_mandibleSegmentedRodSwitch = nullptr;
+
+    // 扫描流程配置控件：咬合类型。
+    QComboBox* m_occlusionTypeCombo = nullptr;
+
+    // 扫描流程预览标签，帮助建单人员在进入扫描前确认按钮顺序。
+    QLabel* m_scanProcessPreviewLabel = nullptr;
+
+    // 最近一次生成的扫描流程 JSON。GetCurrentScanProcessJson 返回该缓存的 constData()。
+    QByteArray m_currentScanProcessJson;
 };
 

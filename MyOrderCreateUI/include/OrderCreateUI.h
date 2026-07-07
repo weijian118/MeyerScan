@@ -17,6 +17,7 @@ enum OrderCreateActionId {
     OrderCreateActionNext = 4,
     OrderCreateActionClearAllTeeth = 5,
     OrderCreateActionToothSelectionChanged = 6,
+    OrderCreateActionScanProcessChanged = 7,
 };
 
 // 建单界面模块公开接口。
@@ -49,6 +50,11 @@ public:
 
     // 关闭模块并清理缓存状态。
     virtual void Shutdown() = 0;
+
+    // 获取当前建单页面生成的扫描流程 JSON。
+    // 返回指针由 OrderCreateUI 模块内部缓存并维护生命周期，调用方必须立即复制使用。
+    // JSON 中只包含 POD/字符串/数组，不跨 DLL 传递 QWidget、QString 或复杂对象。
+    virtual const char* GetCurrentScanProcessJson() = 0;
 };
 
 // C ABI 工厂函数，便于 MainExe 或测试宿主静态/动态获取模块接口。
