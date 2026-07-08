@@ -12,6 +12,7 @@
 #include <QStringList>
 
 #include "Logger.h"
+#include "ToothTreatmentPlanWidget.h"
 #include "UIComponents.h"
 
 class QButtonGroup;
@@ -25,6 +26,7 @@ class QPushButton;
 class QRadioButton;
 class QTableWidget;
 class QTextEdit;
+class QToolButton;
 
 using GetUIComponentsFunc = IUIComponents* (*)();
 
@@ -70,6 +72,12 @@ private:
     // 创建左侧患者/订单基本信息区。
     QWidget* CreateBasicInfoPanel(QWidget* parent);
 
+    // 创建左侧工作区：治疗类型选择在上，基础信息在下，贴近当前软件视频布局。
+    QWidget* CreateLeftWorkflowPanel(QWidget* parent);
+
+    // 创建治疗类型选择区。
+    QWidget* CreateTreatmentTypePanel(QWidget* parent);
+
     // 创建中间牙位和扫描类型选择区。
     QWidget* CreateToothPlanPanel(QWidget* parent);
 
@@ -83,13 +91,7 @@ private:
     QPushButton* CreateCheckButton(QWidget* parent, const QString& text, bool checked) const;
 
     // 创建扫描类型按钮。
-    QPushButton* CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked);
-
-    // 创建单颗牙位按钮。
-    QPushButton* CreateToothButton(QWidget* parent, int toothNumber);
-
-    // 创建牙弓一行按钮，避免上下颌区域重复手写。
-    void AddToothRow(QGridLayout* grid, int row, const QList<int>& teeth);
+    QToolButton* CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked);
 
     // 当前扫描类型显示名。
     QString CurrentTypeText() const;
@@ -118,6 +120,9 @@ private:
     // 指定扫描类型显示名。
     QString TypeText(const QString& typeCode) const;
 
+    // 返回治疗类型按钮图标路径；selected 用于区分普通态和高亮态资源。
+    QString TypeButtonIconPath(const QString& typeCode, bool selected) const;
+
     // 切换当前扫描类型。
     void SetCurrentType(const QString& typeCode);
 
@@ -127,14 +132,26 @@ private:
     // 清空所有牙位选择。
     void ClearAllTeeth();
 
+    // 切换桥连接点选中状态。
+    void ToggleBridgeConnector(const QString& bridgeKey);
+
     // 刷新右侧明细表。
     void RefreshSelectionTable();
 
+    // 刷新治疗方案图片控件。
+    void RefreshTreatmentPlanWidget();
+
+    // 返回治疗方案资源目录。
+    QString ResolveTreatmentPlanAssetRoot() const;
+
+    // 把桥连接点合并成给用户看的桥记录文本。
+    QStringList BuildBridgeRangeTexts() const;
+
+    // 更新桥记录摘要标签。
+    void RefreshBridgeSummary();
+
     // 刷新基本信息摘要。
     void RefreshBasicSummary();
-
-    // 更新单颗牙位按钮的视觉状态。
-    void UpdateToothButtonState(int toothNumber);
 
     // 触发外部动作回调。
     void EmitAction(int actionId);
@@ -241,14 +258,23 @@ private:
     // toothNumber -> typeCode，用于保存每颗牙当前选择的扫描类型。
     QMap<int, QString> m_toothTypeCodes;
 
-    // toothNumber -> button，用于刷新牙位按钮状态。
-    QMap<int, QPushButton*> m_toothButtons;
+    // 已确认的桥连接点，例如 "26-27"。
+    QSet<QString> m_selectedBridgeKeys;
 
-    // typeCode -> button，用于刷新类型按钮状态。
-    QMap<QString, QPushButton*> m_typeButtons;
+    // typeCode -> button，用于刷新治疗类型按钮状态。
+    QMap<QString, QToolButton*> m_typeButtons;
+
+    // 当前治疗类型摘要标签，放在左侧类型卡片下方。
+    QLabel* m_currentTypeSummaryLabel = nullptr;
 
     // 右侧已选牙位表格。
     QTableWidget* m_selectionTable = nullptr;
+
+    // 中间治疗方案图片控件。
+    ToothTreatmentPlanWidget* m_treatmentPlanWidget = nullptr;
+
+    // 桥记录摘要标签。
+    QLabel* m_bridgeSummaryLabel = nullptr;
 
     // 摘要标签。
     QLabel* m_summaryPatientName = nullptr;

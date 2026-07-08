@@ -14,6 +14,7 @@
 - `MeyerScan_UIComponents.dll` 通过 `QLibrary` 动态加载，工程只保留头文件依赖和 DLL 复制，不强制链接 `MeyerScan_UIComponents.lib`；共享 UI 缺失时建单界面使用本地降级样式继续运行。
 - 当前会调用 UIComponents v0.4.0 新增的表格接口，因此加载成功后还会检查 `GetModuleVersion()`；运行目录里如果残留旧版 UIComponents，会主动降级到本地样式，避免旧 DLL vtable 不包含新接口导致崩溃。
 - 分辨率适配优先依赖 Qt Layout、滚动区、伸缩策略、控件最小尺寸和多语言自动换行；不再按 1920x1080 到实际分辨率的比例直接缩放所有坐标和控件。
+- 治疗方案选择区按当前软件视频复刻：左侧独立治疗类型卡片，中间大牙弓主视觉，右侧明细卡；上下颌使用 `maxilla.png` / `mandible.png` 显示，点击坐标反算到原始 600x400 mask；牙位叠加图和桥连接点叠加图按资源文件绘制。
 
 ## 边界
 
@@ -33,6 +34,18 @@
 - `Segmented scanbody` 只表示对应颌第二扫描杆/第二异性扫描杆是否显示；普通扫描杆流程仍由该颌是否存在 `implant` 牙位触发，避免用户只勾选分段时凭空生成种植扫描流程。
 - `OrderCreateActionScanProcessChanged` 只表示流程输入变化；MainExe 收到后读取 JSON 并合并到工作台上下文。
 - ScanWorkflowUI 和 DataProcessUI 只读取 `scanProcess.steps` 渲染按钮，不反向解析建单页开关，也不复制建单流程规则。
+
+## 治疗方案选择
+
+- 必须先选择一个治疗类型，再点击牙位。再次点击同一治疗类型的牙位表示取消；选择不同治疗类型后点击已选牙位表示修改类型。
+- 治疗类型当前包括 `implant`、`crown`、`missing`、`inlay`、`veneer`、`inner_crown`、`bridge`，资源序号分别映射为 1-7。
+- `ToothTreatmentPlanWidget` 只负责图片绘制、mask 命中、hover/tooltip 和点击回调，不保存数据库、不生成订单、不决定扫描流程。
+- 牙位命中使用 `maskMaxilla.png` / `maskMandible.png` 的像素值映射 FDI 牙位号；桥连接点命中使用 `maskPonticMaxilla.png` / `maskPonticMandible.png`。
+- 相邻两颗牙都设置为 `bridge` 时才显示空心桥连接点；点击连接点后显示实心连接点，并记录到 `scanPlan.bridgeConnectors`。
+- 外部上下文里的 `scanPlan.bridgeConnectors` 必须同时满足格式正确、两端牙位存在且两颗牙都为 `bridge` 类型，才会进入 UI 状态和扫描流程 JSON；内部会把 `18-17` 这类反向 key 归一化为 `17-18`，避免第三方脏数据或方向差异产生无效桥记录。
+- 桥记录按旧软件规则聚合：`16-17` + `17-18` 显示为 `16-18`；跨中线示例 `11-12` + `11-21` 显示为 `11-22`。
+- 多分辨率下牙弓图片只做等比缩放，点击坐标反算回 600x400 原图坐标，禁止按不同语言或不同分辨率写 if/else 调控件坐标。
+- “Clear All” 按钮放在上下颌之间，点击时人工模式弹确认框，smoke 模式通过 `QApplication` 动态属性跳过确认框，避免自动化测试阻塞。
 
 ```json
 {
@@ -99,10 +112,18 @@
 
 ## 初版界面
 
-- 左侧：患者编号、姓名、年龄、出生日期、性别、病例类型、医生、订单号、技工所、交付日期、联系方式、患者备注；表单类控件走 UIComponents 统一样式。
-- 中间：修复类型选择和 FDI 牙位按钮，支持点击选择/取消和清空；这些是建单业务控件，不进入 UIComponents。
+- 左侧：治疗类型图片按钮、当前治疗类型摘要、患者编号、姓名、年龄、出生日期、性别、病例类型、医生、订单号、技工所、交付日期、联系方式、患者备注；表单类控件走 UIComponents 统一样式，治疗类型属于建单业务控件。
+- 中间：上下颌牙弓图片、mask 命中牙位选择、桥连接点选择、居中清空按钮和扫描流程输入；中间区域只承载牙弓主交互，不再放旧牙位按钮矩阵。
 - 右侧：基本摘要、已选牙位明细、标信息占位、订单备注、上一步/取消/确认/下一步；普通操作按钮和表格基础样式走 UIComponents，牙位明细数据和列含义仍由本模块维护。
 - 当前根界面最小尺寸降为 960x600，左/右栏宽度、牙位按钮、类型按钮、表格高度和备注框高度都按低分辨率做了收敛；低高度屏幕下左侧表单通过滚动区访问完整字段。
+
+## 资源文件规则
+
+- 源码仓库中，治疗方案资源放在 `MyOrderCreateUI/Resources/icon/createModule/sacanPlan/`，跟随模块一起维护和提交。
+- 构建后，CMake 和 VS2015 PostBuild 会复制到运行目录 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan/`。
+- 运行时优先从 `Init(appDirUtf8, logDirUtf8)` 传入的应用目录查找 `Resources/Modules/MyOrderCreateUI/...`，再兼容测试宿主目录和历史 `icon/createModule/sacanPlan`。
+- 模块私有资源先放本模块 `Resources`，构建时复制到总运行目录；多个模块共用的资源后续放 `Resources/Common` 或 UIComponents 统一管理；不要在运行根目录散落图片文件。
+- 资源路径禁止使用 `QDir::currentPath()` 推导，防止第三方拉起 MeyerScan.exe 时工作目录变化导致资源缺失。
 
 ## 构建
 
@@ -116,7 +137,8 @@
 - CMake/VSCode：默认开启 `OrderCreateUITest` 测试目标，可通过 `MEYER_BUILD_ORDERCREATEUITEST` 控制。
 - 双击 `OrderCreateUITest.exe` 默认打开建单界面，便于人工验收。
 - `OrderCreateUITest.exe --smoke` 执行自动冒烟测试并立即退出，适合命令行/批量验证。
-- 当前 smoke 覆盖扫描流程控件存在性和 `GetCurrentScanProcessJson()` 输出。
+- `OrderCreateUITest.exe --capture-screenshot <png>` 固定 1920x1080 渲染建单界面并保存截图，用于和 `D:\wj\OrderTreatmentPlan\治疗方案选择.mp4` 提取帧做人工逐帧对齐。
+- 当前 smoke 覆盖治疗方案资源控件、上下文牙位填充、清空/确认动作、扫描流程 JSON、非 bridge 脏桥连接点过滤、普通桥区间 `16-18` 和跨中线桥区间 `11-22`。
 
 ## 维护记录要求
 

@@ -1,5 +1,11 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-08
+
+- MainExe CMake 和 VS2015 PostBuild 补充复制 `MyOrderCreateUI/Resources/icon/createModule/sacanPlan`，运行目录统一落到 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan`。
+- 明确资源复制规则：模块私有资源先放模块源码 `Resources/`，主程序构建/打包时复制到 MeyerScan.exe 同级 `Resources/Modules/<ProjectName>/...`；公共资源后续放 `Resources/Common` 或由 UIComponents 管理。
+- 本轮不升级 MainExe 代码版本；仅保证建单治疗方案图片、mask 和桥连接点资源在单模块输出和主程序输出目录都可被找到。
+
 ## 2026-07-07
 
 - 版本升级为 `v0.1.3`，创建模式从 DataProcess 的 Next 动作进入工作台 Send 步骤，并动态加载 `MeyerScan_SendUI.dll`。

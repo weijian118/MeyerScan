@@ -1,4 +1,25 @@
-﻿# MyOrderCreateUI 修改记录
+# MyOrderCreateUI 修改记录
+
+## 2026-07-08
+
+- 根据当前软件 `治疗方案选择.mp4` 继续校准布局：治疗类型面板从中间牙弓左侧迁移到整体左栏上方，左栏按“治疗类型 + 基本信息”组织，中间区域只保留牙弓主交互和扫描流程输入，右侧继续保留订单明细/标信息/操作按钮，更接近视频中的左/中/右工作台结构。
+- 清理旧牙位按钮矩阵残留代码，牙位选择只保留 `ToothTreatmentPlanWidget + mask 命中 + 外层状态刷新` 一条链路，避免后续维护者误以为存在两套牙位选择实现。
+- 治疗类型按钮恢复深色选中背景，保证高亮态白色图标在白底界面中可见；左侧新增当前治疗类型摘要，便于确认后续点击牙位使用的类型。
+- `SetOrderContextJson()` 对外部 `scanPlan.bridgeConnectors` 增加校验：格式必须为 `牙位-牙位`，且两端牙位都必须是 `bridge` 类型，才允许进入桥记录和扫描流程 JSON；反向 key 会归一化为小号牙位在前的稳定格式。
+- `OrderCreateUITest.exe --smoke` 增加非 bridge 脏桥连接点过滤断言，防止第三方或旧数据传入孤立桥连接点后污染 UI。
+- `OrderCreateUITest.exe` 新增 `--capture-screenshot <png>` 视觉验收入口，固定 1920x1080 渲染建单界面并保存截图，便于和当前软件视频关键帧逐帧对齐。
+- 补充本轮新增/调整函数内部中文注释，重点说明左侧工作区布局、截图验收模式、桥连接点校验和牙弓主交互刷新链路。
+- 验证：`cmake --build F:\MeyerScan\build --config Release --target MeyerScan_OrderCreateUI OrderCreateUITest` 构建通过；`OrderCreateUITest.exe --smoke` 返回 0；`OrderCreateUITest.exe --capture-screenshot C:\Users\02241wj\AppData\Local\Temp\OrderCreateUITest_treatment_plan_latest.png` 成功生成截图。
+- 版本升级为 `v0.4.0`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。
+- 新增 `ToothTreatmentPlanWidget`，使用 `maxilla.png` / `mandible.png` 显示上下颌牙弓，并通过 `maskMaxilla.png` / `maskMandible.png` 反查 FDI 牙位号。
+- 治疗类型按钮改为图标在上、文字在下的轻量样式，并使用治疗方案资源中的普通态/高亮态图片。
+- 支持牙位叠加图绘制：根据牙位号和治疗类型加载 `maxilla/<tooth>_<type>.png` 或 `mandible/<tooth>_<type>.png`。
+- 支持桥连接点绘制和点击：相邻两颗牙均为 `bridge` 时显示空心连接点，点击后显示实心连接点。
+- 桥记录按旧软件规则聚合：`16-17` + `17-18` 显示为 `16-18`；`11-12` + `11-21` 显示为 `11-22`。
+- “Clear All” 按钮从左侧类型面板迁移到上下颌之间，人工模式弹确认框，smoke 模式跳过确认框避免阻塞。
+- 治疗方案资源从历史 `bin/Release/icon/createModule/sacanPlan` 复制到源码目录 `Resources/icon/createModule/sacanPlan`，构建后复制到运行目录 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan`。
+- `OrderCreateUITest.exe --smoke` 增加治疗方案、桥记录和跨中线桥记录断言。
+- 验证：CMake/VS2015 Release 构建通过；`OrderCreateUITest.exe --smoke` 返回 0；已截图人工核对治疗方案区域布局。
 
 ## 2026-07-07
 
@@ -17,7 +38,7 @@
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。
 - 版本升级为 `v0.2.1`，右侧已选牙位明细表改为优先通过 `MeyerScan_UIComponents.dll` 的 `CreateTableWidget()` 创建，表头、牙位数据和业务联动仍由本模块维护。
-- 新增 UIComponents 运行时版本兼容检查：当前建单模块需要 UIComponents `v0.4.0` 及以上；如果运行目录中残留旧版 UIComponents，模块会主动走本地降级表格/控件样式，避免调用旧 DLL 不存在的虚接口。
+- 新增 UIComponents 运行时版本兼容检查：当前建单模块需要 UIComponents `v0.4.0` 及以上；如果运行目录中残留旧版 UIComponents，模块会主动走本地降级表格/控件样式，避免调用旧 DLL 不存在的虚接口导致崩溃。
 - 保留本地降级表格样式，确保共享 UI DLL 缺失或版本过旧时建单界面仍可打开。
 - 验证：`MeyerScan_OrderCreateUI.sln` Release x64 构建通过；模块输出和根输出目录的 `OrderCreateUITest.exe --smoke` 均返回 0；根方案 `MeyerScan_AllModules.sln` Release x64 构建通过。
 
@@ -41,4 +62,3 @@
 - 新增 `OrderCreateUITest.exe` 测试宿主，覆盖工厂函数、初始化、根控件、核心控件、牙位点击、清空和确认回调。
 - 新增 VS2015 工程、CMakeLists.txt、版本资源和模块 README。
 - 验证：单模块 `MeyerScan_OrderCreateUI.sln` Release x64 构建通过；单模块输出和根输出目录的 `OrderCreateUITest.exe --smoke` 均返回 0。
-

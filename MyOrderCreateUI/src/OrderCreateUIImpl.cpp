@@ -8,14 +8,18 @@
 #include <QCoreApplication>
 #include <QDate>
 #include <QDateEdit>
+#include <QDir>
+#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollArea>
@@ -25,6 +29,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextEdit>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -32,6 +37,7 @@
 #include <QJsonValue>
 
 #include <algorithm>
+#include <functional>
 
 namespace {
 namespace ModuleInfo {
@@ -39,7 +45,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.3.0 (2026-07-07)";
+const char* Version = "MeyerScan_OrderCreateUI v0.4.0 (2026-07-08)";
 }
 
 // 建单界面仍保留少量业务专属颜色，例如牙位选中态和页面容器色。
@@ -58,6 +64,16 @@ const char* kOcclusionMaxillaTemporary = "maxilla_temporary";
 const char* kOcclusionMandibleTemporary = "mandible_temporary";
 const char* kOcclusionFullTemporary = "full_temporary";
 const char* kOcclusionRecord = "record";
+
+// 治疗方案资源在运行总目录下的标准位置。
+// 规则：源码放在模块 Resources 下，构建后复制到 MeyerScan.exe 同级 Resources/Modules/<ModuleName>/ 下。
+const char* kTreatmentPlanRuntimeRelativePath = "Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan";
+
+// 治疗方案资源在模块源码目录下的位置，用于测试宿主和开发期 fallback。
+const char* kTreatmentPlanSourceRelativePath = "Resources/icon/createModule/sacanPlan";
+
+// 历史资源目录，当前保留 fallback，后续资源迁移完成后可以删除。
+const char* kTreatmentPlanLegacyRelativePath = "icon/createModule/sacanPlan";
 
 // 从类似 "MeyerScan_UIComponents v0.4.0 (2026-07-05)" 的版本字符串中读取主/次/补丁号。
 // 动态加载 DLL 时必须先做版本判断，因为 C++ 虚接口新增方法后，旧 DLL 的 vtable 不包含新槽位。
@@ -156,6 +172,8 @@ bool OrderCreateUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     m_selectedTeeth.clear();
     // 牙位类型映射也必须同步清空，否则旧类型会污染新建单页面。
     m_toothTypeCodes.clear();
+    // 桥连接点属于治疗方案的一部分，初始化时也必须清空。
+    m_selectedBridgeKeys.clear();
     // 初始化不清空 m_pendingContextJson，因为第三方流程可能先调用 SetOrderContextJson，
     // 再调用 Init/CreateWidget；保留上下文可以让调用顺序更宽容。
     WriteLog(LogLevel::Info, "Init", "Order create UI initialized");
@@ -167,6 +185,13 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     // 每次 CreateWidget 都创建新的 QWidget，由调用方决定嵌入到哪个容器。
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanOrderCreateUIRoot");
+    // 重新创建界面前先清空弱引用缓存。
+    // 这些指针只指向上一棵 QWidget 树里的控件；如果不清空，重复打开建单页时可能刷新到旧控件。
+    m_typeButtons.clear();
+    m_currentTypeSummaryLabel = nullptr;
+    m_treatmentPlanWidget = nullptr;
+    m_selectionTable = nullptr;
+    m_bridgeSummaryLabel = nullptr;
     // 根界面不再按 1920x1080 方案写死大尺寸。
     // 工作台壳负责全屏显示，本页只给出可用下限，低分辨率时由滚动区和布局共同适配。
     root->setMinimumSize(960, 600);
@@ -189,12 +214,17 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
         "QScrollArea{background:transparent;border:0;}"
         "QRadioButton{color:%4;font-size:13px;spacing:6px;}"
         "QCheckBox{color:%4;font-size:13px;spacing:6px;}"
-        "QPushButton[typeButton=\"true\"],QPushButton[toothButton=\"true\"]{border:1px solid #cfd8dc;border-radius:4px;background:#f6f8fa;color:%4;min-height:32px;padding:6px 9px;}"
-        "QPushButton[typeButton=\"true\"]:hover,QPushButton[toothButton=\"true\"]:hover{background:#edf2f5;border-color:#b7c5ce;}"
-        "QPushButton[typeButton=\"true\"]:pressed,QPushButton[toothButton=\"true\"]:pressed{background:#e1e8ec;}"
-        "QPushButton[typeSelected=\"true\"],QPushButton[toothSelected=\"true\"]{background:%6;border-color:%6;color:#ffffff;font-weight:600;}"
-        "QPushButton[typeSelected=\"true\"]:hover,QPushButton[toothSelected=\"true\"]:hover{background:%7;border-color:%7;}"
-        "QPushButton[toothButton=\"true\"]{font-weight:600;min-height:34px;}"
+        "QPushButton[typeButton=\"true\"]{border:1px solid #cfd8dc;border-radius:6px;background:#f8fafb;color:%4;min-height:40px;padding:6px 8px;font-size:12px;font-weight:600;}"
+        "QPushButton[typeButton=\"true\"]:hover{background:#edf2f5;border-color:#b7c5ce;}"
+        "QPushButton[typeButton=\"true\"]:pressed{background:#e1e8ec;}"
+        "QPushButton[typeSelected=\"true\"]{background:%6;border-color:%6;color:#ffffff;font-weight:600;}"
+        "QPushButton[typeSelected=\"true\"]:hover{background:%7;border-color:%7;}"
+        "QToolButton[typeButton=\"true\"]{border:0;border-radius:8px;background:transparent;color:%4;min-height:76px;padding:4px 4px;font-size:12px;font-weight:600;}"
+        "QToolButton[typeButton=\"true\"]:hover{background:#edf5f2;}"
+        "QToolButton[typeButton=\"true\"]:pressed{background:#dfeee9;}"
+        "QToolButton[typeSelected=\"true\"]{background:%6;color:#ffffff;}"
+        "QToolButton[typeSelected=\"true\"]:hover{background:%7;color:#ffffff;}"
+        "QLabel#OrderCreateCurrentTypeSummary{background:#e4f4ef;border:1px solid %6;border-radius:6px;color:%6;font-size:16px;font-weight:700;padding:10px 12px;}"
     ).arg(kPageBackground,
           kPanelBackground,
           kBorderColor,
@@ -233,11 +263,12 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     rootLayout->setSpacing(12);
     pageLayout->addLayout(rootLayout, 1);
 
-    // 左侧信息栏固定一个舒适宽度，文本较长时由输入框内部显示，不挤压牙位区。
-    QWidget* basicPanel = CreateBasicInfoPanel(root);
-    basicPanel->setMinimumWidth(300);
-    basicPanel->setMaximumWidth(410);
-    rootLayout->addWidget(basicPanel, 0);
+    // 左侧工作区按视频组织：上方选择治疗类型，下方显示基础信息。
+    // 这样治疗类型不再占用中间牙弓区域，牙弓在 1920x1080 和高分屏下都能成为主视觉。
+    QWidget* leftPanel = CreateLeftWorkflowPanel(root);
+    leftPanel->setMinimumWidth(310);
+    leftPanel->setMaximumWidth(410);
+    rootLayout->addWidget(leftPanel, 0);
 
     // 中间牙位区占用最大空间，保证多显示器/高分辨率下牙位按钮仍有良好点击区域。
     QWidget* toothPanel = CreateToothPlanPanel(root);
@@ -268,9 +299,8 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
         m_toothTypeCodes.insert(47, "implant");
         RefreshSelectionTable();
         RefreshBasicSummary();
-        for (auto it = m_selectedTeeth.begin(); it != m_selectedTeeth.end(); ++it) {
-            UpdateToothButtonState(*it);
-        }
+        RefreshTreatmentPlanWidget();
+        RefreshBridgeSummary();
     }
 
     // 页面初次创建完成后立即生成扫描流程 JSON。
@@ -419,7 +449,7 @@ void OrderCreateUIImpl::Shutdown() {
     m_currentTypeCode.clear();
     m_selectedTeeth.clear();
     m_toothTypeCodes.clear();
-    m_toothButtons.clear();
+    m_selectedBridgeKeys.clear();
     m_typeButtons.clear();
     ResetWidgetReferences();
     m_pendingContextJson.clear();
@@ -431,6 +461,8 @@ void OrderCreateUIImpl::Shutdown() {
     m_mandibleSegmentedRodSwitch = nullptr;
     m_occlusionTypeCombo = nullptr;
     m_scanProcessPreviewLabel = nullptr;
+    m_treatmentPlanWidget = nullptr;
+    m_bridgeSummaryLabel = nullptr;
     m_currentScanProcessJson.clear();
     m_uiComponents = nullptr;
     m_logger = nullptr;
@@ -564,55 +596,121 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     return CreateSection(parent, "OrderCreateBasicInfoPanel", tr("Basic Information"), scrollLayout);
 }
 
+// 创建左侧工作区。
+QWidget* OrderCreateUIImpl::CreateLeftWorkflowPanel(QWidget* parent) {
+    // 左侧工作区本身不画边框，只负责把“治疗类型”和“基本信息”两张卡按视频顺序垂直摆放。
+    auto* container = new QWidget(parent);
+    container->setObjectName("OrderCreateLeftWorkflowPanel");
+    container->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+
+    // 使用 QVBoxLayout 让两张卡共享左侧宽度；底部基础信息给 stretch，低分辨率下仍能获得最大高度。
+    auto* layout = new QVBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+
+    // 治疗类型必须放在患者信息上方，这和视频中的操作路径一致：先选修复类型，再点中间牙弓。
+    QWidget* typePanel = CreateTreatmentTypePanel(container);
+    layout->addWidget(typePanel, 0);
+
+    // 基础信息继续复用原有 CreateBasicInfoPanel，避免表单字段和第三方上下文填充逻辑被重复实现。
+    QWidget* basicPanel = CreateBasicInfoPanel(container);
+    layout->addWidget(basicPanel, 1);
+    return container;
+}
+
+// 创建治疗类型选择区。
+QWidget* OrderCreateUIImpl::CreateTreatmentTypePanel(QWidget* parent) {
+    // 当前软件视频中治疗类型是一张独立卡片：标题、图标按钮网格、当前选中类型提示。
+    // 本函数只负责控件创建；真正的选中状态刷新集中在 SetCurrentType。
+    auto* layout = new QVBoxLayout();
+    layout->setContentsMargins(12, 14, 12, 12);
+    layout->setSpacing(10);
+
+    // 4 列网格更接近视频里的横向图标排布，也能减少左侧卡片高度。
+    auto* typeGrid = new QGridLayout();
+    typeGrid->setHorizontalSpacing(8);
+    typeGrid->setVerticalSpacing(8);
+
+    // 每个按钮都是单选入口；checked 由当前编码决定，避免默认类型和按钮高亮不同步。
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Implant"), "implant", m_currentTypeCode == "implant"), 0, 0);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Full Crown"), "crown", m_currentTypeCode == "crown"), 0, 1);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Missing Tooth"), "missing", m_currentTypeCode == "missing"), 0, 2);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Inlay"), "inlay", m_currentTypeCode == "inlay"), 0, 3);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Veneer"), "veneer", m_currentTypeCode == "veneer"), 1, 0);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Inner Crown"), "inner_crown", m_currentTypeCode == "inner_crown"), 1, 1);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Bridge"), "bridge", m_currentTypeCode == "bridge"), 1, 2);
+    typeGrid->setColumnStretch(0, 1);
+    typeGrid->setColumnStretch(1, 1);
+    typeGrid->setColumnStretch(2, 1);
+    typeGrid->setColumnStretch(3, 1);
+    layout->addLayout(typeGrid);
+
+    // 当前类型摘要对应视频左侧底部的大按钮区域。
+    // 它是状态提示，不承担点击行为；用户仍然通过上面的图标按钮切换类型。
+    m_currentTypeSummaryLabel = new QLabel(CurrentTypeText(), parent);
+    m_currentTypeSummaryLabel->setObjectName("OrderCreateCurrentTypeSummary");
+    m_currentTypeSummaryLabel->setAlignment(Qt::AlignCenter);
+    m_currentTypeSummaryLabel->setMinimumHeight(44);
+    m_currentTypeSummaryLabel->setWordWrap(true);
+    layout->addWidget(m_currentTypeSummaryLabel);
+
+    return CreateSection(parent, "OrderCreateTreatmentTypePanel", tr("Treatment Type"), layout);
+}
+
 // 创建中间牙位扫描方案区。
 QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
     auto* mainLayout = new QVBoxLayout();
-    mainLayout->setContentsMargins(12, 12, 12, 12);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
+    mainLayout->setSpacing(8);
 
-    // 类型选择区域放在牙位上方，用户先选类型再点牙位，符合原界面的使用习惯。
-    auto* typeRow = new QHBoxLayout();
-    typeRow->setSpacing(6);
-    typeRow->addWidget(CreateTypeButton(parent, tr("Crown"), "crown", true));
-    typeRow->addWidget(CreateTypeButton(parent, tr("Missing Tooth"), "missing", false));
-    typeRow->addWidget(CreateTypeButton(parent, tr("Inlay"), "inlay", false));
-    typeRow->addWidget(CreateTypeButton(parent, tr("Veneer"), "veneer", false));
-    typeRow->addWidget(CreateTypeButton(parent, tr("Implant Body"), "implant", false));
-    mainLayout->addLayout(typeRow);
+    auto* planRow = new QHBoxLayout();
+    planRow->setContentsMargins(0, 0, 0, 0);
+    planRow->setSpacing(0);
 
-    // 牙位提示文案放在同一页内，帮助用户理解“先选类型再点牙位”的关系。
-    auto* hint = new QLabel(tr("Select a restoration type, then click teeth to add or remove items."), parent);
-    hint->setObjectName("OrderCreatePlanHintLabel");
-    hint->setStyleSheet("color:#6b7c8f;");
-    mainLayout->addWidget(hint);
+    // 治疗方案图片控件使用 maxilla/mandible 图片和 mask 进行命中。
+    // 它内部始终按原图 600x400 坐标换算，窗口缩放时不会改变业务坐标。
+    m_treatmentPlanWidget = new ToothTreatmentPlanWidget(parent);
+    m_treatmentPlanWidget->setObjectName("OrderCreateTreatmentPlanWidget");
+    m_treatmentPlanWidget->SetAssetRoot(ResolveTreatmentPlanAssetRoot());
+    m_treatmentPlanWidget->SetCurrentTreatmentType(m_currentTypeCode);
+    m_treatmentPlanWidget->SetToothClickedCallback([this](int toothNumber) {
+        ToggleTooth(toothNumber);
+    });
+    m_treatmentPlanWidget->SetBridgeClickedCallback([this](const QString& bridgeKey) {
+        ToggleBridgeConnector(bridgeKey);
+    });
+    m_treatmentPlanWidget->SetClearClickedCallback([this]() {
+        // 视频中的清空操作需要二次确认，避免用户误删已经配置好的牙位方案。
+        const bool skipConfirmForSmoke = qApp && qApp->property("MeyerScanSmokeTest").toBool();
+        if (!skipConfirmForSmoke) {
+            QMessageBox messageBox(m_root);
+            messageBox.setIcon(QMessageBox::Question);
+            messageBox.setWindowTitle(tr("Question"));
+            messageBox.setText(tr("Are you sure to clear all selections?"));
+            QPushButton* confirmButton = messageBox.addButton(tr("Confirm"), QMessageBox::AcceptRole);
+            messageBox.addButton(tr("Cancel"), QMessageBox::RejectRole);
+            messageBox.exec();
+            if (messageBox.clickedButton() != confirmButton) {
+                WriteLog(LogLevel::Info, "ClearAllTeethCanceled", "Clear all selections canceled");
+                return;
+            }
+        }
 
-    auto* toothGrid = new QGridLayout();
-    toothGrid->setSpacing(5);
-    toothGrid->setContentsMargins(8, 8, 8, 8);
-
-    // 牙位使用 FDI 编号。初版用规整网格表达上下颌，后续可替换为更接近截图的牙弓绘制控件。
-    AddToothRow(toothGrid, 0, QList<int>() << 18 << 17 << 16 << 15 << 14 << 13 << 12 << 11 << 21 << 22 << 23 << 24 << 25 << 26 << 27 << 28);
-    AddToothRow(toothGrid, 1, QList<int>() << 48 << 47 << 46 << 45 << 44 << 43 << 42 << 41 << 31 << 32 << 33 << 34 << 35 << 36 << 37 << 38);
-    mainLayout->addLayout(toothGrid, 1);
-
-    // 扫描流程配置和牙位选择放在同一个建单页面内。
-    // 这些输入决定后续 Scan/Process 页面显示哪些流程按钮，但不直接创建扫描页面。
-    mainLayout->addWidget(CreateScanProcessConfigPanel(parent), 0);
-
-    auto* controlRow = new QHBoxLayout();
-    controlRow->addStretch(1);
-
-    auto* clearButton = CreateStandardButton(parent, tr("Clear All"), MeyerButtonRoleSecondary);
-    clearButton->setObjectName("OrderCreateClearAllButton");
-    clearButton->setMinimumWidth(120);
-    QObject::connect(clearButton, &QPushButton::clicked, [this]() {
         // 清空牙位是局部 UI 操作，同时向外抛动作，便于上层记录用户行为或刷新流程状态。
         ClearAllTeeth();
         EmitAction(OrderCreateActionClearAllTeeth);
     });
-    controlRow->addWidget(clearButton);
-    controlRow->addStretch(1);
-    mainLayout->addLayout(controlRow);
+    if (!m_treatmentPlanWidget->HasRequiredAssets()) {
+        WriteLog(LogLevel::Warning,
+                 "CreateToothPlanPanel",
+                 QString("Treatment plan assets unavailable: %1").arg(ResolveTreatmentPlanAssetRoot()));
+    }
+    planRow->addWidget(m_treatmentPlanWidget, 1);
+    mainLayout->addLayout(planRow, 1);
+
+    // 扫描流程配置和牙位选择放在同一个建单页面内。
+    // 这些输入决定后续 Scan/Process 页面显示哪些流程按钮，但不直接创建扫描页面。
+    mainLayout->addWidget(CreateScanProcessConfigPanel(parent), 0);
 
     return CreateSection(parent, "OrderCreateToothPlanPanel", tr("Scan Plan"), mainLayout);
 }
@@ -655,8 +753,20 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     m_selectionTable->setColumnCount(4);
     m_selectionTable->setHorizontalHeaderLabels(QStringList() << tr("Tooth") << tr("Type") << tr("Material") << tr("Shade"));
     m_selectionTable->setSelectionMode(QAbstractItemView::NoSelection);
-    m_selectionTable->setMinimumHeight(160);
+    m_selectionTable->setMinimumHeight(140);
     mainLayout->addWidget(m_selectionTable, 1);
+
+    // 桥记录单独展示，避免把“相邻牙位连接关系”误放进单颗牙位明细表。
+    auto* bridgeGroup = new QGroupBox(tr("Bridge Records"), parent);
+    auto* bridgeLayout = new QVBoxLayout(bridgeGroup);
+    bridgeLayout->setContentsMargins(12, 16, 12, 12);
+    bridgeLayout->setSpacing(6);
+    m_bridgeSummaryLabel = new QLabel(tr("No bridge selected"), parent);
+    m_bridgeSummaryLabel->setObjectName("OrderCreateBridgeSummaryLabel");
+    m_bridgeSummaryLabel->setWordWrap(true);
+    m_bridgeSummaryLabel->setStyleSheet("QLabel#OrderCreateBridgeSummaryLabel{color:#23313f;font-size:13px;font-weight:600;}");
+    bridgeLayout->addWidget(m_bridgeSummaryLabel);
+    mainLayout->addWidget(bridgeGroup, 0);
 
     // 标信息区域先搭骨架，后续可改成颜色模块/材料规则驱动。
     auto* shadeGroup = new QGroupBox(tr("Shade Information"), parent);
@@ -748,47 +858,35 @@ QPushButton* OrderCreateUIImpl::CreateCheckButton(QWidget* parent, const QString
 }
 
 // 创建扫描类型按钮。
-QPushButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked) {
-    auto* button = new QPushButton(text, parent);
+QToolButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked) {
+    auto* button = new QToolButton(parent);
     button->setObjectName(QString("OrderCreateType_%1_Button").arg(code));
-    button->setMinimumWidth(92);
+    button->setText(text);
+    button->setMinimumSize(74, 78);
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    button->setIconSize(QSize(48, 48));
     button->setCheckable(true);
     button->setChecked(checked);
     button->setProperty("typeButton", true);
     button->setProperty("typeSelected", checked);
+    button->setToolTip(text);
+    button->setCursor(Qt::PointingHandCursor);
+
+    // 治疗类型按钮资源来自当前软件的治疗方案选择资源。
+    // 如果发布目录缺图，按钮仍保留文字，保证建单主流程不中断。
+    const QString iconPath = TypeButtonIconPath(code, checked);
+    if (QFileInfo::exists(iconPath)) {
+        button->setIcon(QIcon(iconPath));
+    }
+
     m_typeButtons.insert(code, button);
 
-    QObject::connect(button, &QPushButton::clicked, [this, code]() {
+    QObject::connect(button, &QToolButton::clicked, [this, code]() {
         // 类型按钮只改变“后续点击牙位使用的类型”，不会 retroactively 修改已选牙位。
         SetCurrentType(code);
     });
     return button;
-}
-
-// 创建单颗牙位按钮。
-QPushButton* OrderCreateUIImpl::CreateToothButton(QWidget* parent, int toothNumber) {
-    auto* button = new QPushButton(QString::number(toothNumber), parent);
-    button->setObjectName(QString("OrderCreateTooth%1Button").arg(toothNumber));
-    button->setMinimumSize(34, 34);
-    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    button->setProperty("toothButton", true);
-    button->setProperty("toothSelected", false);
-    m_toothButtons.insert(toothNumber, button);
-
-    QObject::connect(button, &QPushButton::clicked, [this, toothNumber]() {
-        // 牙位点击直接切换本地 UI 状态，并刷新右侧明细表。
-        ToggleTooth(toothNumber);
-    });
-    return button;
-}
-
-// 添加一行牙位按钮。
-void OrderCreateUIImpl::AddToothRow(QGridLayout* grid, int row, const QList<int>& teeth) {
-    // teeth 的顺序就是界面展示顺序，调用方可以按 FDI 上下颌习惯排列。
-    for (int column = 0; column < teeth.size(); ++column) {
-        grid->addWidget(CreateToothButton(grid->parentWidget(), teeth.at(column)), row, column);
-    }
 }
 
 // 返回当前扫描类型显示名。
@@ -868,13 +966,10 @@ void OrderCreateUIImpl::ApplyScanPlanItems(const QJsonObject& scanPlanObject) {
         return;
     }
 
-    // 先把旧选中牙位按钮刷回未选，再清空集合，防止默认示例牙位混入第三方方案。
-    const QSet<int> oldSelection = m_selectedTeeth;
+    // 先清空旧选择，防止默认示例牙位混入第三方方案。
     m_selectedTeeth.clear();
     m_toothTypeCodes.clear();
-    for (int toothNumber : oldSelection) {
-        UpdateToothButtonState(toothNumber);
-    }
+    m_selectedBridgeKeys.clear();
 
     for (const QJsonValue& itemValue : items) {
         const QJsonObject item = itemValue.toObject();
@@ -886,8 +981,53 @@ void OrderCreateUIImpl::ApplyScanPlanItems(const QJsonObject& scanPlanObject) {
         const QString typeCode = ReadString(item, "type", "crown").trimmed();
         m_selectedTeeth.insert(toothNumber);
         m_toothTypeCodes.insert(toothNumber, typeCode.isEmpty() ? "crown" : typeCode);
-        UpdateToothButtonState(toothNumber);
     }
+
+    // 外部上下文如果传入 bridgeConnectors，则按统一 key 恢复已确认桥连接点。
+    // 未传时只显示桥牙位，不默认确认连接点，避免第三方数据语义不明。
+    const QJsonArray bridgeConnectors = scanPlanObject.value("bridgeConnectors").toArray();
+    for (const QJsonValue& bridgeValue : bridgeConnectors) {
+        const QString bridgeKey = bridgeValue.toString().trimmed();
+        if (bridgeKey.isEmpty()) {
+            // 空 key 没有业务含义，直接跳过，避免右侧摘要出现空白桥记录。
+            continue;
+        }
+
+        const QStringList bridgeParts = bridgeKey.split('-');
+        if (bridgeParts.size() != 2) {
+            // 桥连接点必须是 "16-17" 这样的稳定格式；格式不对时忽略该条外部数据。
+            WriteLog(LogLevel::Warning, "ApplyScanPlanItems", QString("Invalid bridge key: %1").arg(bridgeKey));
+            continue;
+        }
+
+        bool firstOk = false;
+        bool secondOk = false;
+        const int firstTooth = bridgeParts.at(0).toInt(&firstOk);
+        const int secondTooth = bridgeParts.at(1).toInt(&secondOk);
+        if (!firstOk || !secondOk) {
+            // 牙位号不是数字时无法和 m_toothTypeCodes 校验，必须跳过。
+            WriteLog(LogLevel::Warning, "ApplyScanPlanItems", QString("Invalid bridge tooth number: %1").arg(bridgeKey));
+            continue;
+        }
+
+        if (m_toothTypeCodes.value(firstTooth) != "bridge"
+            || m_toothTypeCodes.value(secondTooth) != "bridge") {
+            // 只有相邻两颗牙都确认为 bridge 类型，连接点才允许进入业务状态。
+            // 这能避免第三方或旧数据传入孤立 bridgeConnectors 后，右侧桥记录显示假阳性。
+            WriteLog(LogLevel::Warning, "ApplyScanPlanItems", QString("Bridge key ignored because teeth are not bridge: %1").arg(bridgeKey));
+            continue;
+        }
+
+        // 内部统一保存小号牙位在前的 key。
+        // 例如外部传入 "18-17" 时归一化为 "17-18"，否则 BuildBridgeRangeTexts 按稳定 key 聚合时会漏掉该连接点。
+        const QString normalizedBridgeKey = QString("%1-%2")
+            .arg(std::min(firstTooth, secondTooth))
+            .arg(std::max(firstTooth, secondTooth));
+        m_selectedBridgeKeys.insert(normalizedBridgeKey);
+    }
+
+    RefreshTreatmentPlanWidget();
+    RefreshBridgeSummary();
 }
 
 // 应用外部传入的扫描流程配置。
@@ -928,8 +1068,8 @@ void OrderCreateUIImpl::ApplyScanProcessConfig(const QJsonObject& scanProcessObj
 // 这些指针不拥有对象，只用于刷新 UI；外部删除 QWidget 后必须清空，避免下一次使用悬空地址。
 void OrderCreateUIImpl::ResetWidgetReferences() {
     m_root = nullptr;
-    m_toothButtons.clear();
     m_typeButtons.clear();
+    m_currentTypeSummaryLabel = nullptr;
     m_selectionTable = nullptr;
     m_summaryPatientName = nullptr;
     m_summaryDoctor = nullptr;
@@ -955,13 +1095,18 @@ void OrderCreateUIImpl::ResetWidgetReferences() {
     m_mandibleSegmentedRodSwitch = nullptr;
     m_occlusionTypeCombo = nullptr;
     m_scanProcessPreviewLabel = nullptr;
+    m_treatmentPlanWidget = nullptr;
+    m_bridgeSummaryLabel = nullptr;
 }
 
 // 返回指定扫描类型显示名。
 QString OrderCreateUIImpl::TypeText(const QString& typeCode) const {
     // 每个可见文本都显式写成 tr("English")，便于 lupdate 提取翻译源文案。
-    if (typeCode == "crown") {
-        return tr("Crown");
+    if (typeCode == "implant") {
+        return tr("Implant");
+    }
+    if (typeCode == "crown" || typeCode == "full_crown") {
+        return tr("Full Crown");
     }
     if (typeCode == "missing") {
         return tr("Missing Tooth");
@@ -972,10 +1117,42 @@ QString OrderCreateUIImpl::TypeText(const QString& typeCode) const {
     if (typeCode == "veneer") {
         return tr("Veneer");
     }
-    if (typeCode == "implant") {
-        return tr("Implant Body");
+    if (typeCode == "inner_crown") {
+        return tr("Inner Crown");
+    }
+    if (typeCode == "bridge") {
+        return tr("Bridge");
     }
     return tr("Unknown");
+}
+
+// 返回治疗类型按钮图标路径。
+QString OrderCreateUIImpl::TypeButtonIconPath(const QString& typeCode, bool selected) const {
+    // 治疗方案资源里约定 b 表示普通态，h 表示高亮态。
+    // 这里集中维护编码到文件名的映射，后续替换资源时不用改按钮创建逻辑。
+    QString iconName;
+    if (typeCode == "implant") {
+        iconName = selected ? "planting_h_2x.png" : "planting_b_2x.png";
+    } else if (typeCode == "crown" || typeCode == "full_crown") {
+        iconName = selected ? "an_full_crown_h_2x.png" : "an_full_crown_b_2x.png";
+    } else if (typeCode == "missing") {
+        iconName = selected ? "missing_h_2x.png" : "missing_b_2x.png";
+    } else if (typeCode == "inlay") {
+        iconName = selected ? "inlay_n_h_2x.png" : "inlay_n_b_2x.png";
+    } else if (typeCode == "veneer") {
+        iconName = selected ? "veneer_n_h_2x.png" : "veneer_n_b_2x.png";
+    } else if (typeCode == "inner_crown") {
+        iconName = selected ? "inner_crown_h_2x.png" : "inner_crown_b_2x.png";
+    } else if (typeCode == "bridge") {
+        iconName = selected ? "pontic_n_h_2x.png" : "pontic_n_b_2x.png";
+    }
+
+    if (iconName.isEmpty()) {
+        return QString();
+    }
+
+    const QDir buttonDir(QDir(ResolveTreatmentPlanAssetRoot()).filePath("button"));
+    return buttonDir.filePath(iconName);
 }
 
 // 设置当前扫描类型。
@@ -988,12 +1165,23 @@ void OrderCreateUIImpl::SetCurrentType(const QString& typeCode) {
 
     // 更新当前类型编码，后续点击牙位会按这个类型加入明细。
     m_currentTypeCode = typeCode;
+    if (m_treatmentPlanWidget) {
+        m_treatmentPlanWidget->SetCurrentTreatmentType(m_currentTypeCode);
+    }
+    if (m_currentTypeSummaryLabel) {
+        // 左侧摘要显示当前工具类型，帮助用户确认“下一次点击牙位会使用什么治疗类型”。
+        m_currentTypeSummaryLabel->setText(CurrentTypeText());
+    }
 
     // 刷新所有类型按钮的选中视觉状态，保证同一时间只有一个类型高亮。
     for (auto it = m_typeButtons.begin(); it != m_typeButtons.end(); ++it) {
         const bool selected = (it.key() == typeCode);
         it.value()->setChecked(selected);
         it.value()->setProperty("typeSelected", selected);
+        const QString iconPath = TypeButtonIconPath(it.key(), selected);
+        if (QFileInfo::exists(iconPath)) {
+            it.value()->setIcon(QIcon(iconPath));
+        }
         it.value()->style()->unpolish(it.value());
         it.value()->style()->polish(it.value());
     }
@@ -1003,23 +1191,49 @@ void OrderCreateUIImpl::SetCurrentType(const QString& typeCode) {
 
 // 切换牙位选择。
 void OrderCreateUIImpl::ToggleTooth(int toothNumber) {
-    if (m_selectedTeeth.contains(toothNumber)) {
-        // 已选牙位再次点击表示移除。
+    if (m_currentTypeCode.isEmpty()) {
+        WriteLog(LogLevel::Warning, "ToggleTooth", "No treatment type selected");
+        return;
+    }
+
+    const QString oldType = m_toothTypeCodes.value(toothNumber);
+    if (m_selectedTeeth.contains(toothNumber) && oldType == m_currentTypeCode) {
+        // 已选牙位再次用同一类型点击表示移除。
         m_selectedTeeth.remove(toothNumber);
         // 移除牙位时同步移除类型，避免重新选择时读到旧类型。
         m_toothTypeCodes.remove(toothNumber);
         WriteLog(LogLevel::Info, "RemoveTooth", QString("Tooth removed: %1").arg(toothNumber));
     } else {
-        // 未选牙位点击表示加入当前扫描类型。
+        // 未选牙位点击表示加入；已选牙位用不同类型点击表示修改治疗类型。
         m_selectedTeeth.insert(toothNumber);
         // 每颗牙位保存自己被加入时的类型，避免后续切换当前类型影响旧明细。
         m_toothTypeCodes.insert(toothNumber, m_currentTypeCode);
-        WriteLog(LogLevel::Info, "AddTooth", QString("Tooth added: %1, type: %2").arg(toothNumber).arg(m_currentTypeCode));
+        WriteLog(LogLevel::Info,
+                 "SetToothTreatment",
+                 QString("Tooth treatment updated: %1, type: %2").arg(toothNumber).arg(m_currentTypeCode));
     }
 
-    // UI 状态变化后同步刷新按钮和右侧表格。
-    UpdateToothButtonState(toothNumber);
+    // 桥连接点依赖两颗相邻牙都保持 bridge 类型。
+    // 牙位被移除或从 bridge 改成其它类型后，已确认连接点必须清理，否则表格会显示无效桥记录。
+    const QSet<QString> oldBridgeKeys = m_selectedBridgeKeys;
+    for (const QString& bridgeKey : oldBridgeKeys) {
+        const QStringList parts = bridgeKey.split('-');
+        if (parts.size() != 2) {
+            m_selectedBridgeKeys.remove(bridgeKey);
+            continue;
+        }
+        const int firstTooth = parts.at(0).toInt();
+        const int secondTooth = parts.at(1).toInt();
+        if (m_toothTypeCodes.value(firstTooth) != "bridge"
+            || m_toothTypeCodes.value(secondTooth) != "bridge") {
+            m_selectedBridgeKeys.remove(bridgeKey);
+        }
+    }
+
+    // UI 状态变化后同步刷新右侧表格和中间牙弓。
     RefreshSelectionTable();
+    RefreshTreatmentPlanWidget();
+    RefreshBridgeSummary();
     // 牙位类型可能影响是否生成扫描杆流程，所以牙位变化后同步刷新扫描流程。
     RefreshScanProcessPreview(false);
     EmitAction(OrderCreateActionToothSelectionChanged);
@@ -1027,22 +1241,40 @@ void OrderCreateUIImpl::ToggleTooth(int toothNumber) {
 
 // 清空所有牙位选择。
 void OrderCreateUIImpl::ClearAllTeeth() {
-    // 先复制当前集合，避免遍历过程中修改 QSet 导致迭代器失效。
-    const QSet<int> oldSelection = m_selectedTeeth;
+    // 清空牙位集合；当前牙位视觉由 ToothTreatmentPlanWidget 根据集合快照重绘。
     m_selectedTeeth.clear();
     // 类型映射和牙位集合必须一起清空，保持 UI 状态一致。
     m_toothTypeCodes.clear();
-
-    // 所有旧选中按钮都要刷新成未选状态。
-    for (int toothNumber : oldSelection) {
-        UpdateToothButtonState(toothNumber);
-    }
+    // 桥连接点依赖牙位，清空牙位时同步清空。
+    m_selectedBridgeKeys.clear();
 
     // 表格清空后仍保留表头。
     RefreshSelectionTable();
+    RefreshTreatmentPlanWidget();
+    RefreshBridgeSummary();
     // 清空牙位后种植推导结果会变化，必须同步刷新扫描流程。
     RefreshScanProcessPreview(false);
     WriteLog(LogLevel::Info, "ClearAllTeeth", "All tooth selections cleared");
+}
+
+// 切换桥连接点选中状态。
+void OrderCreateUIImpl::ToggleBridgeConnector(const QString& bridgeKey) {
+    if (bridgeKey.trimmed().isEmpty()) {
+        return;
+    }
+
+    if (m_selectedBridgeKeys.contains(bridgeKey)) {
+        m_selectedBridgeKeys.remove(bridgeKey);
+        WriteLog(LogLevel::Info, "RemoveBridgeConnector", QString("Bridge connector removed: %1").arg(bridgeKey));
+    } else {
+        m_selectedBridgeKeys.insert(bridgeKey);
+        WriteLog(LogLevel::Info, "AddBridgeConnector", QString("Bridge connector added: %1").arg(bridgeKey));
+    }
+
+    RefreshSelectionTable();
+    RefreshTreatmentPlanWidget();
+    RefreshBridgeSummary();
+    EmitAction(OrderCreateActionToothSelectionChanged);
 }
 
 // 刷新右侧明细表。
@@ -1073,6 +1305,140 @@ void OrderCreateUIImpl::RefreshSelectionTable() {
     }
 }
 
+// 刷新治疗方案图片控件。
+void OrderCreateUIImpl::RefreshTreatmentPlanWidget() {
+    if (!m_treatmentPlanWidget) {
+        return;
+    }
+
+    // 图片控件只接受当前状态快照并重绘，不在内部改业务数据。
+    m_treatmentPlanWidget->SetCurrentTreatmentType(m_currentTypeCode);
+    m_treatmentPlanWidget->SetPlanState(m_toothTypeCodes, m_selectedBridgeKeys);
+}
+
+// 解析治疗方案资源目录。
+QString OrderCreateUIImpl::ResolveTreatmentPlanAssetRoot() const {
+    QStringList candidateRoots;
+
+    // 第一优先级：调用方传入的 MeyerScan.exe 所在目录。
+    if (!m_appDir.isEmpty()) {
+        const QDir appDir(QString::fromUtf8(m_appDir));
+        candidateRoots << appDir.filePath(kTreatmentPlanRuntimeRelativePath);
+        // 历史兼容：老资源直接放在 exe 同级 icon 目录。
+        candidateRoots << appDir.filePath(kTreatmentPlanLegacyRelativePath);
+    }
+
+    // 第二优先级：当前进程目录，适合 OrderCreateUITest.exe 独立运行。
+    const QDir processDir(QCoreApplication::applicationDirPath());
+    candidateRoots << processDir.filePath(kTreatmentPlanRuntimeRelativePath);
+    candidateRoots << processDir.filePath(kTreatmentPlanLegacyRelativePath);
+
+    // 第三优先级：模块源码 Resources 目录，便于开发环境尚未复制资源时仍能显示。
+    // 模块测试宿主运行目录通常是 MyOrderCreateUI/bin/Release，所以先尝试 ../../Resources。
+    candidateRoots << processDir.filePath(QString("../../%1").arg(kTreatmentPlanSourceRelativePath));
+    // 主程序根输出目录通常是 F:/MeyerScan/bin/Release，所以再尝试 ../../MyOrderCreateUI/Resources。
+    candidateRoots << processDir.filePath("../../MyOrderCreateUI/Resources/icon/createModule/sacanPlan");
+
+    // 第四优先级：历史 bin 资源目录，避免尚未迁移干净的旧测试目录打不开。
+    candidateRoots << processDir.filePath("../../MyOrderCreateUI/bin/Release/icon/createModule/sacanPlan");
+
+    for (const QString& candidate : candidateRoots) {
+        const QDir dir(QDir::cleanPath(candidate));
+        if (QFileInfo::exists(dir.filePath("maxilla.png"))
+            && QFileInfo::exists(dir.filePath("mandible.png"))
+            && QFileInfo::exists(dir.filePath("maskMaxilla.png"))
+            && QFileInfo::exists(dir.filePath("maskMandible.png"))) {
+            return dir.absolutePath();
+        }
+    }
+
+    // 都不存在时仍返回第一候选路径，日志能显示模块期望资源放在哪里。
+    return QDir::cleanPath(candidateRoots.isEmpty()
+        ? QCoreApplication::applicationDirPath()
+        : candidateRoots.first());
+}
+
+// 生成桥记录区间文本。
+QStringList OrderCreateUIImpl::BuildBridgeRangeTexts() const {
+    QStringList result;
+
+    // 每一颌按牙弓连续顺序聚合桥连接点。
+    // FDI 编号不是简单数值连续，尤其前牙跨中线时要按 12-11-21-22 这种顺序处理。
+    const QList<QList<int>> jawOrders = QList<QList<int>>()
+        << (QList<int>() << 18 << 17 << 16 << 15 << 14 << 13 << 12 << 11 << 21 << 22 << 23 << 24 << 25 << 26 << 27 << 28)
+        << (QList<int>() << 48 << 47 << 46 << 45 << 44 << 43 << 42 << 41 << 31 << 32 << 33 << 34 << 35 << 36 << 37 << 38);
+
+    for (const QList<int>& jawOrder : jawOrders) {
+        int rangeStartIndex = -1;
+        int rangeEndIndex = -1;
+
+        for (int index = 0; index < jawOrder.size() - 1; ++index) {
+            const int firstTooth = jawOrder.at(index);
+            const int secondTooth = jawOrder.at(index + 1);
+            const QString bridgeKey = QString("%1-%2")
+                .arg(std::min(firstTooth, secondTooth))
+                .arg(std::max(firstTooth, secondTooth));
+
+            const bool selected = m_selectedBridgeKeys.contains(bridgeKey);
+            if (selected) {
+                if (rangeStartIndex < 0) {
+                    rangeStartIndex = index;
+                }
+                rangeEndIndex = index;
+            }
+
+            // 遇到断点或最后一个连接点时，把当前连续区间输出。
+            const bool atLastConnector = (index == jawOrder.size() - 2);
+            if ((!selected || atLastConnector) && rangeStartIndex >= 0 && rangeEndIndex >= 0) {
+                int displayFirstIndex = rangeStartIndex;
+                int displaySecondIndex = rangeEndIndex + 1;
+
+                // 跨中线桥连接在视频/旧软件记录中按中线后的治疗区间显示。
+                // 例如用户明确要求 11-12 + 11-21 显示为 11-22，而不是机械端点 12-21。
+                const bool crossesMaxillaMidline = jawOrder.contains(11)
+                    && jawOrder.contains(21)
+                    && rangeStartIndex <= 6
+                    && rangeEndIndex >= 7;
+                const bool crossesMandibleMidline = jawOrder.contains(41)
+                    && jawOrder.contains(31)
+                    && rangeStartIndex <= 7
+                    && rangeEndIndex >= 7;
+                if (crossesMaxillaMidline || crossesMandibleMidline) {
+                    displayFirstIndex = std::min(rangeStartIndex + 1, jawOrder.size() - 1);
+                    displaySecondIndex = std::min(rangeEndIndex + 2, jawOrder.size() - 1);
+                }
+
+                const int displayFirstTooth = jawOrder.at(displayFirstIndex);
+                const int displaySecondTooth = jawOrder.at(displaySecondIndex);
+
+                // 牙弓遍历方向可能是 18->17->16，但用户阅读和既有软件记录习惯是 16-18。
+                // 因此最终输出时统一把较小端点放在前面，避免出现 18-16 这种反向记录。
+                result << QString("%1-%2")
+                    .arg(std::min(displayFirstTooth, displaySecondTooth))
+                    .arg(std::max(displayFirstTooth, displaySecondTooth));
+                rangeStartIndex = -1;
+                rangeEndIndex = -1;
+            }
+        }
+    }
+
+    return result;
+}
+
+// 刷新桥记录摘要。
+void OrderCreateUIImpl::RefreshBridgeSummary() {
+    if (!m_bridgeSummaryLabel) {
+        return;
+    }
+
+    const QStringList bridgeRanges = BuildBridgeRangeTexts();
+    if (bridgeRanges.isEmpty()) {
+        m_bridgeSummaryLabel->setText(tr("No bridge selected"));
+    } else {
+        m_bridgeSummaryLabel->setText(tr("Bridge: %1").arg(bridgeRanges.join(", ")));
+    }
+}
+
 // 刷新基本信息摘要。
 void OrderCreateUIImpl::RefreshBasicSummary() {
     if (m_summaryPatientName && m_patientNameEdit) {
@@ -1091,20 +1457,6 @@ void OrderCreateUIImpl::RefreshBasicSummary() {
         // 来源摘要用于区分手工建单、第三方拉起和未来 HIS/Worklist 建单。
         m_summarySource->setText(m_sourceSummary.isEmpty() ? tr("Manual") : m_sourceSummary);
     }
-}
-
-// 更新牙位按钮选中样式。
-void OrderCreateUIImpl::UpdateToothButtonState(int toothNumber) {
-    QPushButton* button = m_toothButtons.value(toothNumber, nullptr);
-    if (!button) {
-        return;
-    }
-
-    // toothSelected 动态属性由样式表决定按钮颜色。
-    const bool selected = m_selectedTeeth.contains(toothNumber);
-    button->setProperty("toothSelected", selected);
-    button->style()->unpolish(button);
-    button->style()->polish(button);
 }
 
 // 触发外部动作回调。
@@ -1400,6 +1752,37 @@ QJsonObject OrderCreateUIImpl::BuildScanProcessConfigObject() const {
     config.insert("mandibleHasImplant", HasImplantTooth(false));
     config.insert("maxillaTemporary", IsJawTemporary(true));
     config.insert("mandibleTemporary", IsJawTemporary(false));
+
+    // scanPlan 是当前建单页面的治疗方案快照。
+    // MainExe/Scan/Process 当前只消费 steps；后续保存订单时可把 scanPlan 转交 ScanSchemaService。
+    QJsonArray items;
+    QList<int> teeth = m_selectedTeeth.values();
+    std::sort(teeth.begin(), teeth.end());
+    for (int toothNumber : teeth) {
+        QJsonObject item;
+        item.insert("tooth", toothNumber);
+        item.insert("type", m_toothTypeCodes.value(toothNumber, "crown"));
+        items.append(item);
+    }
+
+    QJsonArray bridgeConnectors;
+    QStringList bridgeKeys = m_selectedBridgeKeys.values();
+    std::sort(bridgeKeys.begin(), bridgeKeys.end());
+    for (const QString& bridgeKey : bridgeKeys) {
+        bridgeConnectors.append(bridgeKey);
+    }
+
+    QJsonArray bridgeRanges;
+    const QStringList bridgeRangeTexts = BuildBridgeRangeTexts();
+    for (const QString& bridgeRange : bridgeRangeTexts) {
+        bridgeRanges.append(bridgeRange);
+    }
+
+    QJsonObject scanPlan;
+    scanPlan.insert("items", items);
+    scanPlan.insert("bridgeConnectors", bridgeConnectors);
+    scanPlan.insert("bridgeRanges", bridgeRanges);
+    config.insert("scanPlan", scanPlan);
     return config;
 }
 

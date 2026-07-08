@@ -99,6 +99,10 @@ add_custom_command(TARGET MeyerScan POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.json" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.md" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.md"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyExternalLaunchAdapter/test/external_order_sample.json" "$<TARGET_FILE_DIR:MeyerScan>/external_order_sample.json"
+    COMMAND ${CMAKE_COMMAND}
+            -Dsource_dir="${MEYER_ROOT_DIR}/MyOrderCreateUI/Resources/icon/createModule/sacanPlan"
+            -Dtarget_dir="$<TARGET_FILE_DIR:MeyerScan>/Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan"
+            -P "${MEYER_ROOT_DIR}/MyOrderCreateUI/copy_treatment_assets.cmake"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_VTK_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_OPENCV_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
 )
