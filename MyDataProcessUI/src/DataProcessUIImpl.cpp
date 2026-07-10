@@ -47,14 +47,8 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_DataProcessUI";
 
 // Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_DataProcessUI v0.2.1 (2026-07-07)";
+const char* Version = "MeyerScan_DataProcessUI v0.2.2 (2026-07-10)";
 }
-
-const char* kPageBackground = "#dfe4ea";
-const char* kPanelBackground = "#ffffff";
-const char* kPrimaryColor = "#007d68";
-const char* kMutedText = "#687785";
-const char* kBorderColor = "#cbd5dd";
 }
 
 // 数据处理页的 VTK 视图控件。
@@ -242,11 +236,15 @@ void DataProcessUIImpl::Activate() {
 void DataProcessUIImpl::DeactivateAndRelease() {
     // QVTKWidget owns native OpenGL resources, so hiding it is not enough.
     if (m_vtkWidget) {
-        // Detach the renderer first to avoid stale render-window references.
-        if (m_renderer && m_vtkWidget->GetRenderWindow()) {
-            m_vtkWidget->GetRenderWindow()->RemoveRenderer(m_renderer);
+        // 释放顺序与 Scan 页面保持一致：先解除 renderer，再断开 render window/interactor。
+        // 这能避免退出 Process 后重新进入 Scan 时，QVTKWidget 析构访问已删除的 VTK 对象。
+        vtkRenderWindow* renderWindow = m_vtkWidget->GetRenderWindow();
+        if (m_renderer && renderWindow) {
+            renderWindow->RemoveRenderer(m_renderer);
         }
-        // deleteLater is safe when called during Qt event processing.
+        m_vtkWidget->SetRenderer(nullptr);
+        m_vtkWidget->SetRenderWindow(nullptr);
+        // 延迟删除原生 OpenGL 控件，让当前页面切换调用栈先完整返回。
         m_vtkWidget->setParent(nullptr);
         m_vtkWidget->deleteLater();
         m_vtkWidget = nullptr;
@@ -257,6 +255,13 @@ void DataProcessUIImpl::DeactivateAndRelease() {
         m_renderer->Delete();
         m_renderer = nullptr;
     }
+
+    // 清除旧页面中的非 owning 指针；下次 CreateWidget 会重新绑定新控件。
+    m_root = nullptr;
+    m_statusLabel = nullptr;
+    m_hintLabel = nullptr;
+    m_modelModeBar = nullptr;
+    m_processButtons.clear();
 
     WriteLog(LogLevel::Info, "DeactivateAndRelease", "Data process VTK resources released");
 }

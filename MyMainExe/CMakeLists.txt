@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.1.4 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.1.6 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
@@ -62,6 +62,7 @@ foreach(_meyer_runtime_target
         MeyerScan_ExternalLaunchAdapter
         MeyerScan_ConfigCenter
         MeyerScan_Permission
+        MeyerScan_UIResources
         MeyerScan_UIComponents
         MeyerScan_RuntimeDataCenter
         MeyerScan_DatabaseQtAdapter
@@ -88,21 +89,6 @@ foreach(_meyer_runtime_target
 endforeach()
 
 meyer_copy_sqlite_runtime(MeyerScan)
-foreach(_meyer_resource_module
-        MyHomeUI
-        MyCaseUI
-        MyOrderCreateUI
-        MyOrderScanWorkspaceShell
-        MyScanWorkflowUI
-        MyDataProcessUI
-        MySendUI
-        MyScanReconstructStudio
-        MyUIComponents
-        MySettingsUI
-        MyCalibration3DUI
-        MyCalibrationColorUI)
-    meyer_copy_module_resources(MeyerScan ${_meyer_resource_module})
-endforeach()
 
 file(GLOB MEYER_SCAN_VTK_RUNTIME_DLLS "${MEYER_SCAN_VTK_ROOT}/bin/*.dll")
 file(GLOB MEYER_SCAN_OPENCV_RUNTIME_DLLS "${MEYER_SCAN_OPENCV_ROOT}/build/x64/vc14/bin/opencv_world330.dll")
@@ -117,10 +103,6 @@ add_custom_command(TARGET MeyerScan POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.json" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyPermission/config/permission_rules.md" "$<TARGET_FILE_DIR:MeyerScan>/config/permission_rules.md"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MEYER_ROOT_DIR}/MyExternalLaunchAdapter/test/external_order_sample.json" "$<TARGET_FILE_DIR:MeyerScan>/external_order_sample.json"
-    COMMAND ${CMAKE_COMMAND}
-            -Dsource_dir="${MEYER_ROOT_DIR}/MyOrderCreateUI/Resources/icon/createModule/sacanPlan"
-            -Dtarget_dir="$<TARGET_FILE_DIR:MeyerScan>/Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan"
-            -P "${MEYER_ROOT_DIR}/MyOrderCreateUI/copy_treatment_assets.cmake"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_VTK_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEYER_SCAN_OPENCV_RUNTIME_DLLS} "$<TARGET_FILE_DIR:MeyerScan>"
 )

@@ -2,12 +2,13 @@
 
 CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 
-- 提供患者管理和订单管理页签框架，对应帮助文档中的浏览模块。
+- 提供患者管理和订单管理页面，对应帮助文档中的浏览模块；顶部按钮负责页面级切换，默认订单页使用可随宽度自动换列的卡片流，患者页保留表格视图。
 - 浏览页自行绘制品牌、设置、返回首页、最小化和关闭等页面语义顶部入口；最小化/关闭使用 `CaseActionMinimize` / `CaseActionClose` 上报 MainExe，CaseUI 不直接操作顶层窗口。
 - 提供“返回首页”按钮，通过 `SetActionCallback()` 向 MainExe 上报 `CaseActionBackHome`；CaseUI 不直接切换首页。
 - 通过 `SetActionVisible()` / `SetActionEnabled()` 接收 MainExe 计算后的操作显隐和启用态；CaseUI 不直接读取权限文件。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。
 - 顶部按钮和患者/订单工具栏按钮优先使用 `MeyerScan_UIComponents.dll` 的标准按钮样式；UIComponents 不可用时降级为本地按钮样式。
+- 图标和 QSS 源文件归 `MyCaseUI/Resources` 管理，正式发布统一编译进 `MeyerScan_UIResources.dll`；公共加载器优先使用 `:/MeyerScan/Modules/MyCaseUI/...`。
 - 点击返回、导入、导出、删除、新建、打开、搜索、页签切换等客户操作时写入结构化日志。
 - 正式 `CaseUI` 不直接调用 `MeyerScan_Database.dll`；列表展示读取 `RuntimeDataCenter` 快照，测试宿主造数才允许经 `MyDatabaseQtAdapter` 准备最小 SQLite 演示数据。
 - 当前已动态加载 `MeyerScan_RuntimeDataCenter.dll`，患者页读取 `local.patients`，订单页读取 `local.orders`，用于展示运行时只读快照。
@@ -23,7 +24,8 @@ CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 - 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
 - 测试宿主从 exe 所在目录向上查找 `MeyerScan_AllModules.sln` 作为仓库根，因此同时兼容单模块输出目录 `MyCaseUI\bin\Release` 和根聚合输出目录 `F:\MeyerScan\bin\Release`。
 - 测试宿主会在输出目录生成 `config/CaseUITest/db_config.json` 和独立 SQLite 测试库，不复用公共 `config/db_config.json`，避免和 RuntimeDataCenterTest、SettingsUITest 等测试互相污染表结构。
-- `CaseUITest.exe --smoke` 会在空 SQLite 库中创建最小演示表并写入患者、订单、诊所、技工所、医生各一条数据，用于验证“数据库 -> RuntimeDataCenter -> CaseUI 患者/订单表格”的链路；正式 CaseUI 不负责建表、迁移或业务写入。
+- `CaseUITest.exe --smoke` 会在独立 SQLite 测试库中创建最小演示表，写入一条患者和多条订单，以及诊所、技工所、医生等依赖数据，用于验证“数据库 -> RuntimeDataCenter -> CaseUI”的表格/卡片链路；正式 CaseUI 不负责建表、迁移或业务写入。
+- `CaseUITest.exe --capture-screenshot <png> --capture-size <WxH>` 用于复查 1920x1080 四列和 1366x768 三列卡片布局。
 - 模块变更记录维护在 `CHANGELOG.md`。
 
 Build:

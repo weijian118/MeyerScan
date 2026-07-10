@@ -35,6 +35,10 @@
             "versionFunction": "GetMeyerModuleVersion"
         },
         {
+            "file": "MeyerScan_UIResources.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
             "file": "MeyerScan_HomeUI.dll",
             "versionFunction": "GetMeyerModuleVersion"
         },

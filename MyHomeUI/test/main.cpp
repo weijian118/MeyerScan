@@ -5,8 +5,10 @@
 #include <QDesktopWidget>
 #include <QDir>
 #include <QList>
+#include <QPixmap>
 #include <QRect>
 #include <QSize>
+#include <QStringList>
 #include <QTimer>
 #include <QToolButton>
 #include <QVariant>
@@ -69,6 +71,27 @@ int main(int argc, char* argv[]) {
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     QApplication app(argc, argv);
+    const QStringList arguments = app.arguments();
+    const bool smokeMode = arguments.contains("--smoke");
+    const int captureArgumentIndex = arguments.indexOf("--capture-screenshot");
+    const bool captureMode = captureArgumentIndex >= 0 &&
+                             captureArgumentIndex + 1 < arguments.size();
+    const QString capturePath = captureMode
+        ? arguments.at(captureArgumentIndex + 1)
+        : QString();
+    QSize captureSize(1920, 1080);
+    const int captureSizeArgumentIndex = arguments.indexOf("--capture-size");
+    if (captureSizeArgumentIndex >= 0 && captureSizeArgumentIndex + 1 < arguments.size()) {
+        // 使用 1366x768 这类 WxH 参数复查低分辨率，不在模块源码里写分辨率分支。
+        const QStringList parts = arguments.at(captureSizeArgumentIndex + 1).toLower().split('x');
+        bool widthOk = false;
+        bool heightOk = false;
+        const int width = parts.size() == 2 ? parts.at(0).toInt(&widthOk) : 0;
+        const int height = parts.size() == 2 ? parts.at(1).toInt(&heightOk) : 0;
+        if (widthOk && heightOk && width >= 960 && height >= 600) {
+            captureSize = QSize(width, height);
+        }
+    }
     // GetHomeUI 是 HomeUI DLL 暴露的 C ABI 工厂函数。
     // 测试宿主通过它验证 DLL 能正确加载并返回接口。
     IHomeUI* home = GetHomeUI();
@@ -115,12 +138,26 @@ int main(int argc, char* argv[]) {
     }
     // 测试窗口没有 MainExe 外壳，直接使用模块版本作为标题最直观。
     widget->setWindowTitle(home->GetModuleVersion());
-    ShowOnCurrentScreen(widget);
+    if (captureMode) {
+        // 固定 1920x1080 便于和参考图逐项比较；正常双击测试仍使用当前屏幕自适应尺寸。
+        widget->resize(captureSize);
+        widget->show();
+    } else {
+        ShowOnCurrentScreen(widget);
+    }
 
     // 冒烟模式只验证创建和显示，短暂停留后自动退出，便于批量测试。
-    if (argc > 1 && std::strcmp(argv[1], "--smoke") == 0) {
+    if (smokeMode) {
         // 用定时器退出而不是立即 return，是为了让 Qt 真正跑一次事件循环并完成绘制。
         QTimer::singleShot(300, &app, SLOT(quit()));
+    }
+
+    if (captureMode) {
+        // 等待布局和图标完成首帧绘制后再抓图，避免拿到尚未排版的空白 QWidget。
+        QTimer::singleShot(500, [&app, widget, capturePath]() {
+            const QPixmap screenshot = widget->grab();
+            app.exit(screenshot.save(capturePath, "PNG") ? 0 : 6);
+        });
     }
 
     // 退出前显式关闭和删除测试窗口，再调用模块 Shutdown，方便发现析构问题。

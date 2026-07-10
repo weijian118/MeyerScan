@@ -19,7 +19,7 @@ namespace ModuleInfo {
 const char* Name = "ScanReconstructStudio";
 
 // GetMeyerModuleVersion() 返回的代码版本，必须与 Version.rc 保持同步。
-const char* Version = "ScanReconstructStudio v0.1.1 (2026-07-10)";
+const char* Version = "ScanReconstructStudio v0.1.2 (2026-07-10)";
 }
 
 // 从子 DLL 解析出来的 C ABI 工厂函数类型。
@@ -54,6 +54,9 @@ ScanReconstructStudioWindow::ScanReconstructStudioWindow(const QString& appDir,
 ScanReconstructStudioWindow::~ScanReconstructStudioWindow() {
     // 顺序很重要：先让子模块释放 VTK/OpenGL，再清模块指针。
     ReleaseCurrentStepResources();
+    // 析构阶段不会再返回主事件循环，主动处理已经安全排队的 DeferredDelete，
+    // 确保 QVTK 原生窗口在子模块 Shutdown 和进程退出前完成销毁。
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     UnloadModules();
 }
 
@@ -90,7 +93,21 @@ bool ScanReconstructStudioWindow::RunSmoke() {
 
     // 前后切换一次，验证页面释放和重建链路。
     SwitchToStep(StepDataProcess);
+    if (!m_pages.contains(StepDataProcess)) {
+        WriteLog(LogLevel::Error, "RunSmoke", "Data process page was not created");
+        return false;
+    }
+    // 切换函数完整返回后再处理旧页面的 deleteLater，避免在释放函数内部重入 QWidget 析构。
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+
     SwitchToStep(StepScan);
+    if (!m_pages.contains(StepScan)) {
+        WriteLog(LogLevel::Error, "RunSmoke", "Scan page was not recreated");
+        return false;
+    }
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
     WriteLog(LogLevel::Info, "RunSmoke", "ScanReconstructStudio smoke passed");
     return true;
 }
@@ -343,9 +360,6 @@ void ScanReconstructStudioWindow::ReleaseCurrentStepResources() {
     }
     m_pages.remove(m_currentStep);
     page->deleteLater();
-
-    // 烟测时强制处理 DeferredDelete，让释放路径可观察。
-    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
 // 关闭子模块并清理 DLL 句柄。

@@ -2,10 +2,17 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.5.0`：左/中/右工作区改用不可折叠 `QSplitter`，中间牙弓获得主要伸缩空间，左右表单在 1366x768 下仍保持可读宽度。
+- 治疗类型由四列调整为三列，避免英文和后续长翻译截断；右侧 Summary/Bridge/Shade 改成无嵌套卡片边框的语义分组。
+- 窄屏下四个流程动作改为两行两列，消除按钮压缩和相邻按钮粘连。
+- 治疗方案图片根目录优先使用 `MeyerScan_UIResources.dll` 的 `:/MeyerScan/Modules/MyOrderCreateUI/...`，保留旧散文件和源码目录兼容降级。
+- 删除 VS2015/CMake 对治疗方案散文件的 PostBuild 复制和旧 `copy_treatment_assets.cmake`；测试宿主支持 1920x1080、1366x768 两种截图验收。
 - 版本升级为 `v0.4.1`，同步更新代码版本、CMake 和 `Version.rc`。
 - 删除建单页内部重复的 Order / Scan / Process / Send 步骤条及 `OrderCreateActionStepClicked`；工作台步骤导航唯一归 `MyOrderScanWorkspaceShell`，本模块只提供 Order 步骤内容。
 - 清理源码中的局部 `setStyleSheet()`，治疗类型按钮、牙弓区域、摘要、表格和降级控件样式全部迁入 `Resources/qss/order_create.qss`。
 - UIComponents 缺失或版本不兼容时仍只设置语义属性，由建单模块根 QSS 提供降级视觉，避免在 C++ 中重新拼样式字符串。
+- 最终截图复核覆盖 1920x1080 与 1366x768；左侧长表单走滚动区，中间牙弓保持主工作区，右侧摘要和两行流程动作无重叠。
+- 牙弓自绘画布背景和资源缺失提示颜色改由 QSS/Qt Palette 提供，C++ 只负责图片、mask 和交互绘制，不再保存界面色值。
 
 ## 2026-07-08
 

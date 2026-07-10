@@ -35,7 +35,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.4 (2026-07-10)";
+const char* Version = "MeyerScan_MainExe v0.1.6 (2026-07-10)";
 }
 
 struct VersionModuleEntry {
@@ -52,6 +52,7 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_ConfigCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Permission.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_UIComponents.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_UIResources.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_HomeUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CaseUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_SettingsUI.dll", "GetMeyerModuleVersion"},
@@ -687,6 +688,14 @@ void MainWindow::HandleCaseAction(int actionId) {
     case CaseActionClose:
         // 浏览页右上角关闭按钮的产品语义是关闭当前浏览页并回到首页。
         ShowHome();
+        break;
+    case CaseActionCloud:
+        // 云端病例同步尚未接入；先保留稳定动作 ID、日志和状态反馈。
+        WriteStatus(tr("Cloud action recorded"));
+        break;
+    case CaseActionScreenshot:
+        // 截图文件策略后续由统一截图/导出服务实现，当前不让 CaseUI 直接写文件。
+        WriteStatus(tr("Screenshot action recorded"));
         break;
     case CaseActionSwitchTab:
         break;

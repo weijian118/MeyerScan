@@ -18,13 +18,8 @@
 namespace {
 namespace ModuleInfo {
 const char* Name = "MeyerScan_SendUI";
-const char* Version = "MeyerScan_SendUI v0.1.0 (2026-07-07)";
+const char* Version = "MeyerScan_SendUI v0.1.1 (2026-07-10)";
 }
-
-const char* kPageBackground = "#dfe4ea";
-const char* kPanelBackground = "#ffffff";
-const char* kPrimaryColor = "#007d68";
-const char* kBorderColor = "#d8e0e7";
 }
 
 SendUIImpl& SendUIImpl::Instance() {
@@ -185,9 +180,9 @@ QWidget* SendUIImpl::CreateCaseInfoSection(QWidget* parent) {
     m_orderTypeEdit = CreateReadOnlyLineEdit(section);
     m_clinicEdit = CreateReadOnlyLineEdit(section);
     m_dataFormatCombo = m_uiComponents ? m_uiComponents->CreateComboBox(section) : new QComboBox(section);
-    m_dataFormatCombo->addItem("STL");
-    m_dataFormatCombo->addItem("PLY");
-    m_dataFormatCombo->addItem("OBJ");
+    m_dataFormatCombo->addItem(tr("STL"));
+    m_dataFormatCombo->addItem(tr("PLY"));
+    m_dataFormatCombo->addItem(tr("OBJ"));
 
     grid->addWidget(CreateFieldLabel(tr("Name"), section), 0, 0);
     grid->addWidget(CreateFieldLabel(tr("Doctor"), section), 0, 1);

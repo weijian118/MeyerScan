@@ -2,11 +2,16 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.1.2`，修复独立 EXE smoke 在 Scan -> Process -> Scan 第二次创建 QVTK 页面时访问冲突的问题。
+- 页面释放函数只排队 `deleteLater()`；smoke 和析构在完整切换调用返回后再处理 DeferredDelete，避免释放函数内部重入 QWidget/QVTK 析构。
+- smoke 增加目标页面实际创建断言，不能只调用切换函数后直接判定成功。
+- 删除 VS2015 PostBuild 对模块 `Resources` 散文件的复制；正式运行统一从 `MeyerScan_UIResources.dll` 读取 QSS，源码目录仅用于开发降级。
 - 版本升级为 `v0.1.1`，独立 EXE 和嵌入 DLL 分别编译 `Version.rc` / `VersionDll.rc`，文件版本与代码版本保持一致。
 - 新增 `MeyerScan_ScanReconstructStudio.dll` 和公开 `IScanReconstructStudio` 接口，同一套实现可生成可嵌入 QWidget，也可生成 `ScanReconstructStudio.exe` 独立运行。
 - 新增 DLL VS2015 工程并加入单模块/根聚合解决方案；CMake 同时生成 EXE、DLL 和 smoke 入口。
 - 界面样式和资源统一迁入模块 `Resources`，源码通过公共 QSS/资源函数加载。
 - 嵌入工作台时由外层 OrderScanWorkspaceShell 负责品牌和步骤导航，后续接入必须避免双壳/双步骤条；独立 EXE 才拥有独立窗口显示形态。
+- 最终回归中 `ScanReconstructStudio.exe --smoke`、ScanWorkflowUITest、DataProcessUITest 和 MainExe 工作台链路全部返回 0。
 
 ## 2026-07-06
 

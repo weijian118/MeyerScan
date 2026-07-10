@@ -15,7 +15,7 @@ namespace {
 // 写入测试专用的版本模块清单。
 // VersionManager 的设计是“先读 config/version_modules.json，再按清单输出版本信息”，
 // 所以测试宿主需要先造一个最小配置文件，避免依赖人工提前拷贝配置。
-void WriteVersionManifest(const QString& appDir) {
+bool WriteVersionManifest(const QString& appDir) {
     // QDir 使用应用程序所在目录作为根目录，避免 currentPath 被 VS 或第三方启动方式影响。
     QDir dir(appDir);
     // mkpath 会递归创建 config 目录；目录已存在时返回 true，不会破坏旧文件。
@@ -41,7 +41,9 @@ void WriteVersionManifest(const QString& appDir) {
                << "    }\n"
                << "  ]\n"
                << "}\n";
+        return true;
     }
+    return false;
 }
 
 // 简单断言工具。
@@ -65,14 +67,27 @@ int main(int argc, char* argv[]) {
     // 本测试不创建 QWidget，因此不需要 QApplication。
     QCoreApplication app(argc, argv);
 
-    // appDir 固定为 exe 所在目录，是所有模块获取资源/配置/日志路径的统一规则。
+    // appDir 固定为 exe 所在目录，用来定位测试依赖和创建隔离测试根目录。
     const QString appDir = QCoreApplication::applicationDirPath();
-    // 版本清单输出到 logs 下，和正式 MeyerScan.exe 的运行目录结构保持一致。
-    const QString logDir = QDir(appDir).filePath("logs");
-    // 日志目录不存在时先创建，否则 VersionManager 写文件会失败。
+    // 测试不能写 appDir/config，否则根聚合输出中的正式 version_modules.json 会被两项测试清单覆盖。
+    // 这里创建与正式目录结构相同、但完全隔离的 test_runtime/VersionManagerTest。
+    const QString testAppDir = QDir(appDir).filePath("test_runtime/VersionManagerTest");
+    const QString logDir = QDir(testAppDir).filePath("logs");
     QDir().mkpath(logDir);
-    // 先写 manifest，再初始化模块，确保模块初始化后能读到测试配置。
-    WriteVersionManifest(appDir);
+
+    // VersionManager 按测试 appDir 查找清单中的 DLL，因此复制一份自研模块到隔离根目录。
+    // QFile::remove 只删除明确的单个测试文件，不递归清理目录，重复执行也能得到同一结果。
+    const QString sourceModule = QDir(appDir).filePath("MeyerScan_VersionManager.dll");
+    const QString testModule = QDir(testAppDir).filePath("MeyerScan_VersionManager.dll");
+    QFile::remove(testModule);
+    if (!Check(QFile::copy(sourceModule, testModule), "测试模块复制到隔离目录")) {
+        return 10;
+    }
+
+    // 先写测试专用 manifest，再初始化模块；任何时候都不触碰 MainExe 正式配置。
+    if (!Check(WriteVersionManifest(testAppDir), "测试版本清单写入隔离目录")) {
+        return 11;
+    }
 
     // 工厂函数是 DLL 对外唯一入口；先验证入口有效，再测试具体功能。
     IVersionManager* manager = GetVersionManager();
@@ -80,7 +95,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 接收应用目录和日志目录，内部会保存这些路径供后续 WriteVersionList 使用。
-    if (!Check(manager->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(manager->Init(testAppDir.toUtf8().constData(), logDir.toUtf8().constData()),
                "VersionManager 初始化成功")) {
         return 2;
     }

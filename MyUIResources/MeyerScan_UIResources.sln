@@ -1,0 +1,25 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_UIResources", "MeyerScan_UIResources.vcxproj", "{1EC58318-A5D0-467A-8EA3-F23DA037ADF6}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UIResourcesTest", "UIResourcesTest.vcxproj", "{21139A2A-172E-4CA9-9B6F-E8901B474ED8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{1EC58318-A5D0-467A-8EA3-F23DA037ADF6} = {1EC58318-A5D0-467A-8EA3-F23DA037ADF6}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1EC58318-A5D0-467A-8EA3-F23DA037ADF6}.Release|x64.ActiveCfg = Release|x64
+		{1EC58318-A5D0-467A-8EA3-F23DA037ADF6}.Release|x64.Build.0 = Release|x64
+		{21139A2A-172E-4CA9-9B6F-E8901B474ED8}.Release|x64.ActiveCfg = Release|x64
+		{21139A2A-172E-4CA9-9B6F-E8901B474ED8}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

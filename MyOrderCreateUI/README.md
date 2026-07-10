@@ -122,9 +122,10 @@
 ## 资源文件规则
 
 - 源码仓库中，治疗方案资源放在 `MyOrderCreateUI/Resources/icon/createModule/sacanPlan/`，跟随模块一起维护和提交。
-- 构建后，CMake 和 VS2015 PostBuild 会复制到运行目录 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan/`。
-- 运行时优先从 `Init(appDirUtf8, logDirUtf8)` 传入的应用目录查找 `Resources/Modules/MyOrderCreateUI/...`，再兼容测试宿主目录和历史 `icon/createModule/sacanPlan`。
-- 模块私有资源先放本模块 `Resources`，构建时复制到总运行目录；多个模块共用的资源后续放 `Resources/Common` 或 UIComponents 统一管理；不要在运行根目录散落图片文件。
+- 构建时由 `MyUIResources/tools/GenerateResourceManifest.ps1` 自动收集本目录资源，编译进 `MeyerScan_UIResources.dll`，运行路径为 `:/MeyerScan/Modules/MyOrderCreateUI/icon/createModule/sacanPlan/`。
+- 运行时首先使用资源 DLL；仅在资源 DLL 缺失的开发/旧安装兼容场景下，才查找源码目录、`Resources/Modules/MyOrderCreateUI/...` 和历史 `icon/createModule/sacanPlan`。
+- 不再通过 CMake/VS2015 PostBuild 把牙位图、mask、叠加图和 QSS 复制为客户可修改的散文件。
+- 多个模块共用的控件视觉归 UIComponents 管理；资源二进制承载归 UIResources，二者职责不要混合。
 - 资源路径禁止使用 `QDir::currentPath()` 推导，防止第三方拉起 MeyerScan.exe 时工作目录变化导致资源缺失。
 
 ## 构建
@@ -139,7 +140,7 @@
 - CMake/VSCode：默认开启 `OrderCreateUITest` 测试目标，可通过 `MEYER_BUILD_ORDERCREATEUITEST` 控制。
 - 双击 `OrderCreateUITest.exe` 默认打开建单界面，便于人工验收。
 - `OrderCreateUITest.exe --smoke` 执行自动冒烟测试并立即退出，适合命令行/批量验证。
-- `OrderCreateUITest.exe --capture-screenshot <png>` 固定 1920x1080 渲染建单界面并保存截图，用于和 `D:\wj\OrderTreatmentPlan\治疗方案选择.mp4` 提取帧做人工逐帧对齐。
+- `OrderCreateUITest.exe --capture-screenshot <png> --capture-size <WxH>` 按指定尺寸渲染建单界面并保存截图；省略尺寸时默认 1920x1080，可用于和 `D:\wj\OrderTreatmentPlan\治疗方案选择.mp4` 提取帧做人工逐帧对齐。
 - 当前 smoke 覆盖治疗方案资源控件、上下文牙位填充、清空/确认动作、扫描流程 JSON、非 bridge 脏桥连接点过滤、普通桥区间 `16-18` 和跨中线桥区间 `11-22`。
 
 ## 维护记录要求

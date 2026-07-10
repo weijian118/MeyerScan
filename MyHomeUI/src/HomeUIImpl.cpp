@@ -7,6 +7,8 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QPaintEvent>
+#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSizePolicy>
@@ -22,8 +24,47 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_HomeUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_HomeUI v0.2.1 (2026-07-10)";
+const char* Version = "MeyerScan_HomeUI v0.3.1 (2026-07-10)";
 }
+
+// 首页背景控件负责按窗口尺寸绘制产品视觉图。
+// 背景图属于页面内容而不是控件样式，因此这里使用 QPainter；按钮、文字、边框仍全部由 QSS 管理。
+class HomeBackgroundWidget final : public QWidget {
+public:
+    explicit HomeBackgroundWidget(const QString& imagePath, QWidget* parent = nullptr)
+        : QWidget(parent), m_background(imagePath) {
+        // 首页本身作为普通布局容器，不创建额外背景 QLabel，避免背景控件参与布局挤压入口卡片。
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+
+protected:
+    // 每次窗口尺寸变化后 Qt 会触发重绘；这里按当前 rect 重新缩放，不保存屏幕分辨率 if/else 分支。
+    void paintEvent(QPaintEvent* event) override {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+        if (m_background.isNull()) {
+            // 图片缺失时用浅色填充，界面仍保持可操作；缺失原因由资源加载日志定位。
+            painter.fillRect(rect(), QColor(244, 246, 248));
+            return;
+        }
+
+        // KeepAspectRatioByExpanding 保持产品图形比例，并覆盖整个窗口。
+        // 只裁掉超出窗口宽高比的边缘，避免 IgnoreAspectRatio 拉伸牙齿和设备图形。
+        const QPixmap scaled = m_background.scaled(
+            size(),
+            Qt::KeepAspectRatioByExpanding,
+            Qt::SmoothTransformation);
+        const QPoint topLeft((width() - scaled.width()) / 2,
+                             (height() - scaled.height()) / 2);
+        painter.drawPixmap(topLeft, scaled);
+    }
+
+private:
+    // QPixmap 在 GUI 线程创建和绘制，生命周期与首页根控件一致。
+    QPixmap m_background;
+};
 }
 
 // 返回首页模块单例。
@@ -162,7 +203,9 @@ void HomeUIImpl::LoadUIComponents() {
 QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     // root 的 parent 由 MainExe 的内容区容器或测试窗口传入。
     // Qt 会按父子关系释放子控件，后面只需要 delete root 即可释放整页。
-    auto* root = new QWidget(parent);
+    const QString backgroundPath = MeyerQtModule::ModuleResourceFile(
+        "MyHomeUI", "icon/home", "background.png");
+    auto* root = new HomeBackgroundWidget(backgroundPath, parent);
     // objectName 方便 qss、测试宿主或调试工具定位首页根节点。
     root->setObjectName("MeyerScanHomeUIRoot");
     root->setMinimumSize(960, 600);
@@ -178,17 +221,17 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
 
     // ── 首页顶部业务区 ──
     auto* pageToolLayout = new QHBoxLayout();
-    pageToolLayout->setContentsMargins(20, 14, 20, 4);
+    pageToolLayout->setContentsMargins(20, 16, 20, 8);
     pageToolLayout->setSpacing(10);
 
     // 品牌图片属于首页视觉内容，不放在 MainExe 的通用窗口层。
     auto* brandLabel = new QLabel(root);
     brandLabel->setObjectName("HomeBrandLabel");
-    const QString brandPath = MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", "logo.png");
+    const QString brandPath = MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", "logo_zh.png");
     const QPixmap brandPixmap(brandPath);
     if (!brandPixmap.isNull()) {
         // scaledToHeight 保持图片宽高比，布局只约束高度，不按语言或分辨率写坐标分支。
-        brandLabel->setPixmap(brandPixmap.scaledToHeight(48, Qt::SmoothTransformation));
+        brandLabel->setPixmap(brandPixmap.scaledToHeight(44, Qt::SmoothTransformation));
     } else {
         // 资源缺失时保留可见品牌文本，避免顶部左侧完全空白；源文案仍按多语言规则使用 tr。
         brandLabel->setText(tr("MEYER"));
@@ -219,16 +262,16 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
         button->setToolTip(tooltip);
         button->setCursor(Qt::PointingHandCursor);
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        button->setFixedSize(44, 40);
+        button->setFixedSize(46, 44);
 
         QIcon icon;
-        icon.addFile(normalPath, QSize(24, 24), QIcon::Normal, QIcon::Off);
+        icon.addFile(normalPath, QSize(34, 34), QIcon::Normal, QIcon::Off);
         icon.addFile(MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", hoverIcon),
-                     QSize(24, 24),
+                     QSize(34, 34),
                      QIcon::Active,
                      QIcon::Off);
         button->setIcon(icon);
-        button->setIconSize(QSize(24, 24));
+        button->setIconSize(QSize(34, 34));
         QObject::connect(button, &QToolButton::clicked, [this, actionId]() {
             NotifyEntryClicked(actionId);
         });
@@ -246,19 +289,19 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(24);
 
-    // 左侧视觉区域通过 qss 背景图复用旧软件首页资源。
-    // 该区域不承载业务点击，避免背景层和入口按钮出现事件冲突。
-    auto* visualPanel = new QFrame(root);
+    // 左侧区域只保留布局占位；产品视觉图由根控件统一缩放绘制。
+    // 背景不参与布局，因此不会拦截鼠标，也不会在不同分辨率下挤压按钮。
+    auto* visualPanel = new QWidget(root);
     visualPanel->setObjectName("HomeVisualPanel");
-    visualPanel->setMinimumWidth(420);
-    contentLayout->addWidget(visualPanel, 7);
+    visualPanel->setMinimumWidth(360);
+    contentLayout->addWidget(visualPanel, 10);
 
     auto* grid = new QGridLayout();
     // 入口卡片布局参考当前软件首页右侧四宫格。
     // 边距使用比例式 stretch 参与布局，避免 4K 屏幕上固定坐标过于靠边。
-    grid->setContentsMargins(10, 110, 36, 130);
-    grid->setHorizontalSpacing(14);
-    grid->setVerticalSpacing(14);
+    grid->setContentsMargins(12, 110, 48, 130);
+    grid->setHorizontalSpacing(16);
+    grid->setVerticalSpacing(16);
 
     const QStringList names = {
         // UI 可见文本统一使用 tr("English source text")，
@@ -298,11 +341,43 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
             "HomeExercise_b.png",
             "HomeSetting_b.png"
         };
-        button->setIcon(QIcon(MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", entryIcons[i])));
+        const QStringList entryHoverIcons = {
+            "HomeCreate_h.png",
+            "HomeBrowse_h.png",
+            "HomeExercise_h.png",
+            "HomeSetting_h.png"
+        };
+        // HomeCreate/HomeBrowse 等历史资源是“整张入口卡片”，不是纯圆形图标。
+        // 这里按图片相对中心裁出圆形视觉区域，避免把整张 794x628 卡片缩成 92px 后图标只剩十几像素。
+        auto cropEntryVisual = [](const QString& path) {
+            const QPixmap source(path);
+            if (source.isNull()) {
+                return QPixmap();
+            }
+            const int side = qRound(source.height() * 0.44);
+            const int centerX = source.width() / 2;
+            const int centerY = qRound(source.height() * 0.39);
+            const QRect cropRect(centerX - side / 2, centerY - side / 2, side, side);
+            return source.copy(cropRect.intersected(source.rect()));
+        };
+        QIcon entryIcon;
+        entryIcon.addPixmap(
+            cropEntryVisual(MeyerQtModule::ModuleResourceFile(
+                "MyHomeUI", "icon/home", entryIcons[i])),
+            QIcon::Normal,
+            QIcon::Off);
+        entryIcon.addPixmap(
+            cropEntryVisual(MeyerQtModule::ModuleResourceFile(
+                "MyHomeUI", "icon/home", entryHoverIcons[i])),
+            QIcon::Active,
+            QIcon::Off);
+        button->setIcon(entryIcon);
         // 图标大小参考参考图：92x92 在高分屏下可通过 UIComponents ScaleX 进一步缩放。
-        button->setIconSize(QSize(92, 92));
+        button->setIconSize(QSize(112, 112));
         // 最小尺寸参考当前软件入口卡片，但最终仍由布局随屏幕尺寸拉伸。
-        button->setMinimumSize(260, 190);
+        button->setMinimumSize(250, 190);
+        // 参考界面在 1920x1080 下入口卡片约 320px 高；限制最大高度避免大屏时卡片被纵向拉成长条。
+        button->setMaximumHeight(320);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         // lambda 捕获 entryId 的值，而不是捕获 i。
         // 如果捕获 i，循环结束后所有按钮可能都读到同一个最终下标。
@@ -318,7 +393,7 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
         grid->addWidget(button, i / 2, i % 2);
     }
 
-    contentLayout->addLayout(grid, 8);
+    contentLayout->addLayout(grid, 9);
     rootLayout->addLayout(contentLayout, 1);
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);

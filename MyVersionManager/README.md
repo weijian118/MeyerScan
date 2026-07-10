@@ -6,7 +6,7 @@
 
 - MainExe 当前输出到 `logs/versionList/versionList_yyyyMMdd_HHmmss_zzz.json`。
 - 当前只记录 `version_modules.json` 中声明的 MeyerScan 拆分模块 EXE/DLL，不记录 Qt、VTK、OpenCV、OpenSSL、AWS、VC/UCRT、SQL 驱动等第三方库。
-- 历史骨架的默认清单已同步到 23 个声明模块，包含 `ScanReconstructStudio.exe`、`MeyerScan_ScanReconstructStudio.dll`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 和 `MeyerScan_SendUI.dll`；如果运行目录存在 `config/version_modules.json`，仍以该 manifest 为准。
+- 历史骨架的默认清单已同步到当前 24 个声明模块，包含 `MeyerScan_UIResources.dll`、`ScanReconstructStudio.exe`、`MeyerScan_ScanReconstructStudio.dll`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 和 `MeyerScan_SendUI.dll`；如果运行目录存在 `config/version_modules.json`，仍以该 manifest 为准。
 - 历史 `MeyerScan_VersionManager.dll` 骨架也已改成同样的 manifest 规则，输出 schemaVersion=2，并记录 `fileVersion`、`codeVersion` 和 `versionMatch`，避免后续误用旧模块时重新扫描全部 DLL 或回到旧字段口径。
 
 保留本模块目录的原因：
@@ -18,4 +18,4 @@
 ## 测试入口
 - VS2015：打开 `MeyerScan_VersionManager.sln`，构建并运行 `VersionManagerTest.exe`。
 - CMake/VSCode：默认开启 `VersionManagerTest` 测试目标，可通过 `MEYER_BUILD_VERSIONMANAGERTEST` 控制。
-- 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。
+- 测试宿主只验证本模块边界和必要依赖链路，测试配置、模块副本和日志统一写入 `test_runtime/VersionManagerTest` 隔离目录，禁止覆盖 MainExe 正式 `config/version_modules.json`。

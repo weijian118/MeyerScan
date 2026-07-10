@@ -47,14 +47,8 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanWorkflowUI";
 
 // Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_ScanWorkflowUI v0.2.1 (2026-07-07)";
+const char* Version = "MeyerScan_ScanWorkflowUI v0.2.2 (2026-07-10)";
 }
-
-const char* kPageBackground = "#dfe4ea";
-const char* kPanelBackground = "#ffffff";
-const char* kPrimaryColor = "#007d68";
-const char* kMutedText = "#687785";
-const char* kBorderColor = "#cbd5dd";
 }
 
 // QVTKWidget 本身会处理大量鼠标事件；这里派生一个轻量子类，只接管滚轮缩放。
@@ -260,11 +254,17 @@ void ScanWorkflowUIImpl::Activate() {
 void ScanWorkflowUIImpl::DeactivateAndRelease() {
     // QVTKWidget owns native OpenGL resources, so hiding it is not enough.
     if (m_vtkWidget) {
-        // Detach the renderer first to avoid stale render-window references.
-        if (m_renderer && m_vtkWidget->GetRenderWindow()) {
-            m_vtkWidget->GetRenderWindow()->RemoveRenderer(m_renderer);
+        // 先从 render window 移除 renderer，再清空 QVTKWidget 子类保存的 renderer 指针。
+        // 如果只 Delete vtkRenderer，滚轮或析构路径仍可能访问已经释放的地址。
+        vtkRenderWindow* renderWindow = m_vtkWidget->GetRenderWindow();
+        if (m_renderer && renderWindow) {
+            renderWindow->RemoveRenderer(m_renderer);
         }
-        // deleteLater is safe when called during Qt event processing.
+        m_vtkWidget->SetRenderer(nullptr);
+        // QVTKWidget 还会持有 vtkRenderWindow/Interactor；显式断开后再延迟删除，
+        // 反复离开和重新进入 Scan 页面时不会复用上一次的 OpenGL 窗口状态。
+        m_vtkWidget->SetRenderWindow(nullptr);
+        // 延迟删除让当前按钮/页面切换调用栈先返回，避免信号处理中销毁原生窗口句柄。
         m_vtkWidget->setParent(nullptr);
         m_vtkWidget->deleteLater();
         m_vtkWidget = nullptr;
@@ -275,6 +275,12 @@ void ScanWorkflowUIImpl::DeactivateAndRelease() {
         m_renderer->Delete();
         m_renderer = nullptr;
     }
+
+    // 页面根控件随后由壳子释放；提前清空非 owning 指针，避免延迟删除后误访问旧页面。
+    m_root = nullptr;
+    m_statusLabel = nullptr;
+    m_scanModeBar = nullptr;
+    m_scanProcessButtons.clear();
 
     WriteLog(LogLevel::Info, "DeactivateAndRelease", "Scan VTK resources released");
 }

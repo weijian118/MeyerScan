@@ -60,8 +60,7 @@ xcopy /Y /D "$(VtkRoot)\bin\*.dll" "$(OutDir)"
 xcopy /Y /D "$(OpenCVBinDir)\opencv_world330.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyScanWorkflowUI\bin\$(Configuration)\MeyerScan_ScanWorkflowUI.dll" "$(OutDir)"
-xcopy /Y /D "$(ProjectDir)..\MyDataProcessUI\bin\$(Configuration)\MeyerScan_DataProcessUI.dll" "$(OutDir)"
-if exist "$(ProjectDir)Resources" xcopy /Y /E /I "$(ProjectDir)Resources" "$(OutDir)Resources\Modules\MyScanReconstructStudio"</Command>
+xcopy /Y /D "$(ProjectDir)..\MyDataProcessUI\bin\$(Configuration)\MeyerScan_DataProcessUI.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

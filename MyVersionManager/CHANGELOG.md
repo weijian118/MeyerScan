@@ -2,6 +2,8 @@
 
 ## 2026-07-10
 
+- `VersionManagerTest` 改为在 `test_runtime/VersionManagerTest` 中生成独立配置、模块副本和版本输出，禁止覆盖根 Release 的正式 `config/version_modules.json`。
+- 回归验证：测试前后正式清单 SHA-256 一致，正式清单仍为 24 项；测试专用缺失模块与输出文件只存在于隔离目录。
 - `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；历史骨架继续读取 `version_modules.json`，当前正式运行时版本清单仍由 MainExe 内置能力生成。
 
 ## 2026-07-06

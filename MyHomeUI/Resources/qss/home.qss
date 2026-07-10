@@ -1,16 +1,17 @@
 /* HomeUI 样式：首页自己绘制品牌、业务工具和窗口控制区。 */
+QWidget {
+    font-family: "Microsoft YaHei UI";
+}
+
 /* 首页根容器背景 */
 QWidget#MeyerScanHomeUIRoot {
     background-color: #f4f6f8;
 }
 
-/* 左侧视觉面板 — 使用背景图 */
-QFrame#HomeVisualPanel {
+/* 左侧区域仅参与布局，背景由根控件按比例绘制。 */
+QWidget#HomeVisualPanel {
     border: 0;
-    background-color: transparent;
-    background-image: url("@MEYER_MODULE_RESOURCE_DIR@/icon/home/background.png");
-    background-position: left bottom;
-    background-repeat: no-repeat;
+    background: transparent;
 }
 
 QLabel#HomeBrandLabel {
@@ -24,10 +25,10 @@ QToolButton#HomePageToolButton {
     border: 0;
     border-radius: 6px;
     background: transparent;
-    min-width: 44px;
-    min-height: 40px;
-    max-width: 44px;
-    max-height: 40px;
+    min-width: 46px;
+    min-height: 44px;
+    max-width: 46px;
+    max-height: 44px;
 }
 QToolButton#HomePageToolButton:hover {
     background: #e7efed;
@@ -36,16 +37,23 @@ QToolButton#HomePageToolButton:hover {
 /* 四个入口大按钮 */
 QToolButton#HomeEntryButton {
     border: 1px solid #d7dde2;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 235);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 242);
     color: #111111;
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
-    padding: 18px;
+    padding: 20px;
 }
 QToolButton#HomeEntryButton:hover {
-    border-color: #c4d0d9;
+    border-color: #9fb8b2;
     background: #ffffff;
+}
+QToolButton#HomeEntryButton:pressed {
+    border-color: #007d68;
+    background: #f1f8f6;
+}
+QToolButton#HomeEntryButton:focus {
+    border: 2px solid #007d68;
 }
 QToolButton#HomeEntryButton:disabled {
     color: #9aa5af;

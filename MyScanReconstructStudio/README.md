@@ -33,5 +33,6 @@ VS2015 通过 `..\cmake\MeyerScanScanThirdParty.props` 复制运行时 DLL。迁
 
 - VS2015：打开 `MeyerScan_ScanReconstructStudio.sln`，编译 `Release|x64`，同时验证 EXE 和 DLL 工程。
 - 烟测：运行 `bin\Release\ScanReconstructStudio.exe --smoke`，返回码为 0 表示动态加载、页面创建、阶段切换和资源释放链路通过。
+- 模块 QSS 源码仍保存在本模块 `Resources`，正式发布由 `MeyerScan_UIResources.dll` 统一注册；VS2015 PostBuild 不再复制散 QSS。
 - 人工看界面：运行 `bin\Release\ScanReconstructStudio.exe`。
 - CMake：已用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 和 VS2015 x64 生成器完成根聚合 `Release` 构建，`ScanReconstructStudio.exe --smoke` 返回 0。

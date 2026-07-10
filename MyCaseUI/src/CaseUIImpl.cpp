@@ -1,15 +1,22 @@
 ﻿#include "CaseUIImpl.h"
 #include "MeyerQtModuleUtils.h"
+#include <QButtonGroup>
+#include <QComboBox>
+#include <QDateEdit>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QTableWidget>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QToolButton>
 #include <QVariant>
 #include <QVBoxLayout>
@@ -27,7 +34,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CaseUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_CaseUI v0.2.1 (2026-07-10)";
+const char* Version = "MeyerScan_CaseUI v0.3.1 (2026-07-10)";
 }
 }
 
@@ -222,6 +229,15 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
+    // QTabWidget 只管理两个内容页，不显示 Qt 默认页签。
+    // 页面级切换入口放在顶部语义区域，避免出现上下两套导航。
+    auto* tabs = new QTabWidget(root);
+    tabs->setObjectName("CaseContentTabs");
+    tabs->addTab(CreatePatientTab(tabs), tr("Patients"));
+    tabs->addTab(CreateOrderTab(tabs), tr("Orders"));
+    tabs->tabBar()->hide();
+    tabs->setCurrentIndex(1);
+
     auto* topBar = new QFrame(root);
     topBar->setObjectName("CaseTopBar");
     auto* headerLayout = new QHBoxLayout(topBar);
@@ -231,7 +247,7 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     auto* brand = new QLabel(topBar);
     brand->setObjectName("CaseBrandLabel");
     brand->setMinimumWidth(180);
-    const QPixmap brandPixmap(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", "logoEn.png"));
+    const QPixmap brandPixmap(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", "logo.png"));
     if (!brandPixmap.isNull()) {
         // 图片按高度缩放并保持宽高比，避免不同分辨率下固定坐标拉伸品牌图形。
         brand->setPixmap(brandPixmap.scaledToHeight(44, Qt::SmoothTransformation));
@@ -240,9 +256,50 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     }
     headerLayout->addWidget(brand, 0);
 
-    auto* header = new QLabel(tr("Orders"), topBar);
-    header->setObjectName("CaseTitleLabel");
-    headerLayout->addWidget(header, 1, Qt::AlignCenter);
+    headerLayout->addStretch(1);
+
+    // 订单/患者按钮使用同一个 QButtonGroup 保证单选。
+    // checked 状态只表示当前内容页，不参与权限判断或数据库查询。
+    auto* modeGroup = new QButtonGroup(topBar);
+    modeGroup->setExclusive(true);
+    auto createModeButton = [topBar](const QString& text,
+                                     const QString& normalIcon,
+                                     const QString& selectedIcon) {
+        auto* button = new QToolButton(topBar);
+        button->setObjectName("CaseModeButton");
+        button->setText(text);
+        button->setCheckable(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setMinimumSize(132, 52);
+
+        QIcon icon;
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", normalIcon),
+                     QSize(28, 28), QIcon::Normal, QIcon::Off);
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", selectedIcon),
+                     QSize(28, 28), QIcon::Normal, QIcon::On);
+        button->setIcon(icon);
+        button->setIconSize(QSize(28, 28));
+        return button;
+    };
+
+    auto* ordersModeButton = createModeButton(
+        tr("Orders"), "browseOrder_b.png", "browseOrder_h.png");
+    auto* patientsModeButton = createModeButton(
+        tr("Patients"), "browsePatient_b.png", "browsePatient_h.png");
+    modeGroup->addButton(ordersModeButton, 1);
+    modeGroup->addButton(patientsModeButton, 0);
+    ordersModeButton->setChecked(true);
+    headerLayout->addWidget(ordersModeButton, 0, Qt::AlignVCenter);
+    headerLayout->addWidget(patientsModeButton, 0, Qt::AlignVCenter);
+    headerLayout->addStretch(1);
+
+    QObject::connect(ordersModeButton, &QToolButton::clicked, [tabs]() {
+        tabs->setCurrentIndex(1);
+    });
+    QObject::connect(patientsModeButton, &QToolButton::clicked, [tabs]() {
+        tabs->setCurrentIndex(0);
+    });
 
     // 顶部工具按钮统一登记普通/悬停图标，并只通过动作 ID 上报 MainExe。
     auto createTopButton = [topBar](const QString& tooltip,
@@ -268,6 +325,22 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
         button->setIconSize(QSize(23, 23));
         return button;
     };
+
+    auto* cloudButton = createTopButton(tr("Cloud"), "cloud_b.png", "cloud_h.png");
+    cloudButton->setProperty("caseActionId", CaseActionCloud);
+    QObject::connect(cloudButton, &QToolButton::clicked, [this]() {
+        // 浏览模块只上报云端入口，真实同步/上传能力后续由 NetworkHelper 和流程服务实现。
+        NotifyAction(CaseActionCloud, "Cloud");
+    });
+    headerLayout->addWidget(cloudButton, 0);
+
+    auto* screenshotButton = createTopButton(tr("Screenshot"), "cut_b.png", "cut_h.png");
+    screenshotButton->setProperty("caseActionId", CaseActionScreenshot);
+    QObject::connect(screenshotButton, &QToolButton::clicked, [this]() {
+        // 截图路径、命名和权限由宿主统一决定，CaseUI 不直接写文件。
+        NotifyAction(CaseActionScreenshot, "Screenshot");
+    });
+    headerLayout->addWidget(screenshotButton, 0);
 
     auto* settingsButton = createTopButton(tr("Settings"), "set_b.png", "set_h.png");
     settingsButton->setProperty("caseActionId", CaseActionOpenSettings);
@@ -313,11 +386,11 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     bodyLayout->setContentsMargins(20, 20, 20, 24);
     bodyLayout->setSpacing(12);
 
-    // 患者和订单先保留两个 Tab，后续每个 Tab 内部可继续拆成更小的子页面类。
-    auto* tabs = new QTabWidget(body);
-    tabs->addTab(CreatePatientTab(tabs), tr("Patients"));
-    tabs->addTab(CreateOrderTab(tabs), tr("Orders"));
-    QObject::connect(tabs, &QTabWidget::currentChanged, [this, tabs](int index) {
+    // 顶部按钮和内容索引保持同步；未来代码主动切页时也不会出现按钮高亮错误。
+    QObject::connect(tabs, &QTabWidget::currentChanged,
+                     [this, tabs, ordersModeButton, patientsModeButton](int index) {
+        ordersModeButton->setChecked(index == 1);
+        patientsModeButton->setChecked(index == 0);
         // 捕获 tabs 是为了读取当前 tab 文案；tabs 是 root 子对象，连接生命周期内有效。
         // Tab 切换也按客户操作写日志，后续问题排查可以还原用户路径。
         NotifyAction(CaseActionSwitchTab, QString("SwitchTab:%1").arg(tabs->tabText(index)));
@@ -328,6 +401,8 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     status->setObjectName(m_runtimeDataReady ? "CaseStatusLabelReady" : "CaseStatusLabelWarning");
     // 当前状态标签用于开发期确认只读快照链路是否可用。
     // 正式界面可由 UIComponents 提供统一状态提示样式。
+    // 正式页面不显示开发状态文字；测试仍可通过 objectName 从对象树读取。
+    status->setVisible(false);
     bodyLayout->addWidget(status);
     layout->addWidget(body, 1);
 
@@ -414,77 +489,218 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
 // 创建订单管理 Tab。
 // “Open” 动作会上报给 MainExe，后续必须走 OrderWorkflowService 再进入扫描重建。
 QWidget* CaseUIImpl::CreateOrderTab(QWidget* parent) {
-    // 订单页与患者页保持相同结构，便于后续拆成独立小类或复用列表组件。
     auto* page = new QWidget(parent);
+    page->setObjectName("CaseOrdersPage");
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(14);
 
-    auto* toolbar = new QHBoxLayout();
-    auto* search = new QLineEdit(page);
-    // 订单搜索后续应传给服务层处理，UI 不直接理解数据库结构。
-    search->setPlaceholderText(tr("Search order id, patient, doctor or type"));
-    toolbar->addWidget(search, 1);
+    // 筛选工具条只收集查询条件并上报动作，当前不在 UI 内拼 SQL。
+    // 后续接 CaseOrderService 查询接口时，可以把这些控件值组装成稳定 Query DTO/JSON。
+    auto* filterBar = new QFrame(page);
+    filterBar->setObjectName("CaseFilterBar");
+    auto* toolbar = new QHBoxLayout(filterBar);
+    toolbar->setContentsMargins(12, 10, 12, 10);
+    toolbar->setSpacing(10);
 
-    const QStringList buttons = {
-        tr("Import Order"),
-        tr("Export Order"),
-        tr("Open"),
-        tr("Delete")
-    };
-    const int actionIds[] = {
-        // 与 buttons 数组同下标对应，新增/删除按钮时必须同步维护。
-        CaseActionImportOrder,
-        CaseActionExportOrder,
-        CaseActionOpenOrder,
-        CaseActionDeleteOrder,
-    };
-    for (int i = 0; i < buttons.size(); ++i) {
-        // 和患者页一样，动作 ID 与按钮文案按同一下标绑定。
-        // 这种局部表驱动写法比散落多个 connect 更容易检查按钮和 actionId 是否一致。
-        const int actionId = actionIds[i];
-        const QString actionName = buttons[i];
-        const int role = actionId == CaseActionOpenOrder
-            ? MeyerButtonRolePrimary
-            : (actionId == CaseActionDeleteOrder ? MeyerButtonRoleDanger : MeyerButtonRoleSecondary);
-        const QByteArray buttonTextBytes = actionName.toUtf8();
-        QPushButton* button = m_uiComponents
-            ? m_uiComponents->CreateButton(role,
-                                           MeyerButtonContentTextOnly,
-                                           buttonTextBytes.constData(),
-                                           "",
-                                           page)
-            : new QPushButton(actionName, page);
-        // 复制 actionName 是为了日志中记录用户看到的动作名称。
-        QObject::connect(button, &QPushButton::clicked, [this, actionId, actionName]() {
-            // Open 动作也不在 CaseUI 内直接打开扫描模块，而是上报给 MainExe 统一编排。
-            NotifyAction(actionId, actionName);
-        });
-        toolbar->addWidget(button);
-    }
-    QObject::connect(search, &QLineEdit::returnPressed, [this]() {
-        // 搜索触发先只写日志和上报，等查询接口稳定后再补参数传递。
+    auto* search = new QLineEdit(filterBar);
+    search->setObjectName("CaseOrderSearchEdit");
+    search->setPlaceholderText(tr("Patient name or order ID"));
+    search->setMinimumWidth(220);
+    toolbar->addWidget(search, 2);
+
+    auto* typeFilter = new QComboBox(filterBar);
+    typeFilter->setObjectName("CaseOrderTypeFilter");
+    typeFilter->addItems(QStringList() << tr("All Types") << tr("Restoration") << tr("Orthodontics"));
+    typeFilter->setMinimumWidth(130);
+    toolbar->addWidget(typeFilter, 1);
+
+    auto* timeFilter = new QComboBox(filterBar);
+    timeFilter->setObjectName("CaseOrderTimeFilter");
+    timeFilter->addItems(QStringList() << tr("All Time") << tr("Today") << tr("Last 7 Days") << tr("Last 30 Days"));
+    timeFilter->setMinimumWidth(130);
+    toolbar->addWidget(timeFilter, 1);
+
+    auto* startDate = new QDateEdit(QDate::currentDate().addYears(-1), filterBar);
+    auto* endDate = new QDateEdit(QDate::currentDate(), filterBar);
+    startDate->setCalendarPopup(true);
+    endDate->setCalendarPopup(true);
+    startDate->setDisplayFormat("yyyy/MM/dd");
+    endDate->setDisplayFormat("yyyy/MM/dd");
+    startDate->setObjectName("CaseOrderStartDate");
+    endDate->setObjectName("CaseOrderEndDate");
+    toolbar->addWidget(startDate, 1);
+    toolbar->addWidget(new QLabel(tr("to"), filterBar), 0);
+    toolbar->addWidget(endDate, 1);
+
+    auto* searchButton = new QPushButton(tr("Search"), filterBar);
+    searchButton->setObjectName("CaseSearchButton");
+    searchButton->setProperty("role", "primary");
+    auto* resetButton = new QPushButton(tr("Reset"), filterBar);
+    resetButton->setObjectName("CaseResetButton");
+    toolbar->addWidget(searchButton);
+    toolbar->addWidget(resetButton);
+    toolbar->addStretch(1);
+
+    auto* newPatientButton = new QPushButton(tr("New Patient"), filterBar);
+    newPatientButton->setObjectName("CaseNewPatientButton");
+    newPatientButton->setProperty("role", "primary");
+    toolbar->addWidget(newPatientButton);
+
+    // 视图按钮先提供明确状态和日志入口；当前卡片流是正式默认视图。
+    auto* compactViewButton = new QToolButton(filterBar);
+    auto* cardViewButton = new QToolButton(filterBar);
+    compactViewButton->setObjectName("CaseViewModeButton");
+    cardViewButton->setObjectName("CaseViewModeButton");
+    compactViewButton->setCheckable(true);
+    cardViewButton->setCheckable(true);
+    cardViewButton->setChecked(true);
+    compactViewButton->setToolTip(tr("Compact View"));
+    cardViewButton->setToolTip(tr("Card View"));
+    compactViewButton->setCursor(Qt::PointingHandCursor);
+    cardViewButton->setCursor(Qt::PointingHandCursor);
+    compactViewButton->setIcon(QIcon(MeyerQtModule::ModuleResourceFile(
+        "MyCaseUI", "icon/browse/order", "layoutManage_one.png")));
+    cardViewButton->setIcon(QIcon(MeyerQtModule::ModuleResourceFile(
+        "MyCaseUI", "icon/browse/order", "layoutManage_two.png")));
+    auto* viewModeGroup = new QButtonGroup(filterBar);
+    viewModeGroup->setExclusive(true);
+    viewModeGroup->addButton(compactViewButton);
+    viewModeGroup->addButton(cardViewButton);
+    toolbar->addWidget(compactViewButton);
+    toolbar->addWidget(cardViewButton);
+    layout->addWidget(filterBar, 0);
+
+    QObject::connect(searchButton, &QPushButton::clicked, [this]() {
         NotifyAction(CaseActionSearchOrder, "SearchOrder");
     });
-    layout->addLayout(toolbar);
-
-    // 订单表当前读取 RuntimeDataCenter 的只读快照。
-    // 打开订单、状态修改、删除等写流程后续由 CaseOrderService / OrderWorkflowService 承担。
-    auto* table = new QTableWidget(0, 7, page);
-    // 订单摘要只显示轻量字段；完整扫描数据路径/矩阵等不能在列表页一次性加载。
-    table->setHorizontalHeaderLabels({
-        tr("Order ID"),
-        tr("Patient"),
-        tr("Type"),
-        tr("Doctor"),
-        tr("Status"),
-        tr("Created"),
-        tr("Data")
+    QObject::connect(search, &QLineEdit::returnPressed, searchButton, &QPushButton::click);
+    QObject::connect(resetButton, &QPushButton::clicked,
+                     [this, search, typeFilter, timeFilter, startDate, endDate]() {
+        search->clear();
+        typeFilter->setCurrentIndex(0);
+        timeFilter->setCurrentIndex(0);
+        startDate->setDate(QDate::currentDate().addYears(-1));
+        endDate->setDate(QDate::currentDate());
+        NotifyAction(CaseActionSearchOrder, "ResetOrderFilters");
     });
-    table->horizontalHeader()->setStretchLastSection(true);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    // local.orders 是 RuntimeDataCenter 对外 domain，不是数据库表名。
-    FillOrderTable(table, LoadRuntimeItems("local.orders"));
-    layout->addWidget(table, 1);
+    QObject::connect(newPatientButton, &QPushButton::clicked, [this]() {
+        NotifyAction(CaseActionNewPatient, "NewPatient");
+    });
+
+    // QListWidget 的 IconMode 会根据可用宽度自动换行。
+    // 1920 宽度约显示四列，较窄屏幕自动降为三列/两列，不写分辨率 if/else。
+    auto* orderList = new QListWidget(page);
+    orderList->setObjectName("CaseOrderCardList");
+    orderList->setViewMode(QListView::IconMode);
+    orderList->setFlow(QListView::LeftToRight);
+    orderList->setWrapping(true);
+    orderList->setResizeMode(QListView::Adjust);
+    orderList->setMovement(QListView::Static);
+    orderList->setSelectionMode(QAbstractItemView::SingleSelection);
+    orderList->setSpacing(10);
+    orderList->setGridSize(QSize(420, 306));
+    orderList->setUniformItemSizes(true);
+    orderList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    const QJsonArray items = LoadRuntimeItems("local.orders");
+    for (int row = 0; row < items.size(); ++row) {
+        const QJsonObject itemObject = items.at(row).toObject();
+        const QString orderId = FirstText(itemObject, QStringList() << "ORDER_ID" << "orderId");
+        const QString patient = FirstText(itemObject, QStringList() << "PATIENT_NAME" << "patientName");
+        const QString type = FirstText(itemObject, QStringList() << "ORDER_TYPE" << "orderType");
+        const QString doctor = FirstText(itemObject, QStringList() << "PHYSICIAN_NAME" << "doctorName" << "DENTIST_ID");
+        const QString status = FirstText(itemObject, QStringList() << "ORDER_STATE" << "ORDER_ISCOMPETE" << "status");
+        const QString created = FirstText(itemObject, QStringList() << "ORDER_DATE" << "APPOINT_DATE" << "createdAt");
+
+        auto* listItem = new QListWidgetItem(orderList);
+        listItem->setData(Qt::UserRole, orderId);
+        listItem->setSizeHint(QSize(404, 292));
+
+        auto* card = new QFrame(orderList);
+        card->setObjectName("CaseOrderCard");
+        card->setCursor(Qt::PointingHandCursor);
+        card->setToolTip(tr("Double click to open order"));
+        auto* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(12, 10, 12, 10);
+        cardLayout->setSpacing(8);
+
+        // 旧库 ORDER_STATE 常用 0/1/2 数字；在 UI 边界转换成可读状态，不能把裸数字显示给客户。
+        const QString displayStatus = (status.isEmpty() || status == "0")
+            ? tr("Not Scanned")
+            : (status == "1" ? tr("Sent") : (status == "2" ? tr("Uploaded") : status));
+        auto* statusLabel = new QLabel(displayStatus, card);
+        statusLabel->setObjectName("CaseOrderStatusLabel");
+        const QString normalizedStatus = displayStatus.toLower();
+        statusLabel->setProperty(
+            "statusKind",
+            normalizedStatus.contains("upload") ? "uploaded" :
+            ((normalizedStatus.contains("send") || normalizedStatus.contains("sent"))
+                ? "sent" : "pending"));
+        statusLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        cardLayout->addWidget(statusLabel, 0, Qt::AlignLeft);
+
+        auto* divider = new QFrame(card);
+        divider->setObjectName("CaseOrderCardDivider");
+        divider->setFrameShape(QFrame::NoFrame);
+        divider->setFixedHeight(1);
+        cardLayout->addWidget(divider);
+
+        auto* preview = new QLabel(card);
+        preview->setObjectName("CaseOrderPreview");
+        preview->setAlignment(Qt::AlignCenter);
+        preview->setMinimumHeight(150);
+        const QPixmap previewPixmap(MeyerQtModule::ModuleResourceFile(
+            "MyCaseUI", "icon/browse/order", "teeth.png"));
+        if (!previewPixmap.isNull()) {
+            preview->setPixmap(previewPixmap.scaled(
+                QSize(250, 150), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            preview->setText(tr("No Preview"));
+        }
+        cardLayout->addWidget(preview, 1);
+
+        auto* metadata = new QGridLayout();
+        metadata->setContentsMargins(0, 0, 0, 0);
+        metadata->setHorizontalSpacing(10);
+        metadata->setVerticalSpacing(4);
+        auto* typeLabel = new QLabel(type.isEmpty() ? tr("Restoration") : type, card);
+        auto* dateLabel = new QLabel(created.isEmpty() ? tr("No Date") : created, card);
+        auto* doctorLabel = new QLabel(doctor.isEmpty() ? tr("No Doctor") : doctor, card);
+        auto* patientLabel = new QLabel(patient.isEmpty() ? orderId : patient, card);
+        typeLabel->setObjectName("CaseOrderMetaMuted");
+        dateLabel->setObjectName("CaseOrderMetaMuted");
+        doctorLabel->setObjectName("CaseOrderMetaMuted");
+        patientLabel->setObjectName("CaseOrderPatientName");
+        patientLabel->setToolTip(patientLabel->text());
+        metadata->addWidget(typeLabel, 0, 0);
+        metadata->addWidget(doctorLabel, 0, 1);
+        metadata->addWidget(dateLabel, 1, 0);
+        metadata->addWidget(patientLabel, 1, 1);
+        metadata->setColumnStretch(0, 1);
+        metadata->setColumnStretch(1, 1);
+        cardLayout->addLayout(metadata);
+
+        orderList->setItemWidget(listItem, card);
+    }
+
+    if (items.isEmpty()) {
+        // 空状态仍放在列表区域内，不弹窗打断用户；数据库刷新后重建页面即可恢复卡片。
+        auto* emptyItem = new QListWidgetItem(orderList);
+        emptyItem->setSizeHint(QSize(404, 200));
+        auto* emptyLabel = new QLabel(tr("No orders"), orderList);
+        emptyLabel->setObjectName("CaseOrdersEmptyState");
+        emptyLabel->setAlignment(Qt::AlignCenter);
+        orderList->setItemWidget(emptyItem, emptyLabel);
+    }
+
+    QObject::connect(orderList, &QListWidget::itemDoubleClicked,
+                     [this](QListWidgetItem* item) {
+        const QString orderId = item ? item->data(Qt::UserRole).toString() : QString();
+        NotifyAction(CaseActionOpenOrder,
+                     orderId.isEmpty() ? "OpenOrder" : QString("OpenOrder:%1").arg(orderId));
+    });
+    layout->addWidget(orderList, 1);
     return page;
 }
 
@@ -620,7 +836,7 @@ void CaseUIImpl::FillOrderTable(QTableWidget* table, const QJsonArray& items) {
         const QString orderId = FirstText(item, QStringList() << "ORDER_ID" << "orderId");
         const QString patient = FirstText(item, QStringList() << "PATIENT_NAME" << "patientName");
         const QString type = FirstText(item, QStringList() << "ORDER_TYPE" << "orderType");
-        const QString doctor = FirstText(item, QStringList() << "DENTIST_ID" << "PHYSICIAN_NAME" << "doctorName");
+        const QString doctor = FirstText(item, QStringList() << "PHYSICIAN_NAME" << "doctorName" << "DENTIST_ID");
         const QString status = FirstText(item, QStringList() << "ORDER_STATE" << "ORDER_ISCOMPETE" << "status");
         const QString created = FirstText(item, QStringList() << "ORDER_DATE" << "APPOINT_DATE" << "createdAt");
         const QString data = FirstText(item, QStringList() << "SAVE_PATH" << "savePath");

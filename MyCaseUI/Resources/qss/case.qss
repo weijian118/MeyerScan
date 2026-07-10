@@ -1,10 +1,16 @@
+QWidget {
+    font-family: "Microsoft YaHei UI";
+}
+
 QWidget#MeyerScanCaseUIRoot {
-    background: #f5f6f7;
+    background: #f2f4f6;
+    color: #17212b;
 }
 
 QFrame#CaseTopBar {
     background: #ffffff;
-    border-bottom: 2px solid #007d68;
+    border-bottom: 1px solid #00937b;
+    min-height: 76px;
 }
 
 QLabel#CaseBrandLabel {
@@ -13,10 +19,25 @@ QLabel#CaseBrandLabel {
     font-weight: 700;
 }
 
-QLabel#CaseTitleLabel {
-    color: #111827;
-    font-size: 20px;
-    font-weight: 700;
+QToolButton#CaseModeButton {
+    border: 0;
+    border-bottom: 4px solid transparent;
+    background: transparent;
+    color: #222b35;
+    font-size: 17px;
+    font-weight: 600;
+    padding: 8px 18px;
+}
+
+QToolButton#CaseModeButton:hover {
+    color: #007d68;
+    background: #f5faf8;
+}
+
+QToolButton#CaseModeButton:checked {
+    color: #007d68;
+    border-bottom-color: #007d68;
+    background: #ffffff;
 }
 
 QToolButton#CaseTopToolButton {
@@ -33,18 +54,32 @@ QToolButton#CaseTopToolButton:hover {
     background: #edf2f5;
 }
 
-QLineEdit {
+QFrame#CaseFilterBar {
+    background: #ffffff;
+    border: 1px solid #e3e8ec;
+    border-radius: 8px;
+}
+
+QLineEdit,
+QComboBox,
+QDateEdit {
     border: 1px solid #cbd5df;
-    border-radius: 7px;
-    padding: 8px 12px;
-    background: #f9fafb;
+    border-radius: 6px;
+    padding: 7px 10px;
+    background: #ffffff;
     color: #1f2937;
-    min-height: 30px;
+    min-height: 28px;
+}
+
+QLineEdit:focus,
+QComboBox:focus,
+QDateEdit:focus {
+    border-color: #007d68;
 }
 
 QPushButton {
     border: 1px solid #cfd8dc;
-    border-radius: 7px;
+    border-radius: 6px;
     background: #ffffff;
     color: #23313f;
     padding: 8px 16px;
@@ -62,6 +97,27 @@ QPushButton[role="primary"] {
     font-weight: 600;
 }
 
+QPushButton#CaseSearchButton,
+QPushButton#CaseNewPatientButton {
+    min-width: 92px;
+}
+
+QToolButton#CaseViewModeButton {
+    border: 1px solid #d4dce2;
+    border-radius: 5px;
+    background: #ffffff;
+    min-width: 36px;
+    min-height: 34px;
+    max-width: 36px;
+    max-height: 34px;
+}
+
+QToolButton#CaseViewModeButton:hover,
+QToolButton#CaseViewModeButton:checked {
+    border-color: #007d68;
+    background: #eaf5f2;
+}
+
 QPushButton[role="primary"]:hover {
     background: #006f5d;
 }
@@ -71,15 +127,75 @@ QTabWidget::pane {
     background: transparent;
 }
 
-QTabBar::tab {
-    min-width: 120px;
-    min-height: 42px;
-    color: #53606c;
+QListWidget#CaseOrderCardList {
+    border: 0;
+    background: #ffffff;
+    outline: 0;
+    padding: 8px;
 }
 
-QTabBar::tab:selected {
-    color: #007d68;
-    font-weight: 700;
+QListWidget#CaseOrderCardList::item {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+}
+
+QListWidget#CaseOrderCardList::item:selected {
+    border-color: #007d68;
+    background: #edf7f4;
+}
+
+QFrame#CaseOrderCard {
+    background: #f7f8fa;
+    border: 1px solid #e2e6ea;
+    border-radius: 8px;
+}
+
+QFrame#CaseOrderCardDivider {
+    border: 0;
+    background: #ffffff;
+    max-height: 1px;
+}
+
+QLabel#CaseOrderStatusLabel {
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+}
+
+QLabel#CaseOrderStatusLabel[statusKind="pending"] {
+    background: #e47b1c;
+}
+
+QLabel#CaseOrderStatusLabel[statusKind="sent"] {
+    background: #008f70;
+}
+
+QLabel#CaseOrderStatusLabel[statusKind="uploaded"] {
+    background: #2f8cf2;
+}
+
+QLabel#CaseOrderPreview {
+    background: transparent;
+    color: #8794a0;
+}
+
+QLabel#CaseOrderMetaMuted {
+    color: #8795a3;
+    font-size: 12px;
+}
+
+QLabel#CaseOrderPatientName {
+    color: #111827;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#CaseOrdersEmptyState {
+    color: #7b8792;
+    font-size: 16px;
 }
 
 QTableWidget {

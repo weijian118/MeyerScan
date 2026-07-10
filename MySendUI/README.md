@@ -2,6 +2,8 @@
 
 `MySendUI` 输出 `MeyerScan_SendUI.dll`，用于提供工作台最后一步“发送”页面。
 
+发送页 QSS 源码归本模块 `Resources` 维护，正式运行由 `MeyerScan_UIResources.dll` 注册；STL/PLY/OBJ 等所有可见选项仍使用 `tr("English source text")`，不能因其是技术缩写而绕过多语言规则。
+
 ## 当前定位
 
 - 本模块是 Qt Widgets UI 模块，可以使用 `QWidget`、Qt Layout、`QString` 和 JSON 解析。

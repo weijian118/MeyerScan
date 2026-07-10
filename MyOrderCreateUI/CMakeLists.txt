@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.4.1 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.5.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -27,20 +27,6 @@ if(TARGET MeyerScan_UIComponents)
                 "$<TARGET_FILE:MeyerScan_UIComponents>"
                 "$<TARGET_FILE_DIR:MeyerScan_OrderCreateUI>/MeyerScan_UIComponents.dll"
     )
-endif()
-
-set(MEYER_ORDERCREATE_TREATMENT_ASSET_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon/createModule/sacanPlan")
-
-if(EXISTS "${MEYER_ORDERCREATE_TREATMENT_ASSET_DIR}")
-    add_custom_command(TARGET MeyerScan_OrderCreateUI POST_BUILD
-        COMMAND ${CMAKE_COMMAND}
-                -Dsource_dir="${MEYER_ORDERCREATE_TREATMENT_ASSET_DIR}"
-                -Dtarget_dir="$<TARGET_FILE_DIR:MeyerScan_OrderCreateUI>/Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan"
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/copy_treatment_assets.cmake"
-    )
-else()
-    message(WARNING "OrderCreateUI treatment plan assets not found: ${MEYER_ORDERCREATE_TREATMENT_ASSET_DIR}")
 endif()
 
 option(MEYER_BUILD_ORDERCREATEUITEST "Build OrderCreateUITest.exe" ON)

@@ -3,9 +3,12 @@
 #include <QCursor>
 #include <QDir>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QPainter>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QStyle>
+#include <QStyleOption>
 #include <QStringList>
 #include <QToolTip>
 #include <QResizeEvent>
@@ -91,10 +94,14 @@ int MaskValueAt(const QImage& image, const QPoint& point) {
 ToothTreatmentPlanWidget::ToothTreatmentPlanWidget(QWidget* parent)
     : QWidget(parent),
       m_clearButton(nullptr) {
+    // objectName 让 QSS 能单独设置牙弓画布的背景和文本颜色，C++ 不保存视觉色值。
+    setObjectName("OrderCreateTreatmentPlanWidget");
+
     // hover 反馈需要在不按鼠标键时也收到 move 事件。
     setMouseTracking(true);
 
-    // 绘制内容完全由 paintEvent 负责，Qt 不需要为子控件预填背景。
+    // 自绘控件仍由 QSS 绘制背景；WA_StyledBackground 确保 QWidget 子类执行样式表背景规则。
+    setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(false);
 
     // 控件在三栏布局中应尽量吃掉中间区域，图片会在内部等比居中。
@@ -199,15 +206,19 @@ void ToothTreatmentPlanWidget::paintEvent(QPaintEvent* event) {
     UpdateImageRects();
 
     QPainter painter(this);
+
+    // 先让 Qt Style 绘制 QSS 背景，再叠加牙弓图片；这样更换主题时无需修改 C++ 色值。
+    QStyleOption styleOption;
+    styleOption.initFrom(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &styleOption, &painter, this);
+
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    // 使用接近视频的浅灰背景，突出牙弓而不是再套一层重边框。
-    painter.fillRect(rect(), QColor("#eef1f5"));
-
     if (!HasRequiredAssets()) {
         // 资源缺失时显示占位提示，避免控件空白导致排查困难。
-        painter.setPen(QColor("#607080"));
+        // WindowText 由同一控件的 QSS color 映射到 palette，避免在绘制代码中重复颜色。
+        painter.setPen(palette().color(QPalette::WindowText));
         painter.drawText(rect(), Qt::AlignCenter, tr("Treatment plan assets are missing."));
         return;
     }

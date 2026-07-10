@@ -26,6 +26,7 @@
 #include <QRadioButton>
 #include <QScrollArea>
 #include <QSizePolicy>
+#include <QSplitter>
 #include <QStyle>
 #include <QStringList>
 #include <QTableWidget>
@@ -47,7 +48,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.4.1 (2026-07-10)";
+const char* Version = "MeyerScan_OrderCreateUI v0.5.0 (2026-07-10)";
 }
 
 const char* kOcclusionNatural = "natural";
@@ -197,27 +198,37 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     pageLayout->setContentsMargins(12, 10, 12, 12);
     pageLayout->setSpacing(10);
 
-    auto* rootLayout = new QHBoxLayout();
-    rootLayout->setContentsMargins(0, 0, 0, 0);
-    rootLayout->setSpacing(12);
-    pageLayout->addLayout(rootLayout, 1);
+    // QSplitter 让三栏在不同显示器宽度下按比例伸缩，也允许用户临时调整信息区宽度。
+    // 这比按 1920x1080 坐标乘系数更稳定，多语言文本变长时也能获得额外空间。
+    auto* workspaceSplitter = new QSplitter(Qt::Horizontal, root);
+    workspaceSplitter->setObjectName("OrderCreateWorkspaceSplitter");
+    workspaceSplitter->setChildrenCollapsible(false);
+    pageLayout->addWidget(workspaceSplitter, 1);
 
     // 左侧工作区按视频组织：上方选择治疗类型，下方显示基础信息。
     // 这样治疗类型不再占用中间牙弓区域，牙弓在 1920x1080 和高分屏下都能成为主视觉。
     QWidget* leftPanel = CreateLeftWorkflowPanel(root);
-    leftPanel->setMinimumWidth(310);
-    leftPanel->setMaximumWidth(410);
-    rootLayout->addWidget(leftPanel, 0);
+    leftPanel->setMinimumWidth(330);
+    leftPanel->setMaximumWidth(460);
+    workspaceSplitter->addWidget(leftPanel);
 
     // 中间牙位区占用最大空间，保证多显示器/高分辨率下牙位按钮仍有良好点击区域。
     QWidget* toothPanel = CreateToothPlanPanel(root);
-    rootLayout->addWidget(toothPanel, 1);
+    toothPanel->setMinimumWidth(460);
+    workspaceSplitter->addWidget(toothPanel);
 
     // 右侧摘要区宽度和左侧相近，便于用户边选牙位边确认明细。
     QWidget* summaryPanel = CreateOrderSummaryPanel(root);
-    summaryPanel->setMinimumWidth(300);
-    summaryPanel->setMaximumWidth(410);
-    rootLayout->addWidget(summaryPanel, 0);
+    summaryPanel->setMinimumWidth(320);
+    summaryPanel->setMaximumWidth(460);
+    workspaceSplitter->addWidget(summaryPanel);
+
+    // 360/900/360 是逻辑像素下的初始权重，不绑定某个物理分辨率。
+    // 窗口变宽时中间牙弓区获得主要增量，左右表单保持可读宽度。
+    workspaceSplitter->setStretchFactor(0, 0);
+    workspaceSplitter->setStretchFactor(1, 1);
+    workspaceSplitter->setStretchFactor(2, 0);
+    workspaceSplitter->setSizes(QList<int>() << 360 << 900 << 360);
 
     // 保存弱引用，不接管 root 生命周期，真实释放由 Qt 父子关系或调用方完成。
     m_root = root;
@@ -565,7 +576,8 @@ QWidget* OrderCreateUIImpl::CreateTreatmentTypePanel(QWidget* parent) {
     layout->setContentsMargins(12, 14, 12, 12);
     layout->setSpacing(10);
 
-    // 4 列网格更接近视频里的横向图标排布，也能减少左侧卡片高度。
+    // 三列网格给英文和其它较长翻译保留足够宽度，避免按钮文本被截断。
+    // 低分辨率适配优先保证可读性，卡片高度增加部分由下方滚动区吸收。
     auto* typeGrid = new QGridLayout();
     typeGrid->setHorizontalSpacing(8);
     typeGrid->setVerticalSpacing(8);
@@ -574,14 +586,13 @@ QWidget* OrderCreateUIImpl::CreateTreatmentTypePanel(QWidget* parent) {
     typeGrid->addWidget(CreateTypeButton(parent, tr("Implant"), "implant", m_currentTypeCode == "implant"), 0, 0);
     typeGrid->addWidget(CreateTypeButton(parent, tr("Full Crown"), "crown", m_currentTypeCode == "crown"), 0, 1);
     typeGrid->addWidget(CreateTypeButton(parent, tr("Missing Tooth"), "missing", m_currentTypeCode == "missing"), 0, 2);
-    typeGrid->addWidget(CreateTypeButton(parent, tr("Inlay"), "inlay", m_currentTypeCode == "inlay"), 0, 3);
-    typeGrid->addWidget(CreateTypeButton(parent, tr("Veneer"), "veneer", m_currentTypeCode == "veneer"), 1, 0);
-    typeGrid->addWidget(CreateTypeButton(parent, tr("Inner Crown"), "inner_crown", m_currentTypeCode == "inner_crown"), 1, 1);
-    typeGrid->addWidget(CreateTypeButton(parent, tr("Bridge"), "bridge", m_currentTypeCode == "bridge"), 1, 2);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Inlay"), "inlay", m_currentTypeCode == "inlay"), 1, 0);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Veneer"), "veneer", m_currentTypeCode == "veneer"), 1, 1);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Inner Crown"), "inner_crown", m_currentTypeCode == "inner_crown"), 1, 2);
+    typeGrid->addWidget(CreateTypeButton(parent, tr("Bridge"), "bridge", m_currentTypeCode == "bridge"), 2, 0);
     typeGrid->setColumnStretch(0, 1);
     typeGrid->setColumnStretch(1, 1);
     typeGrid->setColumnStretch(2, 1);
-    typeGrid->setColumnStretch(3, 1);
     layout->addLayout(typeGrid);
 
     // 当前类型摘要对应视频左侧底部的大按钮区域。
@@ -662,6 +673,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
 
     // 基本摘要让用户不用回到左侧表单也能确认姓名、医生、订单编号。
     auto* summaryGroup = new QGroupBox(tr("Summary"), parent);
+    summaryGroup->setProperty("subsection", true);
     auto* summaryLayout = new QGridLayout(summaryGroup);
     summaryLayout->setContentsMargins(12, 16, 12, 12);
     summaryLayout->setHorizontalSpacing(8);
@@ -697,6 +709,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
 
     // 桥记录单独展示，避免把"相邻牙位连接关系"误放进单颗牙位明细表。
     auto* bridgeGroup = new QGroupBox(tr("Bridge Records"), parent);
+    bridgeGroup->setProperty("subsection", true);
     auto* bridgeLayout = new QVBoxLayout(bridgeGroup);
     bridgeLayout->setContentsMargins(12, 16, 12, 12);
     bridgeLayout->setSpacing(6);
@@ -708,6 +721,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
 
     // 标信息区域先搭骨架，后续可改成颜色模块/材料规则驱动。
     auto* shadeGroup = new QGroupBox(tr("Shade Information"), parent);
+    shadeGroup->setProperty("subsection", true);
     auto* shadeLayout = new QVBoxLayout(shadeGroup);
     shadeLayout->setContentsMargins(12, 16, 12, 12);
     shadeLayout->setSpacing(10);
@@ -733,8 +747,11 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     mainLayout->addWidget(CreateStandardFieldLabel(parent, tr("Order Note")));
     mainLayout->addWidget(m_orderNoteEdit);
 
-    // 底部操作区：上一步/取消/确认/下一步。上层根据动作 ID 决定流程推进。
-    auto* actionRow = new QHBoxLayout();
+    // 底部操作区使用两行网格。
+    // 右栏在 1366x768 下只有约 320px，四个按钮横排会被压缩；两行布局无需分辨率分支即可保持文字完整。
+    auto* actionGrid = new QGridLayout();
+    actionGrid->setHorizontalSpacing(8);
+    actionGrid->setVerticalSpacing(8);
     auto* previousButton = CreateStandardButton(parent, tr("Previous"), MeyerButtonRoleSecondary);
     previousButton->setObjectName("OrderCreatePreviousButton");
     QObject::connect(previousButton, &QPushButton::clicked, [this]() {
@@ -759,12 +776,13 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
         EmitAction(OrderCreateActionNext);
     });
 
-    actionRow->addWidget(previousButton);
-    actionRow->addWidget(cancelButton);
-    actionRow->addStretch(1);
-    actionRow->addWidget(confirmButton);
-    actionRow->addWidget(nextButton);
-    mainLayout->addLayout(actionRow);
+    actionGrid->addWidget(previousButton, 0, 0);
+    actionGrid->addWidget(cancelButton, 0, 1);
+    actionGrid->addWidget(confirmButton, 1, 0);
+    actionGrid->addWidget(nextButton, 1, 1);
+    actionGrid->setColumnStretch(0, 1);
+    actionGrid->setColumnStretch(1, 1);
+    mainLayout->addLayout(actionGrid);
 
     return CreateSection(parent, "OrderCreateSummaryPanel", tr("Order Detail"), mainLayout);
 }
@@ -1258,7 +1276,12 @@ void OrderCreateUIImpl::RefreshTreatmentPlanWidget() {
 QString OrderCreateUIImpl::ResolveTreatmentPlanAssetRoot() const {
     QStringList candidateRoots;
 
-    // 第一优先级：调用方传入的 MeyerScan.exe 所在目录。
+    // 第一优先级：统一资源 DLL 注册后的 Qt 资源目录。
+    // QDir/QFileInfo/QPixmap/QImage 都支持 :/ 路径，因此牙位命中和叠加逻辑无需改写。
+    candidateRoots << MeyerQtModule::ModuleResourceFile(
+        "MyOrderCreateUI", "icon/createModule", "sacanPlan");
+
+    // 第二优先级：调用方传入的 MeyerScan.exe 所在目录，兼容旧安装包散文件。
     if (!m_appDir.isEmpty()) {
         const QDir appDir(QString::fromUtf8(m_appDir));
         candidateRoots << appDir.filePath(kTreatmentPlanRuntimeRelativePath);
@@ -1266,18 +1289,18 @@ QString OrderCreateUIImpl::ResolveTreatmentPlanAssetRoot() const {
         candidateRoots << appDir.filePath(kTreatmentPlanLegacyRelativePath);
     }
 
-    // 第二优先级：当前进程目录，适合 OrderCreateUITest.exe 独立运行。
+    // 第三优先级：当前进程目录，适合旧版 OrderCreateUITest.exe 独立运行。
     const QDir processDir(QCoreApplication::applicationDirPath());
     candidateRoots << processDir.filePath(kTreatmentPlanRuntimeRelativePath);
     candidateRoots << processDir.filePath(kTreatmentPlanLegacyRelativePath);
 
-    // 第三优先级：模块源码 Resources 目录，便于开发环境尚未复制资源时仍能显示。
+    // 第四优先级：模块源码 Resources 目录，便于资源 DLL 尚未构建时继续开发。
     // 模块测试宿主运行目录通常是 MyOrderCreateUI/bin/Release，所以先尝试 ../../Resources。
     candidateRoots << processDir.filePath(QString("../../%1").arg(kTreatmentPlanSourceRelativePath));
     // 主程序根输出目录通常是 F:/MeyerScan/bin/Release，所以再尝试 ../../MyOrderCreateUI/Resources。
     candidateRoots << processDir.filePath("../../MyOrderCreateUI/Resources/icon/createModule/sacanPlan");
 
-    // 第四优先级：历史 bin 资源目录，避免尚未迁移干净的旧测试目录打不开。
+    // 第五优先级：历史 bin 资源目录，避免尚未迁移干净的旧测试目录打不开。
     candidateRoots << processDir.filePath("../../MyOrderCreateUI/bin/Release/icon/createModule/sacanPlan");
 
     for (const QString& candidate : candidateRoots) {

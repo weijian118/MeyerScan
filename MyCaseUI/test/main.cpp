@@ -9,8 +9,11 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QList>
+#include <QListWidget>
+#include <QPixmap>
 #include <QRect>
 #include <QSize>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTimer>
 #include <QToolButton>
@@ -25,7 +28,7 @@
 // 测试链路:
 //   1. 解析仓库根目录、模块目录、测试数据库配置和日志目录。
 //   2. 通过 DatabaseQtAdapter 准备患者、订单、医生、诊所、技工所等最小数据。
-//   3. 初始化 CaseUI，创建 QWidget，并检查患者表和订单表是否有数据。
+//   3. 初始化 CaseUI，创建 QWidget，并检查患者表和订单卡片流是否有数据。
 //
 // 阅读重点:
 //   - CaseUI 本身只负责显示，不负责建表/造数；测试宿主造数只是为了验证链路。
@@ -312,6 +315,21 @@ bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
         "REPLACE INTO order_tbl2 (ORDER_ID, APPOINT_DATE, APPOINT_TIEM, PATIENT_ID, PATIENT_NAME, LAB_ID, DELIVERY_DATE, DENTIST_ID, SAVE_PATH, ORDER_STATE, REMARK, ORDER_TYPE, ORDER_DATE, ORDER_TIME, SEND_DATETIME, CLOUDORDERID, ORDER_ISCOMPETE, MYCLOUD_PATIENT_ID, MYCLOUD_ORDER_ID, DEVICE_ID, MYCLOUD_CLINIC_ID, MYCLOUD_SEND_LAB_ID, ORDER_SEND_LAB_NAME, ACCESSION_NUMBER, PHYSICIAN_NAME, STUDY_DATE, STUDY_TIME) "
         "VALUES ('O001', '2026-06-30', '10:00:00', 'P001', 'Patient Demo', 'L001', '2026-07-01', 1, 'case/O001', 0, '', '0', '20260630', '100000', '', 1, 0, 'cp001', 'co001', 'SN001', 'cc001', 'cl001', 'Meyer Demo Lab', '', 'Dr. Demo', '', '')",
 
+        // 多条订单让卡片流测试能够覆盖四列换行、不同状态色和较长患者名。
+        // 这些数据只存在测试数据库，不进入正式数据库迁移或产品默认数据。
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O002', 'P002', 'Alice Zhang', 'L001', 1, 'case/O002', 1, 'Restoration', '20260630', '103000', 'Dr. Demo')",
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O003', 'P003', 'Bridge Review', 'L001', 1, 'case/O003', 2, 'Implant', '20260629', '090000', 'Dr. Wang')",
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O004', 'P004', 'Cloud Confirmation', 'L001', 1, 'case/O004', 2, 'Restoration', '20260629', '140000', 'Dr. Li')",
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O005', 'P005', 'Local Practice', 'L001', 1, 'case/O005', 0, 'Orthodontics', '20260628', '110000', 'Dr. Demo')",
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O006', 'P006', 'Pending Send', 'L001', 1, 'case/O006', 1, 'Restoration', '20260628', '153000', 'Dr. Wang')",
+        "REPLACE INTO order_tbl2 (ORDER_ID, PATIENT_ID, PATIENT_NAME, LAB_ID, DENTIST_ID, SAVE_PATH, ORDER_STATE, ORDER_TYPE, ORDER_DATE, ORDER_TIME, PHYSICIAN_NAME) "
+        "VALUES ('O007', 'P007', 'Device Demo', 'L001', 1, 'case/O007', 0, 'Implant', '20260627', '160000', 'Dr. Li')",
+
         "DELETE FROM meyer_scan",
         "INSERT INTO meyer_scan (NAME, VERSION, COMPANY) "
         "VALUES ('MeyerScan', '0.1.0', 'Meyer')",
@@ -340,20 +358,23 @@ bool PrepareRuntimeDemoData(const QString& databaseConfigPath) {
     return databaseAdapter->ExecuteScript(scriptList) == scriptCount;
 }
 
-// 冒烟测试检查案例管理表格是否已经显示患者和订单数据。
+// 冒烟测试检查患者表格和订单卡片流是否已经显示运行时数据。
 bool HasRuntimeRows(QWidget* widget) {
-    // findChildren 会递归搜索 widget 的整个子控件树，适合黑盒检查 UI 是否填充了表格。
+    // 患者页仍使用 QTableWidget；只要任意患者表存在数据行，就证明患者快照已显示。
     const QList<QTableWidget*> tables = widget->findChildren<QTableWidget*>();
-    int nonEmptyTableCount = 0;
+    bool hasPatientRows = false;
     for (QTableWidget* table : tables) {
         if (table && table->rowCount() > 0) {
-            // 只统计有行的表，避免空表也让冒烟测试误通过。
-            ++nonEmptyTableCount;
+            hasPatientRows = true;
+            break;
         }
     }
 
-    // CaseUI 当前有患者表和订单表两个 QTableWidget，二者都要有数据才算链路通过。
-    return nonEmptyTableCount >= 2;
+    // 订单页已从旧 QTableWidget 改为 QListWidget 卡片流。
+    // 使用稳定 objectName 定位，避免把其它列表控件误当成订单数据。
+    QListWidget* orderCards = widget->findChild<QListWidget*>("CaseOrderCardList");
+    const bool hasOrderRows = orderCards && orderCards->count() > 0;
+    return hasPatientRows && hasOrderRows;
 }
 }
 
@@ -368,6 +389,27 @@ int main(int argc, char* argv[]) {
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     QApplication app(argc, argv);
+    const QStringList arguments = app.arguments();
+    const bool smokeMode = arguments.contains("--smoke");
+    const int captureArgumentIndex = arguments.indexOf("--capture-screenshot");
+    const bool captureMode = captureArgumentIndex >= 0 &&
+                             captureArgumentIndex + 1 < arguments.size();
+    const QString capturePath = captureMode
+        ? arguments.at(captureArgumentIndex + 1)
+        : QString();
+    QSize captureSize(1920, 1080);
+    const int captureSizeArgumentIndex = arguments.indexOf("--capture-size");
+    if (captureSizeArgumentIndex >= 0 && captureSizeArgumentIndex + 1 < arguments.size()) {
+        // WxH 参数只控制测试宿主窗口，正式模块仍完全依赖 Qt Layout 自适应。
+        const QStringList parts = arguments.at(captureSizeArgumentIndex + 1).toLower().split('x');
+        bool widthOk = false;
+        bool heightOk = false;
+        const int width = parts.size() == 2 ? parts.at(0).toInt(&widthOk) : 0;
+        const int height = parts.size() == 2 ? parts.at(1).toInt(&heightOk) : 0;
+        if (widthOk && heightOk && width >= 960 && height >= 600) {
+            captureSize = QSize(width, height);
+        }
+    }
     // 通过 C ABI 工厂函数获取 CaseUI 接口，验证 DLL 导出和依赖加载正常。
     ICaseUI* caseUi = GetCaseUI();
     if (!caseUi) {
@@ -398,17 +440,40 @@ int main(int argc, char* argv[]) {
     QWidget* widget = caseUi->CreateWidget();
     // 通过动态属性定位关闭按钮，避免测试依赖顶部按钮的排列顺序。
     const QList<QToolButton*> topButtons = widget->findChildren<QToolButton*>("CaseTopToolButton");
+    QToolButton* cloudButton = nullptr;
+    QToolButton* screenshotButton = nullptr;
     QToolButton* closeButton = nullptr;
     for (QToolButton* button : topButtons) {
-        if (button && button->property("caseActionId").toInt() == CaseActionClose) {
+        if (!button) {
+            continue;
+        }
+        const int actionId = button->property("caseActionId").toInt();
+        if (actionId == CaseActionCloud) {
+            cloudButton = button;
+        } else if (actionId == CaseActionScreenshot) {
+            screenshotButton = button;
+        } else if (actionId == CaseActionClose) {
             closeButton = button;
-            break;
         }
     }
-    if (!closeButton) {
+    if (!cloudButton || !screenshotButton || !closeButton) {
         delete widget;
         caseUi->Shutdown();
         return 6;
+    }
+
+    // 新增顶部入口也必须通过稳定动作 ID 上报，测试不允许按钮只显示却没有行为。
+    cloudButton->click();
+    if (g_lastCaseAction != CaseActionCloud) {
+        delete widget;
+        caseUi->Shutdown();
+        return 9;
+    }
+    screenshotButton->click();
+    if (g_lastCaseAction != CaseActionScreenshot) {
+        delete widget;
+        caseUi->Shutdown();
+        return 10;
     }
     closeButton->click();
     if (g_lastCaseAction != CaseActionClose) {
@@ -419,14 +484,28 @@ int main(int argc, char* argv[]) {
     // CreateWidget 当前应总是返回有效 QWidget；如果后续改成可失败，测试宿主应补空指针判断。
     // 测试宿主没有 MainExe 标题栏上下文，所以直接展示模块版本。
     widget->setWindowTitle(caseUi->GetModuleVersion());
-    ShowOnCurrentScreen(widget);
+    if (captureMode) {
+        // 固定尺寸截图用于和 1920x1080 参考图比较布局、卡片列数和顶部比例。
+        widget->resize(captureSize);
+        widget->show();
+    } else {
+        ShowOnCurrentScreen(widget);
+    }
 
     // 冒烟模式用于自动化测试，只停留 300ms 验证窗口创建成功。
-    if (argc > 1 && std::strcmp(argv[1], "--smoke") == 0) {
+    if (smokeMode) {
         // 让事件循环至少执行一次，再检查表格行数，避免只验证“窗口能创建”。
         QTimer::singleShot(300, &app, [&app, widget]() {
             // lambda 捕获 widget 指针用于检查表格，捕获 app 引用用于退出事件循环。
             app.exit(HasRuntimeRows(widget) ? 0 : 5);
+        });
+    }
+
+    if (captureMode) {
+        // 让 Qt 完成卡片 itemWidget 布局后再抓图，避免首帧只有空 QListWidget。
+        QTimer::singleShot(500, [&app, widget, capturePath]() {
+            const QPixmap screenshot = widget->grab();
+            app.exit(screenshot.save(capturePath, "PNG") ? 0 : 8);
         });
     }
 

@@ -23,6 +23,7 @@ add_subdirectory(MyDatabase)
 add_subdirectory(MyDatabaseQtAdapter)
 add_subdirectory(MyConfigCenter)
 add_subdirectory(MyPermission)
+add_subdirectory(MyUIResources)
 add_subdirectory(MyUIComponents)
 
 # Business services and runtime read models.

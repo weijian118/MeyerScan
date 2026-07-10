@@ -2,8 +2,12 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.1.1`，同步代码版本、CMake 和 `Version.rc`。
+- STL/PLY/OBJ 虽是技术格式名，仍按全局多语言规则使用 `tr("English source text")` 包装。
+- QSS 正式发布改由 `MeyerScan_UIResources.dll` 注册，源码 `Resources` 只作为资源归属和开发降级位置。
 - 发送页样式迁入 `Resources/qss/send.qss`，源码通过公共资源/QSS/日志辅助函数加载；CMake/VS2015 工程补齐模块资源复制。
 - SendUI 继续只提供 Send 步骤内容和动作上报，不复制工作台步骤导航；`Version.rc` 补齐版权字段。
+- 删除 QSS 迁移后无引用的 C++ 颜色常量，界面样式只维护 `Resources/qss/send.qss`。
 
 ## 2026-07-07
 

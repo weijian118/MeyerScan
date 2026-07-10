@@ -2,6 +2,7 @@
 
 ## 2026-07-10
 
+- 测试宿主可见占位文本补充 `tr("English source text")`，测试项目同样遵守多语言源码规则。
 - 版本升级为 `v0.1.2`，同步更新代码版本、CMake 和 `Version.rc`。
 - 顶部区域整合品牌、返回入口、唯一的 Order/Scan/Process/Send 步骤导航、最小化和关闭；创建/练习内容页不得再绘制第二套步骤条。
 - 新增 `WorkspaceShellActionBack`，返回、最小化和关闭均只上报稳定动作 ID，由 MainExe 执行顶层窗口或页面操作。

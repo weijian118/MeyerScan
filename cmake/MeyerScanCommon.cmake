@@ -80,18 +80,19 @@ function(meyer_copy_sqlite_runtime target)
     endif()
 endfunction()
 
-# 复制模块 Resources 到运行目录约定位置：
-#   <target 输出目录>/Resources/Modules/<module_dir>/
-# 每个模块源码目录保留自己的资源，构建/打包时再汇总到 MeyerScan.exe 同级目录。
+# 为 Qt UI 目标准备统一资源 DLL。
+#
+# 资源源码仍由各模块自己的 Resources 目录维护，但正式运行只复制
+# MeyerScan_UIResources.dll，不再把 PNG/QSS 散落到输出目录。
+# 单模块独立配置且资源目标不存在时，公共加载器会回退到源码 Resources，
+# 因此 VSCode/VS2015 单模块调试仍然可用。
 function(meyer_copy_module_resources target module_dir)
-    set(_meyer_resource_source "${MEYER_ROOT_DIR}/${module_dir}/Resources")
-    if(EXISTS "${_meyer_resource_source}")
+    if(TARGET MeyerScan_UIResources AND NOT "${target}" STREQUAL "MeyerScan_UIResources")
+        add_dependencies(${target} MeyerScan_UIResources)
         add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                    "$<TARGET_FILE_DIR:${target}>/Resources/Modules/${module_dir}"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${_meyer_resource_source}"
-                    "$<TARGET_FILE_DIR:${target}>/Resources/Modules/${module_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:MeyerScan_UIResources>"
+                    "$<TARGET_FILE_DIR:${target}>"
         )
     endif()
 endfunction()

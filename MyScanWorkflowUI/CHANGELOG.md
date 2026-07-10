@@ -2,8 +2,12 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.2.2`；释放 QVTK 时先移除 renderer、清空 Viewer 的 renderer 指针并断开 render window/interactor，再延迟销毁原生窗口。
+- `DeactivateAndRelease()` 同步清空旧页面非 owning 控件指针，避免页面延迟删除后误访问悬空地址。
 - 扫描页样式迁入 `Resources/qss/scan_workflow.qss`，源码通过公共资源/QSS/日志辅助函数加载；CMake/VS2015 工程补齐模块资源复制。
 - 保持 Scan 页只提供步骤内容和部位流程按钮，不复制 OrderScanWorkspaceShell 的工作台步骤导航；`Version.rc` 补齐版权字段。
+- 与 ScanReconstructStudio 联合回归覆盖 Scan -> Process -> Scan 二次创建流程，模块测试和独立 EXE smoke 均返回 0。
+- 删除 QSS 迁移后无引用的 C++ 颜色常量，避免后续维护者误以为界面仍有第二套源码样式。
 
 ## 2026-07-07
 

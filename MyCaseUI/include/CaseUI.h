@@ -67,6 +67,8 @@ enum CaseActionId {
     CaseActionOpenSettings = 301, // 打开设置
     CaseActionMinimize = 302,     // 最小化 MeyerScan 主窗口
     CaseActionClose = 303,        // 关闭浏览页并返回首页
+    CaseActionCloud = 304,        // 打开浏览页云端入口
+    CaseActionScreenshot = 305,   // 请求宿主执行浏览页截图
 };
 
 // C ABI 工厂函数，便于 MainExe 直接或动态获取案例管理接口。

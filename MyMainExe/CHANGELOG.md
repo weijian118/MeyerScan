@@ -2,12 +2,18 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.1.6`，接收浏览页云端/截图稳定动作 ID 并记录状态，实际云端与截图服务继续留待后续模块实现。
+- 版本升级为 `v0.1.5`，新增 `MeyerScan_UIResources.dll` 运行依赖和 versionList 项，正式输出不再复制各 UI 模块散落的 PNG/QSS。
+- MainExe VS2015/CMake 构建改为复制单一资源 DLL；`Resources` 目录继续保留登录许可等非 UI 运行文件。
+- VS2015 PostBuild 的根输出 DLL 兜底复制只在独立 `MeyerScan_MainExe.sln` 构建时执行，根聚合方案不再把输出文件复制到自身。
+- 首页、浏览和建单模块分别升级到 v0.3.1/v0.3.1/v0.5.0，并完成 1920x1080、1366x768 截图复核。
 - 版本升级为 `v0.1.4`，同步更新 `ModuleInfo::Version`、CMake 工程版本和 `Version.rc` 文件版本。
 - 主窗口固定使用 `Qt::FramelessWindowHint + showFullScreen()`；补齐 `ShowMainWindow()`，单实例激活和最小化恢复后仍回到全屏无边框状态。
 - 删除此前试验性的 36px 跨页面通用可见标题栏。MainExe 只保留顶层窗口、单内容区和窗口动作执行，HomeUI、CaseUI、OrderScanWorkspaceShell 各自维护页面语义顶部区域。
 - 接入 HomeUI、CaseUI、OrderScanWorkspaceShell 新增的最小化、关闭、返回动作 ID；页面模块只上报动作，MainExe 统一执行窗口操作和页面替换。
 - 根方案和 MainExe 依赖补齐 `MeyerScan_ScanReconstructStudio.dll`；版本清单默认增加该 DLL，确保 EXE/DLL 双形态同时记录文件版本和代码版本。
 - `--smoke-main` 继续覆盖首页、浏览、创建/练习工作台、Scan/Process/Send 切换和重资源释放。
+- 最终回归：VS2015/CMake 根构建通过，24 项模块/主链路测试全部返回 0；最新 versionList 为 24 项、0 缺失、0 版本不一致、0 `codeVersionError`。
 
 ## 2026-07-08
 

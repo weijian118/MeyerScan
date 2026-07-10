@@ -8,6 +8,7 @@
 
 ## 2026-07-10
 
+- 修复 `.vscode/tasks.json` 中 Windows 反斜杠未做 JSON 转义的问题，统一改为正斜杠路径，保证 VSCode 可以解析并执行 MSBuild/测试任务。
 - 修正 `Database.h` 中把 ErrorCode/Result 迁入 Core.lib 视为必做项的旧 TODO；当前结果类型属于 Database 公共 ABI，只有多个基础模块形成稳定一致合同后才评估抽取，本轮不修改接口布局和运行逻辑。
 
 ## 2026-07-05

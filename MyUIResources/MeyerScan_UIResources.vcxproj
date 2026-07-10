@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1EC58318-A5D0-467A-8EA3-F23DA037ADF6}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>MeyerScan_UIResources</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>MeyerScan_UIResources</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <PreBuildEvent>
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)tools\GenerateResourceManifest.ps1&quot; -RepositoryRoot &quot;$(ProjectDir)..&quot; -OutputPath &quot;$(ProjectDir)resources\MeyerScanUiResources.qrc&quot;
+if errorlevel 1 exit /b %errorlevel%
+if not exist &quot;$(ProjectDir)generated&quot; mkdir &quot;$(ProjectDir)generated&quot;
+&quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\rcc.exe&quot; -binary &quot;$(ProjectDir)resources\MeyerScanUiResources.qrc&quot; -o &quot;$(ProjectDir)generated\MeyerScanUiResources.rcc&quot;
+if errorlevel 1 exit /b %errorlevel%</Command>
+    </PreBuildEvent>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>MEYERSCAN_UIRESOURCES_EXPORTS;MEYER_MODULE_NAME="MeyerScan_UIResources";NDEBUG;QT_CORE_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)src;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Qt5Core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\UIResources.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\Version.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\UIResources.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="resources\MeyerScanUiResources.qrc" />
+    <None Include="tools\GenerateResourceManifest.ps1" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

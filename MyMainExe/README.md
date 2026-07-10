@@ -6,7 +6,7 @@
 1. 启动 Qt 主程序。
 2. 执行单实例检查，重复启动时尝试激活已打开窗口。
 3. 显示启动等待页。
-4. 初始化 Logger、ConfigCenter、Permission、UIComponents，并通过 DatabaseQtAdapter 初始化 Database；由 MainExe 内部生成版本清单。
+4. 初始化 Logger、ConfigCenter、Permission；UI 页面首次创建前由公共加载器注册 UIResources，再加载 UIComponents；通过 DatabaseQtAdapter 初始化 Database；由 MainExe 内部生成版本清单。
 5. 根据 ConfigCenter 的 `database.type` 设置数据库类型，并执行数据库健康检查。
 6. 初始化 `MeyerScan_RuntimeDataCenter.dll` 并预热本地/云端运行时快照。
 7. 写出 `logs/versionList/versionList_yyyyMMdd_HHmmss_zzz.json`。
@@ -58,8 +58,9 @@
 - 后续从案例管理进入 `ScanReconstructStudio.exe` 前，必须先执行 MainExe 的扫描前准备流程：切换到等待页、释放 CaseUI widget、处理 `deleteLater()`，再启动扫描重建进程；不能只隐藏案例管理界面。
 - 后续扫描重建、三维显示、算法、相机和显存相关页面必须按“离开即释放或暂停重资源”的规则处理。
 - 客户可触发的导航、按钮、页签、查询等操作必须写结构化日志；MainExe 记录跨模块导航和页面切换，UI 模块记录模块内操作。
-- 登录离线许可文件统一放在 `Resources/license.lic`；模块私有图标、图片、mask、模块内 qm 等资源先放各模块源码 `Resources/`，构建/打包时复制到 MeyerScan.exe 同级 `Resources/Modules/<ProjectName>/...`。例如 `MyOrderCreateUI` 治疗方案资源运行时位于 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan`。
-- 多个模块共用资源后续放 `Resources/Common` 或由 UIComponents 提供；禁止把模块图片散落在运行根目录，也禁止用 `QDir::currentPath()` 推导资源路径。
+- 登录离线许可文件继续放在 `Resources/license.lic`；UI 模块图标、图片、mask 和 QSS 的源码放在各模块 `Resources/`，构建后统一进入 `MeyerScan_UIResources.dll`，运行路径为 `:/MeyerScan/Modules/<ProjectName>/...`。
+- MainExe 正式发布目录不再复制 `Resources/Modules/<ProjectName>/icon|qss` 散文件；UIResources 缺失或注册失败必须写日志并由版本/安装完整性检查报告。禁止用 `QDir::currentPath()` 推导任何资源路径。
+- UIComponents 管理共享控件工厂和样式语义，UIResources 只承载只读资源数据；不要把资源 DLL 变成控件或业务模块。
 - Release 输出目录会复制登录、首页、案例、数据库、日志模块及 Qt/VC/UCRT/OpenSSL/AWS 等运行依赖，作为后续安装包依赖清单参考。
 - 聚合根目录 `F:\MeyerScan\bin\Release` 和单模块目录 `MyMainExe\bin\Release` 都应能运行 `MeyerScan.exe --smoke-main`；自研 Qt DLL 和插件必须从编译所用 Qt 5.6.3 目录复制，避免混用 Qt 5.6.2 / 5.6.3。
 

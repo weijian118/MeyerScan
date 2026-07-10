@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSize>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
@@ -79,6 +80,19 @@ int main(int argc, char* argv[]) {
     if (captureMode && captureArgumentIndex + 1 < arguments.size()) {
         // 命令行显式给出路径时使用该路径，便于和视频关键帧放到同一个目录对比。
         capturePath = arguments.at(captureArgumentIndex + 1);
+    }
+    QSize captureSize(1920, 1080);
+    const int captureSizeArgumentIndex = arguments.indexOf("--capture-size");
+    if (captureSizeArgumentIndex >= 0 && captureSizeArgumentIndex + 1 < arguments.size()) {
+        // 截图尺寸由测试参数控制，用同一套布局验证 1920x1080 和 1366x768。
+        const QStringList parts = arguments.at(captureSizeArgumentIndex + 1).toLower().split('x');
+        bool widthOk = false;
+        bool heightOk = false;
+        const int width = parts.size() == 2 ? parts.at(0).toInt(&widthOk) : 0;
+        const int height = parts.size() == 2 ? parts.at(1).toInt(&heightOk) : 0;
+        if (widthOk && heightOk && width >= 960 && height >= 600) {
+            captureSize = QSize(width, height);
+        }
     }
     // 模块代码中的确认框在 smoke 模式下会阻塞自动化测试。
     // 通过 QApplication 动态属性告知模块：当前是自动测试，危险操作可直接确认。
@@ -214,7 +228,7 @@ int main(int argc, char* argv[]) {
 
     // 截图模式用于视觉验收：不执行 smoke 后续点击，避免截图状态被测试逻辑修改。
     if (captureMode) {
-        widget->resize(1920, 1080);
+        widget->resize(captureSize);
         widget->show();
 
         int captureExitCode = 0;

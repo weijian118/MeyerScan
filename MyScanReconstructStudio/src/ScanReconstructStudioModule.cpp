@@ -11,7 +11,7 @@
 namespace {
 namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanReconstructStudio";
-const char* Version = "MeyerScan_ScanReconstructStudio v0.1.1 (2026-07-10)";
+const char* Version = "MeyerScan_ScanReconstructStudio v0.1.2 (2026-07-10)";
 }
 
 class ScanReconstructStudioModule : public IScanReconstructStudio {

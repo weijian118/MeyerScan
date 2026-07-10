@@ -2,10 +2,16 @@
 
 ## 2026-07-10
 
+- 版本升级为 `v0.3.1`，首页品牌图改用参考界面的中英组合 Logo，并保持按高度等比缩放。
+- 版本升级为 `v0.3.0`：根控件按窗口尺寸等比绘制完整产品背景，右侧四入口继续使用 Qt Layout 自适应，不再把背景图塞进左侧局部面板。
+- 修复历史 HomeCreate/HomeBrowse 等资源实际是整张卡片、直接缩为 92px 导致圆形图标过小的问题；运行时按相对区域裁出入口视觉，普通/悬停态均完整登记。
+- `HomeUITest.exe` 新增 `--capture-screenshot <png> --capture-size <WxH>`，已用于 1920x1080 和 1366x768 实际截图验收。
+- 图标/QSS 正式发布改走 `MeyerScan_UIResources.dll`；资源 DLL 缺失时，源码树单模块调试才回退到本模块 `Resources`。
 - 版本升级为 `v0.2.1`，同步更新代码版本、CMake 和 `Version.rc`。
 - 首页顶部区域增加品牌图片、校准、云端、帮助、最小化和关闭入口；窗口动作使用稳定 ID 回调 MainExe，HomeUI 不直接操作顶层窗口。
 - 改为统一使用 `Common/include/MeyerQtModuleUtils.h` 解析模块资源、加载 QSS 和写 Qt 日志，删除模块内重复工具函数。
 - HomeUITest 增加顶部动作按钮回调验证，确认页面动作 ID 与 MainExe 约定一致。
+- 最终截图复核覆盖 1920x1080 与 1366x768：品牌、五个顶部动作、完整背景和四入口均无裁切或重叠。
 
 ## 2026-07-05
 

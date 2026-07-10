@@ -1,13 +1,17 @@
+QWidget {
+    font-family: "Microsoft YaHei UI";
+}
+
 QWidget#MeyerScanOrderCreateUIRoot {
-    background: #f3f6f8;
+    background: #e9edf3;
     color: #23313f;
 }
 
 QGroupBox {
     background: #ffffff;
-    border: 1px solid #d8e1e7;
-    border-radius: 6px;
-    margin-top: 16px;
+    border: 1px solid #d5dde4;
+    border-radius: 8px;
+    margin-top: 18px;
 }
 
 QGroupBox::title {
@@ -19,13 +23,39 @@ QGroupBox::title {
     font-weight: 600;
 }
 
+/* 右侧摘要内部使用语义分组，不再显示“卡片套卡片”的第二层边框。 */
+QGroupBox[subsection="true"] {
+    background: transparent;
+    border: 0;
+    border-top: 1px solid #e4e9ed;
+    border-radius: 0;
+    margin-top: 18px;
+}
+
+QGroupBox[subsection="true"]::title {
+    left: 0;
+    padding: 0 8px 0 0;
+    background: #ffffff;
+    color: #4f5f6f;
+    font-size: 13px;
+}
+
+QSplitter#OrderCreateWorkspaceSplitter::handle {
+    background: transparent;
+    width: 6px;
+}
+
+QSplitter#OrderCreateWorkspaceSplitter::handle:hover {
+    background: #d6e8e3;
+}
+
 QLabel[valueText="true"] {
     color: #23313f;
     font-weight: 600;
 }
 
 QLabel#OrderCreateCurrentTypeSummary {
-    background: #e4f4ef;
+    background: #eaf5f2;
     border: 1px solid #007d68;
     border-radius: 6px;
     color: #007d68;
@@ -78,7 +108,7 @@ QFrame#OrderCreateSection {
 
 QLineEdit, QComboBox, QDateEdit, QTextEdit {
     border: 1px solid #cfd8dc;
-    border-radius: 5px;
+    border-radius: 6px;
     padding: 6px 10px;
     background: #ffffff;
     color: #23313f;
@@ -98,7 +128,7 @@ QPushButton {
     background: #f6f8fa;
     color: #23313f;
     border: 1px solid #cfd8dc;
-    border-radius: 5px;
+    border-radius: 6px;
     padding: 8px 16px;
     min-height: 34px;
 }
@@ -178,7 +208,7 @@ QToolButton[typeSelected="true"] {
 
 QToolButton#OrderCreateTypeButton {
     border: 1px solid #d3dce3;
-    border-radius: 7px;
+    border-radius: 8px;
     background: #ffffff;
     color: #23313f;
     padding: 8px;
@@ -221,7 +251,7 @@ QLabel#OrderCreateBridgeSummaryLabel {
 }
 
 QFrame#OrderCreateScanProcessConfigPanel {
-    background: #f8fafb;
+    background: #f6f8fa;
     border: 1px solid #d8e1e7;
     border-radius: 6px;
 }
@@ -237,12 +267,27 @@ QLabel#OrderCreateScanProcessPreview {
     font-size: 12px;
 }
 
+QWidget#OrderCreateTreatmentPlanWidget {
+    background: #eef1f5;
+    color: #607080;
+}
+
 QPushButton#OrderCreateClearAllButton {
     border: 1px solid #cfd8dc;
     border-radius: 5px;
     background: #ffffff;
     color: #52616f;
     padding: 6px 12px;
+}
+
+QPushButton#OrderCreateConfirmButton,
+QPushButton#OrderCreateNextButton {
+    min-width: 82px;
+}
+
+QPushButton#OrderCreatePreviousButton,
+QPushButton#OrderCreateCancelButton {
+    min-width: 76px;
 }
 
 QPushButton#OrderCreateClearAllButton:hover {

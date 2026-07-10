@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
 
     // 挂载扫描页占位控件，验证真实建单/扫描模块后续能以 QWidget 形式接入壳子。
     // 这里把父对象设为 widget，利用 Qt 父子机制随根控件自动释放。
-    QLabel* scanPage = new QLabel("Scan Page", widget);
+    QLabel* scanPage = new QLabel(QObject::tr("Scan Page"), widget);
     // 设置 objectName，方便人工用 Qt 对象树或样式调试工具定位该占位页。
     scanPage->setObjectName("OrderScanWorkspaceShellTestScanPage");
     // AttachStepWidget 把外部模块页面接入指定步骤槽位。
