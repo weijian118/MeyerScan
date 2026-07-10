@@ -1,3 +1,4 @@
+﻿# 本脚本必须保存为“带 BOM 的 UTF-8”，确保 Windows PowerShell 5.1 能正确解析中文注释。
 param(
     [string]$SourceRoot = "F:\MeyerScan",
     [string]$BackupRoot = "F:\MeyerScan-Reposit",
@@ -29,6 +30,61 @@ function Invoke-RobocopyChecked {
 
     if ($exitCode -gt 7) {
         throw "robocopy failed: $From -> $To, exit code $exitCode"
+    }
+}
+
+function Remove-ExcludedBackupContent {
+    param(
+        [string]$Root,
+        [string[]]$DirectoryNames,
+        [string[]]$FilePatterns
+    )
+
+    # robocopy /MIR 不会删除被 /XD 或 /XF 排除的历史文件，因此镜像完成后还要
+    # 主动清理备份仓库里过去遗留的第三方运行库、构建目录和运行现场目录。
+    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
+    $rootPrefix = $resolvedRoot + "\"
+
+    # 先删最深层的排除目录，避免删除父目录后继续处理已经不存在的子目录。
+    $excludedDirectories = Get-ChildItem -LiteralPath $resolvedRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $DirectoryNames -contains $_.Name -and $_.Name -ne ".git" } |
+        Sort-Object { $_.FullName.Length } -Descending
+    $excludedDirectories = @($excludedDirectories)
+    Write-Host "发现需要清理的历史排除目录：$($excludedDirectories.Count) 个"
+
+    foreach ($directory in $excludedDirectories) {
+        $fullPath = [System.IO.Path]::GetFullPath($directory.FullName)
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove directory outside backup root: $fullPath"
+        }
+
+        Remove-Item -LiteralPath $fullPath -Recurse -Force
+    }
+
+    # 再按文件名通配符清理第三方 DLL、现场数据库和 IDE/链接临时文件。
+    # 只比较叶子文件名，与 robocopy /XF 的匹配语义保持一致。
+    $excludedFiles = Get-ChildItem -LiteralPath $resolvedRoot -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object {
+            $name = $_.Name
+            $matched = $false
+            foreach ($pattern in $FilePatterns) {
+                if ($name -like $pattern) {
+                    $matched = $true
+                    break
+                }
+            }
+            $matched
+        }
+    $excludedFiles = @($excludedFiles)
+    Write-Host "发现需要清理的历史排除文件：$($excludedFiles.Count) 个"
+
+    foreach ($file in $excludedFiles) {
+        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove file outside backup root: $fullPath"
+        }
+
+        Remove-Item -LiteralPath $fullPath -Force
     }
 }
 
@@ -137,6 +193,10 @@ $robocopyArgs = @(
 ) + $excludeDirs + @("/XF") + $excludeFiles
 
 Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
+
+# /MIR 与 /XF、/XD 同时使用时不会清理目标中早期提交留下的排除内容。
+# 这里补做一次受路径校验保护的清理，保证本地仓库长期满足“只备份自研文件”。
+Remove-ExcludedBackupContent -Root $backup -DirectoryNames $excludeDirs -FilePatterns $excludeFiles
 
 $localIgnore = Join-Path $source "tools\LocalBackup.gitignore"
 if (Test-Path -LiteralPath $localIgnore) {
