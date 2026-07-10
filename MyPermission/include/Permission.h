@@ -13,9 +13,9 @@ public:
     virtual ~IPermission() = default;
 
     // 初始化权限规则。appDirUtf8 必须是 MeyerScan.exe 所在目录。
-    // TODO(v0.2.0/Core): 当前骨架阶段为保持 MainExe 集成链路稳定暂时返回 bool。
-    // Core.lib 的 ErrorCode/VoidResult 落地后，应升级为可区分规则缺失、规则损坏、
-    // 版本不兼容、验签失败等原因的返回类型。
+    // TODO(v0.2.0): 当前骨架阶段为保持 MainExe 集成链路稳定暂时返回 bool。
+    // 等权限失败语义稳定后，应升级为可区分规则缺失、规则损坏、版本不兼容、
+    // 验签失败等原因的返回类型；是否抽公共结果类型由真实复用决定。
     virtual bool Init(const char* appDirUtf8) = 0;
 
     // 查询某个功能是否应该显示。

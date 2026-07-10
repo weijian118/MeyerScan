@@ -1,5 +1,12 @@
 ﻿# MeyerScan CaseUI 变更记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.2.1`，同步更新代码版本、CMake 和 `Version.rc`。
+- 浏览页顶部区域增加品牌、设置、返回首页、最小化和关闭入口；新增 `CaseActionMinimize` / `CaseActionClose`，所有窗口动作只上报 MainExe。
+- 顶部控件和页面内容继续由 QSS/Qt Layout 管理，不使用 Qt 原生标题栏，不让 CaseUI 持有顶层窗口所有权。
+- CaseUITest 增加顶部关闭动作 ID 回调验证，保持测试宿主与正式跨模块合同一致。
+
 ## 2026-07-06
 
 - 修正 `CaseUI.h` 和 `CaseUIImpl.cpp` 中容易误导后续维护的旧说明：正式 CaseUI 只初始化日志、共享 UI 和 RuntimeDataCenter，只读取运行时快照展示患者/订单列表，不负责数据库健康检查、建表、迁移或业务写入。

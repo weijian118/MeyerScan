@@ -1,4 +1,4 @@
-// ==================== ScanProcessWidget.cpp ====================
+﻿// ==================== ScanProcessWidget.cpp ====================
 #include "ScanProcessWidget.h"
 
 ScanProcessWidget::ScanProcessWidget(QWidget *parent)

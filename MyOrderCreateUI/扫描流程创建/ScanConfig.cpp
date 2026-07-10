@@ -1,4 +1,4 @@
-#include "ScanConfig.h"
+﻿#include "ScanConfig.h"
 
 ScanConfig::ScanConfig()
     : m_maxillaTypes(Maxilla_None)

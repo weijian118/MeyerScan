@@ -1,5 +1,12 @@
 # MyOrderCreateUI 修改记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.4.1`，同步更新代码版本、CMake 和 `Version.rc`。
+- 删除建单页内部重复的 Order / Scan / Process / Send 步骤条及 `OrderCreateActionStepClicked`；工作台步骤导航唯一归 `MyOrderScanWorkspaceShell`，本模块只提供 Order 步骤内容。
+- 清理源码中的局部 `setStyleSheet()`，治疗类型按钮、牙弓区域、摘要、表格和降级控件样式全部迁入 `Resources/qss/order_create.qss`。
+- UIComponents 缺失或版本不兼容时仍只设置语义属性，由建单模块根 QSS 提供降级视觉，避免在 C++ 中重新拼样式字符串。
+
 ## 2026-07-08
 
 - 根据当前软件 `治疗方案选择.mp4` 继续校准布局：治疗类型面板从中间牙弓左侧迁移到整体左栏上方，左栏按“治疗类型 + 基本信息”组织，中间区域只保留牙弓主交互和扫描流程输入，右侧继续保留订单明细/标信息/操作按钮，更接近视频中的左/中/右工作台结构。

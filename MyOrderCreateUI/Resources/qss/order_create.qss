@@ -1,0 +1,251 @@
+QWidget#MeyerScanOrderCreateUIRoot {
+    background: #f3f6f8;
+    color: #23313f;
+}
+
+QGroupBox {
+    background: #ffffff;
+    border: 1px solid #d8e1e7;
+    border-radius: 6px;
+    margin-top: 16px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 16px;
+    padding: 0 6px;
+    color: #23313f;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel[valueText="true"] {
+    color: #23313f;
+    font-weight: 600;
+}
+
+QLabel#OrderCreateCurrentTypeSummary {
+    background: #e4f4ef;
+    border: 1px solid #007d68;
+    border-radius: 6px;
+    color: #007d68;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 10px 12px;
+}
+
+QLabel[fieldLabel="true"],
+QLabel#OrderCreateFallbackFieldLabel {
+    color: #4f5f6f;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QScrollArea {
+    background: transparent;
+    border: 0;
+}
+
+QRadioButton,
+QCheckBox {
+    color: #23313f;
+    font-size: 13px;
+    spacing: 6px;
+}
+
+QWidget#OrderCreateBody {
+    background: #f8fafb;
+    border: 1px solid #d9e0e6;
+    border-radius: 8px;
+}
+
+QLabel {
+    color: #52616f;
+    font-size: 13px;
+}
+
+QLabel#OrderCreateSectionTitle {
+    color: #23313f;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+QFrame#OrderCreateSection {
+    background: #ffffff;
+    border: 1px solid #d9e0e6;
+    border-radius: 7px;
+}
+
+QLineEdit, QComboBox, QDateEdit, QTextEdit {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    padding: 6px 10px;
+    background: #ffffff;
+    color: #23313f;
+    min-height: 34px;
+}
+
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus {
+    border-color: #007d68;
+}
+
+QLineEdit[readOnly="true"] {
+    background: #eef2f5;
+    color: #23313f;
+}
+
+QPushButton {
+    background: #f6f8fa;
+    color: #23313f;
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    padding: 8px 16px;
+    min-height: 34px;
+}
+
+QPushButton:hover {
+    background: #eef3f6;
+}
+
+QPushButton[role="primary"] {
+    background: #007d68;
+    color: #ffffff;
+    border: 0;
+    font-weight: 600;
+}
+
+QPushButton[role="primary"]:hover {
+    background: #009176;
+}
+
+QPushButton[role="primary"]:pressed {
+    background: #006652;
+}
+
+QPushButton[role="link"],
+QPushButton[role="text"] {
+    background: transparent;
+    color: #007d68;
+    border: 0;
+}
+
+QPushButton[role="link"]:hover,
+QPushButton[role="text"]:hover {
+    background: #e7f3f0;
+}
+
+QPushButton[typeButton="true"] {
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+    background: #f8fafb;
+    color: #23313f;
+    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QPushButton[typeButton="true"]:hover {
+    background: #edf2f5;
+    border-color: #b7c5ce;
+}
+
+QPushButton[typeSelected="true"] {
+    background: #007d68;
+    border-color: #007d68;
+    color: #ffffff;
+}
+
+QToolButton[typeButton="true"] {
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #23313f;
+    min-height: 76px;
+    padding: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QToolButton[typeButton="true"]:hover {
+    background: #edf5f2;
+}
+
+QToolButton[typeSelected="true"] {
+    background: #007d68;
+    color: #ffffff;
+}
+
+QToolButton#OrderCreateTypeButton {
+    border: 1px solid #d3dce3;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #23313f;
+    padding: 8px;
+}
+
+QToolButton#OrderCreateTypeButton:checked {
+    border-color: #007d68;
+    background: #e6f4f1;
+    color: #007d68;
+    font-weight: 600;
+}
+
+QTableWidget {
+    background: #ffffff;
+    border: 1px solid #d9e0e6;
+    border-radius: 5px;
+    gridline-color: #edf1f4;
+    alternate-background-color: #f8fafb;
+    selection-background-color: #dff1ec;
+    selection-color: #23313f;
+}
+
+QTableWidget::item {
+    padding: 6px;
+}
+
+QHeaderView::section {
+    background: #edf3f5;
+    color: #23313f;
+    border: 0;
+    border-bottom: 1px solid #d8e1e7;
+    padding: 7px;
+    font-weight: 600;
+}
+
+QLabel#OrderCreateBridgeSummaryLabel {
+    color: #23313f;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QFrame#OrderCreateScanProcessConfigPanel {
+    background: #f8fafb;
+    border: 1px solid #d8e1e7;
+    border-radius: 6px;
+}
+
+QLabel#OrderCreateScanProcessTitle {
+    color: #23313f;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#OrderCreateScanProcessPreview {
+    color: #607080;
+    font-size: 12px;
+}
+
+QPushButton#OrderCreateClearAllButton {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #52616f;
+    padding: 6px 12px;
+}
+
+QPushButton#OrderCreateClearAllButton:hover {
+    background: #f7fafc;
+    border-color: #aebdcc;
+}

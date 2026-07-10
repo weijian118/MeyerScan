@@ -1,5 +1,7 @@
 ﻿#include "CalibrationColorUIImpl.h"
 
+#include "MeyerQtModuleUtils.h"
+
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -49,6 +51,8 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanCalibrationColorUIRoot");
     // 预留给后续色卡预览/采集步骤/结果区域的最小尺寸。
     root->setMinimumSize(980, 620);
+    // 颜色校准界面的视觉样式从 qss 文件加载，源码只保留结构和 objectName。
+    MeyerQtModule::ApplyModuleQss(root, "MyCalibrationColorUI", "calibration_color.qss", m_logger);
 
     // 使用 Qt Layout 而非固定坐标，后续接入色卡预览或结果面板时更容易维护。
     auto* layout = new QVBoxLayout(root);
@@ -68,13 +72,11 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
     auto* intro = new QLabel(tr("Prepare the color target and follow the color capture sequence."), root);
     // 长翻译自动换行，避免按语言 if/else 改控件宽度。
     intro->setWordWrap(true);
-    intro->setStyleSheet("QLabel{color:#52616f;}");
     layout->addWidget(intro);
 
     auto* content = new QFrame(root);
     // QFrame 作为内容容器，未来色卡预览和结果确认都在这个区域内扩展。
     content->setObjectName("CalibrationColorContent");
-    content->setStyleSheet("QFrame#CalibrationColorContent{border:1px solid #cfd8dc;border-radius:4px;background:#ffffff;}");
 
     // 内容区后续用于放置色卡预览、采集步骤、计算状态和结果确认。
     auto* contentLayout = new QVBoxLayout(content);
@@ -83,11 +85,11 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
     contentLayout->setSpacing(12);
 
     auto* step = new QLabel(tr("Color correction placeholder"), content);
+    step->setObjectName("CalibrationColorStepPlaceholder");
     // 占位区固定最小高度，保证后续替换成色卡/预览画面时整体布局稳定。
     // setAlignment 让占位文字保持居中，后续替换成预览控件时可删除该 QLabel。
     step->setAlignment(Qt::AlignCenter);
     step->setMinimumHeight(280);
-    step->setStyleSheet("QLabel{border:1px dashed #b0bec5;color:#607080;background:#f8fafb;}");
     contentLayout->addWidget(step, 1);
 
     auto* buttonRow = new QHBoxLayout();
@@ -137,15 +139,9 @@ void CalibrationColorUIImpl::Shutdown() {
 // 写结构化日志。
 // 日志失败不应影响校准界面创建，所以没有 logger 时静默返回。
 void CalibrationColorUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-
-    // Logger 跨 DLL ABI 使用 UTF-8 const char*，Qt 字符串只在模块内部使用。
-    const QByteArray bytes = content.toUtf8();
-    // bytes 是局部持有者，确保 constData() 在 Write 调用期间不会悬空。
-    // 颜色标定页当前没有真实操作员上下文，传空字符串让 Logger 省略 Op 字段。
-    m_logger->Write(level, ModuleInfo::Name, operation, "", "", "", bytes.constData());
+    // MeyerQtModule::WriteQtLog 会自动补充 MEYER_MODULE_NAME，
+    // 并把 QString 在跨 DLL 前转换成 UTF-8 const char*。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // 导出颜色校准 UI 模块实例。

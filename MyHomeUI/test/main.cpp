@@ -4,13 +4,24 @@
 #include <QCoreApplication>
 #include <QDesktopWidget>
 #include <QDir>
+#include <QList>
 #include <QRect>
 #include <QSize>
 #include <QTimer>
+#include <QToolButton>
+#include <QVariant>
 #include <QWidget>
 #include <cstring>
 
 namespace {
+
+// 保存首页最近一次上报的入口/工具动作，验证顶部按钮没有直接操作主窗口。
+int g_lastHomeAction = 0;
+
+void OnHomeAction(void* /*context*/, int actionId) {
+    g_lastHomeAction = actionId;
+}
+
 // 将测试窗口显示在当前可用屏幕中央。
 // 说明:
 //   - 测试宿主不是正式 MainExe，没有统一页面容器。
@@ -78,9 +89,30 @@ int main(int argc, char* argv[]) {
     const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
     const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
     home->Init(databaseConfigBytes.constData(), logDirBytes.constData());
+    home->SetEntryCallback(&OnHomeAction, nullptr);
 
     // 创建首页并用模块版本做窗口标题，便于人工测试时确认加载的是当前 DLL。
     QWidget* widget = home->CreateWidget();
+    // 通过动态属性定位帮助按钮，避免测试依赖按钮在布局中的具体下标。
+    const QList<QToolButton*> topButtons = widget->findChildren<QToolButton*>("HomePageToolButton");
+    QToolButton* helpButton = nullptr;
+    for (QToolButton* button : topButtons) {
+        if (button && button->property("homeActionId").toInt() == HomeActionHelp) {
+            helpButton = button;
+            break;
+        }
+    }
+    if (!helpButton) {
+        delete widget;
+        home->Shutdown();
+        return 4;
+    }
+    helpButton->click();
+    if (g_lastHomeAction != HomeActionHelp) {
+        delete widget;
+        home->Shutdown();
+        return 5;
+    }
     // 测试窗口没有 MainExe 外壳，直接使用模块版本作为标题最直观。
     widget->setWindowTitle(home->GetModuleVersion());
     ShowOnCurrentScreen(widget);

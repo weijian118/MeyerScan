@@ -1,0 +1,35 @@
+QWidget#MeyerScanCalibrationColorUIRoot {
+    background: #f4f6f8;
+    color: #23313f;
+}
+
+QLabel {
+    color: #52616f;
+    font-size: 14px;
+}
+
+QFrame#CalibrationColorContent {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    background: #ffffff;
+}
+
+QLabel#CalibrationColorStepPlaceholder {
+    border: 1px dashed #b0bec5;
+    color: #607080;
+    background: #f8fafb;
+}
+
+QPushButton {
+    min-height: 34px;
+    min-width: 120px;
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    background: #f6f8fa;
+    color: #23313f;
+    padding: 8px 16px;
+}
+
+QPushButton:hover {
+    background: #edf2f5;
+}

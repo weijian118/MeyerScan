@@ -1,5 +1,7 @@
 ﻿#include "UIComponentsImpl.h"
 
+#include "MeyerQtModuleUtils.h"
+
 #include <QApplication>
 #include <QAbstractItemView>
 #include <QComboBox>
@@ -13,6 +15,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QStyle>
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QToolButton>
@@ -29,6 +32,49 @@ const char* Version = "MeyerScan_UIComponents v0.4.0 (2026-07-05)";
 
 const double kDesignWidth = 1920.0;
 const double kDesignHeight = 1080.0;
+
+// 把按钮角色转成稳定字符串属性，qss 只依赖这些字符串。
+QString ButtonRoleName(int role) {
+    switch (role) {
+    case MeyerButtonRolePrimary:
+        return "primary";
+    case MeyerButtonRoleText:
+        return "text";
+    case MeyerButtonRoleDanger:
+        return "danger";
+    case MeyerButtonRoleEntry:
+        return "entry";
+    case MeyerButtonRoleSecondary:
+    default:
+        return "secondary";
+    }
+}
+
+// 把按钮内容布局转成稳定字符串属性，便于 qss 和自动化测试识别控件形态。
+QString ButtonContentName(int contentLayout) {
+    switch (contentLayout) {
+    case MeyerButtonContentIconOnly:
+        return "iconOnly";
+    case MeyerButtonContentIconLeftText:
+        return "iconLeftText";
+    case MeyerButtonContentIconTopText:
+        return "iconTopText";
+    case MeyerButtonContentTextOnly:
+    default:
+        return "textOnly";
+    }
+}
+
+// Qt 动态属性变化后需要重新抛光，qss 才能稳定按新属性重算。
+void Repolish(QWidget* widget) {
+    if (!widget || !widget->style()) {
+        return;
+    }
+
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+    widget->update();
+}
 }
 
 // 返回共享 UI 组件单例。
@@ -72,6 +118,8 @@ QWidget* UIComponentsImpl::CreateWaitWidget(const char* titleUtf8, const char* m
     auto* root = new QWidget(parent);
     // objectName 方便样式表、自动化测试或调试器定位这个页面。
     root->setObjectName("MeyerScanWaitWidget");
+    // 等待页是 UIComponents 自己创建的完整页面，可以直接加载共享 qss。
+    MeyerQtModule::ApplyModuleQss(root, "MyUIComponents", "ui_components.qss", nullptr);
 
     // 等待页使用布局而非固定坐标，适配多语言和不同分辨率。
     auto* layout = new QVBoxLayout(root);
@@ -83,12 +131,13 @@ QWidget* UIComponentsImpl::CreateWaitWidget(const char* titleUtf8, const char* m
     // title/message 都由调用方决定，UIComponents 不写业务文案。
     auto* title = CreatePageTitle(titleUtf8, root);
     auto* message = new QLabel(QString::fromUtf8(messageUtf8 ? messageUtf8 : ""), root);
+    message->setObjectName("MeyerWaitMessageLabel");
     // 居中展示等待信息，不让不同长度文本影响布局方向。
     message->setAlignment(Qt::AlignCenter);
-    message->setStyleSheet("color:#607080;font-size:15px;");
 
     // 不确定总进度时使用忙碌进度条：range(0,0) 是 Qt 的无限进度模式。
     auto* progress = new QProgressBar(root);
+    progress->setObjectName("MeyerWaitProgressBar");
     progress->setRange(0, 0);
     // 关闭百分比文本，因为无限进度没有明确百分比。
     progress->setTextVisible(false);
@@ -171,8 +220,11 @@ void UIComponentsImpl::ApplyButtonStyle(QPushButton* button, int role, int conte
                           QSizePolicy::Fixed);
     // setIconSize 只影响按钮内部图标显示尺寸，不改变原始图片文件。
     button->setIconSize(ButtonIconSize(contentLayout));
-    // Qt 样式表按控件类型选择器生效；这里集中生成，避免各模块手写不同颜色/圆角。
-    button->setStyleSheet(ButtonStyleSheet(role));
+    // 只写语义属性，具体颜色、圆角、hover/pressed 全部由 qss 文件控制。
+    button->setObjectName("MeyerPushButton");
+    button->setProperty("role", ButtonRoleName(role));
+    button->setProperty("meyerButtonRole", ButtonRoleName(role));
+    button->setProperty("meyerButtonContent", ButtonContentName(contentLayout));
 
     if (contentLayout == MeyerButtonContentIconOnly) {
         // 纯图标按钮不强制清空 text，调用方可保留 text 用于无障碍/tooltip。
@@ -184,6 +236,7 @@ void UIComponentsImpl::ApplyButtonStyle(QPushButton* button, int role, int conte
         // 复杂工具栏建议使用 CreateToolButton()，它能通过 toolButtonStyle 原生支持。
         button->setMinimumHeight(qMax(ButtonMinimumHeight(role), static_cast<int>(74 * m_scaleY)));
     }
+    Repolish(button);
 }
 
 // 给已有 QToolButton 应用统一样式。
@@ -195,10 +248,11 @@ void UIComponentsImpl::ApplyToolButtonStyle(QToolButton* button, int role, int c
     button->setMinimumHeight(ButtonMinimumHeight(role));
     button->setIconSize(ButtonIconSize(contentLayout));
     button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-    // ButtonStyleSheet 生成的是 QPushButton 选择器，ToolButton 复用颜色体系时替换选择器即可。
-    QString style = ButtonStyleSheet(role);
-    style.replace("QPushButton", "QToolButton");
-    button->setStyleSheet(style);
+    // 只写语义属性，具体视觉交给 qss；QToolButton 的图文排布仍用 Qt 原生属性。
+    button->setObjectName("MeyerToolButton");
+    button->setProperty("role", ButtonRoleName(role));
+    button->setProperty("meyerButtonRole", ButtonRoleName(role));
+    button->setProperty("meyerButtonContent", ButtonContentName(contentLayout));
 
     if (contentLayout == MeyerButtonContentIconOnly) {
         // QToolButton 原生支持 ToolButtonIconOnly，不需要自己写布局。
@@ -212,6 +266,7 @@ void UIComponentsImpl::ApplyToolButtonStyle(QToolButton* button, int role, int c
     } else {
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     }
+    Repolish(button);
 }
 
 // 创建通用输入框。
@@ -225,7 +280,9 @@ QLineEdit* UIComponentsImpl::CreateLineEdit(const char* placeholderUtf8, QWidget
     edit->setMinimumHeight(static_cast<int>(36 * m_scaleY));
     // 宽度交给父布局拉伸，高度固定，避免输入框因为文字变化上下跳动。
     edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    edit->setStyleSheet(InputStyleSheet("QLineEdit"));
+    edit->setObjectName("MeyerLineEdit");
+    edit->setProperty("meyerInput", true);
+    Repolish(edit);
     return edit;
 }
 
@@ -238,7 +295,9 @@ QComboBox* UIComponentsImpl::CreateComboBox(QWidget* parent) {
     combo->setMinimumHeight(static_cast<int>(36 * m_scaleY));
     // 下拉项不在这里添加，因为 UIComponents 不理解业务枚举。
     combo->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-    combo->setStyleSheet(InputStyleSheet("QComboBox"));
+    combo->setObjectName("MeyerComboBox");
+    combo->setProperty("meyerInput", true);
+    Repolish(combo);
     return combo;
 }
 
@@ -252,7 +311,9 @@ QDateEdit* UIComponentsImpl::CreateDateEdit(QWidget* parent) {
     edit->setMinimumHeight(static_cast<int>(36 * m_scaleY));
     // 宽度交给布局处理，避免多语言环境下固定宽度导致挤压。
     edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    edit->setStyleSheet(InputStyleSheet("QDateEdit"));
+    edit->setObjectName("MeyerDateEdit");
+    edit->setProperty("meyerInput", true);
+    Repolish(edit);
     return edit;
 }
 
@@ -265,7 +326,9 @@ QTextEdit* UIComponentsImpl::CreateTextEdit(QWidget* parent) {
     edit->setMinimumHeight(static_cast<int>(qMax(58.0, 64.0 * m_scaleY)));
     // 备注区域通常横向填满父布局。
     edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    edit->setStyleSheet(InputStyleSheet("QTextEdit"));
+    edit->setObjectName("MeyerTextEdit");
+    edit->setProperty("meyerInput", true);
+    Repolish(edit);
     return edit;
 }
 
@@ -275,10 +338,11 @@ QLabel* UIComponentsImpl::CreateFieldLabel(const char* textUtf8, QWidget* parent
     auto* label = new QLabel(QString::fromUtf8(textUtf8 ? textUtf8 : ""), parent);
 
     // 字段名使用中等字重和较深灰色，和输入值形成稳定层级。
+    label->setObjectName("MeyerFieldLabel");
     label->setWordWrap(true);
     label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    label->setStyleSheet("QLabel{color:#4f5f6f;font-size:13px;font-weight:500;}");
+    Repolish(label);
     return label;
 }
 
@@ -315,14 +379,9 @@ void UIComponentsImpl::ApplyTableStyle(QTableWidget* table) {
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     // 高度使用最小值而不是固定值，父布局仍可以根据页面空间扩展。
     table->setMinimumHeight(static_cast<int>(qMax(160.0, 180.0 * m_scaleY)));
-    table->setStyleSheet(
-        "QTableWidget{background:#ffffff;border:1px solid #d8e1e7;border-radius:4px;"
-        "gridline-color:#edf1f4;color:#23313f;alternate-background-color:#f8fafb;"
-        "selection-background-color:#dff1ec;selection-color:#23313f;}"
-        "QTableWidget::item{padding:6px;}"
-        "QHeaderView::section{background:#edf3f5;color:#23313f;border:0;"
-        "border-bottom:1px solid #d8e1e7;padding:7px;font-weight:600;}"
-        "QTableCornerButton::section{background:#edf3f5;border:0;border-bottom:1px solid #d8e1e7;}");
+    table->setObjectName("MeyerTableWidget");
+    table->setProperty("meyerTable", true);
+    Repolish(table);
 }
 
 // 创建页面标题。
@@ -341,7 +400,8 @@ QLabel* UIComponentsImpl::CreatePageTitle(const char* textUtf8, QWidget* parent)
     font.setPointSize(20);
     font.setBold(true);
     label->setFont(font);
-    label->setStyleSheet("color:#23313f;");
+    label->setObjectName("MeyerPageTitleLabel");
+    Repolish(label);
     return label;
 }
 
@@ -356,40 +416,6 @@ void UIComponentsImpl::Shutdown() {
     // 恢复默认比例，便于测试宿主重复 Init/Shutdown 时结果可预测。
     m_scaleX = 1.0;
     m_scaleY = 1.0;
-}
-
-// 生成不同按钮角色对应的样式表。
-// 角色只表示视觉层级，不包含任何业务权限语义。
-QString UIComponentsImpl::ButtonStyleSheet(int role) const {
-    // switch 让每个视觉角色的样式集中在一个地方，后续换肤时只改这里。
-    switch (role) {
-    case MeyerButtonRolePrimary:
-        return "QPushButton{background:#007d68;color:white;border:0;border-radius:4px;padding:8px 18px;}"
-               "QPushButton:hover{background:#009176;}"
-               "QPushButton:pressed{background:#006652;}"
-               "QPushButton:disabled{background:#d8d8d8;color:#888;}";
-    case MeyerButtonRoleText:
-        return "QPushButton{background:transparent;color:#007d68;border:0;border-radius:4px;padding:6px 10px;}"
-               "QPushButton:hover{background:#e7f3f0;}"
-               "QPushButton:pressed{background:#d6ebe6;}"
-               "QPushButton:disabled{color:#999;}";
-    case MeyerButtonRoleDanger:
-        return "QPushButton{background:#c0392b;color:white;border:0;border-radius:4px;padding:8px 16px;}"
-               "QPushButton:hover{background:#d24a3c;}"
-               "QPushButton:pressed{background:#9f2f25;}"
-               "QPushButton:disabled{background:#e1d2cf;color:#9a8f8c;}";
-    case MeyerButtonRoleEntry:
-        return "QPushButton{text-align:left;background:white;color:#23313f;border:1px solid #d8e1e7;border-radius:6px;padding:14px;}"
-               "QPushButton:hover{background:#edf8f5;border-color:#9ccfc3;}"
-               "QPushButton:pressed{background:#dff1ec;}"
-               "QPushButton:disabled{background:#f4f4f4;color:#999;border-color:#e2e2e2;}";
-    case MeyerButtonRoleSecondary:
-    default:
-        return "QPushButton{background:#f6f8fa;color:#23313f;border:1px solid #cfd8dc;border-radius:4px;padding:8px 16px;}"
-               "QPushButton:hover{background:#edf2f5;}"
-               "QPushButton:pressed{background:#e1e8ec;}"
-               "QPushButton:disabled{color:#999;border-color:#ddd;background:#f4f4f4;}";
-    }
 }
 
 // 根据角色返回最小高度。
@@ -438,16 +464,6 @@ QIcon UIComponentsImpl::LoadIcon(const char* iconResourcePathUtf8) const {
     }
     // 当前不做路径猜测，避免 UIComponents 偷偷依赖 currentPath 或某个固定资源目录。
     return QIcon();
-}
-
-// 生成普通输入控件统一样式。
-// selector 传入 QLineEdit/QComboBox/QDateEdit/QTextEdit，可以复用同一套颜色和焦点态。
-QString UIComponentsImpl::InputStyleSheet(const QString& selector) const {
-    return QString("%1{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;selection-background-color:#007d68;}"
-                   "%1:focus{border-color:#007d68;background:#ffffff;}"
-                   "%1:disabled{background:#f2f4f6;color:#8a96a3;border-color:#d8e1e7;}"
-                   "%1[readOnly=\"true\"]{background:#eef2f5;color:#23313f;}")
-        .arg(selector);
 }
 
 // C ABI 导出函数。

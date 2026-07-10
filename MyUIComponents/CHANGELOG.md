@@ -1,5 +1,10 @@
 ﻿# MeyerScan UIComponents 变更记录
 
+## 2026-07-10
+
+- 共享控件视觉统一迁入 `Resources/qss/ui_components.qss`，模块初始化时通过公共 QSS 函数加载；控件工厂只设置 objectName/语义属性，不在源码拼接样式。
+- CMake/VS2015 工程补齐模块资源复制；`Version.rc` 补齐版权字段；UIComponentsTest 和根方案构建通过。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

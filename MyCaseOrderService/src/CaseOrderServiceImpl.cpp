@@ -359,7 +359,8 @@ CaseOrderServiceResult CaseOrderServiceImpl::Ok(const char* message) const {
 }
 
 // 构造失败返回值。
-// errorCode 当前先使用局部错误码，后续 Core.lib 建好后迁移到统一 ErrorCode。
+// errorCode 当前使用服务局部错误码；只有多个服务出现语义一致的稳定错误合同后，
+// 才评估抽取公共错误码，避免把病例业务错误过早固化到通用层。
 CaseOrderServiceResult CaseOrderServiceImpl::Fail(int errorCode, const char* message) const {
     // 失败也用同一个结构体返回，调用方只需要检查 errorCode 是否为 0。
     CaseOrderServiceResult result;

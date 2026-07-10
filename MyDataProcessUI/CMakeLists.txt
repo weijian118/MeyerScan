@@ -31,6 +31,7 @@ target_link_libraries(MeyerScan_DataProcessUI PRIVATE
     ${OpenCV_LIBS}
 )
 meyer_link_sibling_module(MeyerScan_DataProcessUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_DataProcessUI MyDataProcessUI)
 
 option(MEYER_BUILD_DATAPROCESSUITEST "Build DataProcessUITest.exe" ON)
 if(MEYER_BUILD_DATAPROCESSUITEST)
@@ -47,4 +48,5 @@ if(MEYER_BUILD_DATAPROCESSUITEST)
         ${OpenCV_LIBS}
     )
     meyer_link_sibling_module(DataProcessUITest MyLogger MeyerScan_Logger)
+    meyer_copy_module_resources(DataProcessUITest MyDataProcessUI)
 endif()

@@ -1,5 +1,7 @@
 ﻿#include "Calibration3DUIImpl.h"
 
+#include "MeyerQtModuleUtils.h"
+
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -50,6 +52,8 @@ QWidget* Calibration3DUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanCalibration3DUIRoot");
     // 最小尺寸先保护未来采集预览区域，不让窗口过小导致控件挤压。
     root->setMinimumSize(980, 620);
+    // 校准界面的视觉样式从 qss 文件加载，源码只保留结构和 objectName。
+    MeyerQtModule::ApplyModuleQss(root, "MyCalibration3DUI", "calibration_3d.qss", m_logger);
 
     // 全部使用 Qt Layout，不使用绝对坐标，后续真实控件增删时更容易维护。
     auto* layout = new QVBoxLayout(root);
@@ -69,13 +73,11 @@ QWidget* Calibration3DUIImpl::CreateWidget(QWidget* parent) {
     auto* intro = new QLabel(tr("Prepare the calibration board and follow the capture sequence."), root);
     // WordWrap 允许长英文或其它语言翻译自动换行，不需要写语言 if/else 调宽度。
     intro->setWordWrap(true);
-    intro->setStyleSheet("QLabel{color:#52616f;}");
     layout->addWidget(intro);
 
     auto* content = new QFrame(root);
     // QFrame 用作内容容器，后续可以把采集预览、步骤状态和结果页都放进这里。
     content->setObjectName("Calibration3DContent");
-    content->setStyleSheet("QFrame#Calibration3DContent{border:1px solid #cfd8dc;border-radius:4px;background:#ffffff;}");
 
     // 内容区先保留为一个稳定容器，后续真实采集预览、步骤提示和结果视图都放在这里扩展。
     auto* contentLayout = new QVBoxLayout(content);
@@ -84,10 +86,10 @@ QWidget* Calibration3DUIImpl::CreateWidget(QWidget* parent) {
     contentLayout->setSpacing(12);
 
     auto* step = new QLabel(tr("Capture sequence placeholder"), content);
+    step->setObjectName("Calibration3DStepPlaceholder");
     // 占位区固定最小高度，后续替换成相机预览/采集示意时页面不会突然变形。
     step->setAlignment(Qt::AlignCenter);
     step->setMinimumHeight(280);
-    step->setStyleSheet("QLabel{border:1px dashed #b0bec5;color:#607080;background:#f8fafb;}");
     contentLayout->addWidget(step, 1);
 
     auto* buttonRow = new QHBoxLayout();
@@ -137,15 +139,9 @@ void Calibration3DUIImpl::Shutdown() {
 // 写结构化日志。
 // 没有日志模块或日志尚未初始化时直接返回，保证校准 UI 不因日志失败影响主流程。
 void Calibration3DUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-
-    // Logger 公共 ABI 使用 UTF-8 const char*，这里在调用前转换。
-    const QByteArray bytes = content.toUtf8();
-    // QByteArray 局部变量保证 bytes.constData() 在 Write 调用期间有效。
-    // 标定页当前没有真实操作员上下文，传空字符串让 Logger 省略 Op 字段。
-    m_logger->Write(level, ModuleInfo::Name, operation, "", "", "", bytes.constData());
+    // MeyerQtModule::WriteQtLog 会自动补充 MEYER_MODULE_NAME，
+    // 并把 QString 在跨 DLL 前转换成 UTF-8 const char*。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // 导出三维校准 UI 模块实例。

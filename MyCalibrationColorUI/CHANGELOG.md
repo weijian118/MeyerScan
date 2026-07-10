@@ -1,5 +1,10 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-10
+
+- 界面样式迁入 `Resources/qss/calibration_color.qss`，CMake/VS2015 构建后复制到模块运行目录；源码通过公共 QSS/日志辅助函数加载，不再维护局部样式字符串。
+- `Version.rc` 补齐版权详细信息字段；VS2015/CMake Release 构建通过。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

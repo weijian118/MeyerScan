@@ -6,10 +6,19 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QToolButton>
 #include <QWidget>
 #include <cstdio>
 
 namespace {
+
+// 记录壳子顶部窗口按钮最近一次上报的动作 ID。
+// 测试宿主不真的最小化/关闭窗口，只验证 DLL 到调用方的回调链路。
+int g_lastShellAction = 0;
+
+void OnShellAction(void* /*context*/, int actionId) {
+    g_lastShellAction = actionId;
+}
 
 // 测试检查函数。
 // 当前壳子模块只需要基础冒烟测试，因此用轻量返回码即可。
@@ -48,6 +57,7 @@ int main(int argc, char* argv[]) {
                "OrderScanWorkspaceShell 初始化成功")) {
         return 2;
     }
+    shell->SetShellActionCallback(&OnShellAction, nullptr);
 
     // CreateWidget 创建完整工作区根控件，但不主动 show，调用方决定嵌入位置。
     QWidget* widget = shell->CreateWidget();
@@ -57,6 +67,16 @@ int main(int argc, char* argv[]) {
     // objectName 是样式表、自动化测试和人工调试的稳定标识。
     if (!Check(widget->objectName() == "MeyerScanOrderScanWorkspaceShellRoot", "工作区壳子根对象名正确")) {
         return 4;
+    }
+
+    // 顶部返回按钮必须只上报动作 ID，不能由壳子直接操作 MainWindow。
+    auto* backButton = widget->findChild<QToolButton*>("WorkspaceBackButton");
+    if (!Check(backButton != nullptr, "能找到工作台返回按钮")) {
+        return 17;
+    }
+    backButton->click();
+    if (!Check(g_lastShellAction == WorkspaceShellActionBack, "返回按钮上报稳定动作 ID")) {
+        return 18;
     }
 
     // 挂载扫描页占位控件，验证真实建单/扫描模块后续能以 QWidget 形式接入壳子。

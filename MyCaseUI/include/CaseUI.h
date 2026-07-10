@@ -65,6 +65,8 @@ enum CaseActionId {
     CaseActionDeleteOrder = 204,  // 删除订单
     CaseActionSearchOrder = 205,  // 搜索订单
     CaseActionOpenSettings = 301, // 打开设置
+    CaseActionMinimize = 302,     // 最小化 MeyerScan 主窗口
+    CaseActionClose = 303,        // 关闭浏览页并返回首页
 };
 
 // C ABI 工厂函数，便于 MainExe 直接或动态获取案例管理接口。

@@ -1,5 +1,9 @@
 ﻿# MeyerScan Permission 变更记录
 
+## 2026-07-10
+
+- 修正 `Init()` 注释中的旧 Core.lib 前置口径：权限规则缺失、损坏、版本不兼容和验签失败等语义稳定后再升级返回类型；本轮不修改 ABI。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

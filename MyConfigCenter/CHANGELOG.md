@@ -5,6 +5,10 @@
 - 复查补漏：同步修正 `ConfigCenterImpl::EnsureDefaultConfig()` 的首次生成逻辑和 `ConfigCenterTest` 断言，避免代码仍生成旧 `mysql` 默认值。
 - `ConfigCenterTest` 运行前会删除测试运行目录中的旧 `runtime_config.json`，确保真正覆盖默认配置生成链路。
 
+## 2026-07-10
+
+- 修正 `Init()` 注释中的旧 Core.lib 前置口径：待真实失败语义稳定后再升级返回类型；公共结果合同只在出现真实复用后按需抽取，本轮不修改 ABI。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

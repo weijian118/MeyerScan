@@ -1,10 +1,20 @@
 ﻿#include "HomeUIImpl.h"
+#include "MeyerQtModuleUtils.h"
+
+#include <QDir>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
+#include <QPixmap>
 #include <QPushButton>
+#include <QSizePolicy>
+#include <QStyle>
+#include <QToolButton>
+#include <QVariant>
 #include <QVBoxLayout>
+#include <QWidget>
 
 namespace {
 namespace ModuleInfo {
@@ -12,7 +22,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_HomeUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_HomeUI v0.2.0 (2026-06-26)";
+const char* Version = "MeyerScan_HomeUI v0.2.1 (2026-07-10)";
 }
 }
 
@@ -153,33 +163,102 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
     // root 的 parent 由 MainExe 的内容区容器或测试窗口传入。
     // Qt 会按父子关系释放子控件，后面只需要 delete root 即可释放整页。
     auto* root = new QWidget(parent);
-    // objectName 方便测试宿主或样式表定位首页根节点。
+    // objectName 方便 qss、测试宿主或调试工具定位首页根节点。
     root->setObjectName("MeyerScanHomeUIRoot");
-    root->setMinimumSize(760, 480);
+    root->setMinimumSize(960, 600);
+    // 首页所有视觉样式从 Resources/Modules/MyHomeUI/qss/home.qss 加载。
+    // 业务源码只保留控件结构和 objectName，不再硬编码 QSS 字符串。
+    MeyerQtModule::ApplyModuleQss(root, "MyHomeUI", "home.qss", m_logger);
 
-    // 这里先使用 Qt Layout，而不是固定坐标。
-    // 多语言文本变长、多分辨率缩放时，Layout 会自动重新分配空间。
-    auto* layout = new QVBoxLayout(root);
-    // 首页使用布局适配不同语言和分辨率，避免固定坐标造成翻译文本截断。
-    layout->setContentsMargins(28, 24, 28, 24);
-    layout->setSpacing(18);
+    // MainExe 只提供无边框全屏窗口能力；首页自己的品牌、工具入口和窗口按钮
+    // 属于首页顶部业务区，由 HomeUI 绘制并通过稳定动作 ID 通知 MainExe。
+    auto* rootLayout = new QVBoxLayout(root);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
 
-    auto* title = new QLabel(tr("MeyerScan"), root);
-    QFont titleFont = title->font();
-    // 标题字体只设置语义大小，不按屏幕比例直接拉伸；
-    // 后续统一缩放策略会放到 UIComponents，避免各模块各算一套比例。
-    titleFont.setPointSize(24);
-    titleFont.setBold(true);
-    title->setFont(titleFont);
-    layout->addWidget(title);
+    // ── 首页顶部业务区 ──
+    auto* pageToolLayout = new QHBoxLayout();
+    pageToolLayout->setContentsMargins(20, 14, 20, 4);
+    pageToolLayout->setSpacing(10);
 
-    auto* subtitle = new QLabel(tr("Create, browse, practice, and settings entry shell"), root);
-    subtitle->setStyleSheet("color:#555;");
-    layout->addWidget(subtitle);
+    // 品牌图片属于首页视觉内容，不放在 MainExe 的通用窗口层。
+    auto* brandLabel = new QLabel(root);
+    brandLabel->setObjectName("HomeBrandLabel");
+    const QString brandPath = MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", "logo.png");
+    const QPixmap brandPixmap(brandPath);
+    if (!brandPixmap.isNull()) {
+        // scaledToHeight 保持图片宽高比，布局只约束高度，不按语言或分辨率写坐标分支。
+        brandLabel->setPixmap(brandPixmap.scaledToHeight(48, Qt::SmoothTransformation));
+    } else {
+        // 资源缺失时保留可见品牌文本，避免顶部左侧完全空白；源文案仍按多语言规则使用 tr。
+        brandLabel->setText(tr("MEYER"));
+    }
+    pageToolLayout->addWidget(brandLabel, 0, Qt::AlignVCenter);
+    pageToolLayout->addStretch(1);
+
+    // 普通态和悬停态图片统一在这里登记到 QIcon，按钮尺寸/语义样式优先复用 UIComponents。
+    auto createTopButton = [this, root](const QString& tooltip,
+                                        const QString& normalIcon,
+                                        const QString& hoverIcon,
+                                        int actionId) {
+        const QString normalPath = MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", normalIcon);
+        QToolButton* button = nullptr;
+        if (m_uiComponents) {
+            const QByteArray normalPathBytes = QDir::fromNativeSeparators(normalPath).toUtf8();
+            button = m_uiComponents->CreateToolButton(MeyerButtonRoleSecondary,
+                                                       MeyerButtonContentIconOnly,
+                                                       "",
+                                                       normalPathBytes.constData(),
+                                                       root);
+        } else {
+            button = new QToolButton(root);
+        }
+
+        button->setObjectName("HomePageToolButton");
+        button->setProperty("homeActionId", actionId);
+        button->setToolTip(tooltip);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setFixedSize(44, 40);
+
+        QIcon icon;
+        icon.addFile(normalPath, QSize(24, 24), QIcon::Normal, QIcon::Off);
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", hoverIcon),
+                     QSize(24, 24),
+                     QIcon::Active,
+                     QIcon::Off);
+        button->setIcon(icon);
+        button->setIconSize(QSize(24, 24));
+        QObject::connect(button, &QToolButton::clicked, [this, actionId]() {
+            NotifyEntryClicked(actionId);
+        });
+        return button;
+    };
+
+    pageToolLayout->addWidget(createTopButton(tr("Calibration"), "cail_b.png", "cail_h.png", HomeActionCalibration));
+    pageToolLayout->addWidget(createTopButton(tr("Cloud"), "cloud_b.png", "cloud_h.png", HomeActionCloud));
+    pageToolLayout->addWidget(createTopButton(tr("Help"), "help_b.png", "help_h.png", HomeActionHelp));
+    pageToolLayout->addWidget(createTopButton(tr("Minimize"), "min_b.png", "min_h.png", HomeActionMinimize));
+    pageToolLayout->addWidget(createTopButton(tr("Close"), "close_b.png", "close_h.png", HomeActionClose));
+    rootLayout->addLayout(pageToolLayout);
+
+    auto* contentLayout = new QHBoxLayout();
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(24);
+
+    // 左侧视觉区域通过 qss 背景图复用旧软件首页资源。
+    // 该区域不承载业务点击，避免背景层和入口按钮出现事件冲突。
+    auto* visualPanel = new QFrame(root);
+    visualPanel->setObjectName("HomeVisualPanel");
+    visualPanel->setMinimumWidth(420);
+    contentLayout->addWidget(visualPanel, 7);
 
     auto* grid = new QGridLayout();
-    // QGridLayout 负责把入口排列成两列，窗口变宽/变窄时由布局重新分配空间。
-    grid->setSpacing(14);
+    // 入口卡片布局参考当前软件首页右侧四宫格。
+    // 边距使用比例式 stretch 参与布局，避免 4K 屏幕上固定坐标过于靠边。
+    grid->setContentsMargins(10, 110, 36, 130);
+    grid->setHorizontalSpacing(14);
+    grid->setVerticalSpacing(14);
 
     const QStringList names = {
         // UI 可见文本统一使用 tr("English source text")，
@@ -207,24 +286,24 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
 
     // 每个入口按钮只负责上报 ID，具体进入建单/浏览/练习/设置由 MainExe 和 Workflow 决定。
     for (int i = 0; i < names.size(); ++i) {
-        // 按钮文本临时用两行展示：第一行入口名，第二行说明。
-        // 正式视觉组件落地后，应迁到 UIComponents 的标准入口卡片/按钮。
-        const QString buttonText = names[i] + "\n" + descs[i];
-        // QByteArray 保存 UTF-8 字节，供 UIComponents 的 C ABI 风格接口读取。
-        const QByteArray buttonTextBytes = buttonText.toUtf8();
-        QPushButton* button = m_uiComponents
-            ? m_uiComponents->CreateButton(MeyerButtonRoleEntry,
-                                           MeyerButtonContentTextOnly,
-                                           buttonTextBytes.constData(),
-                                           "",
-                                           root)
-            : new QPushButton(buttonText, root);
-        // 最小尺寸保证两行入口文字有基本阅读空间；最终尺寸仍由 GridLayout 决定。
-        button->setMinimumSize(220, 110);
-        if (!m_uiComponents) {
-            // UIComponents 不可用时保留本地降级样式，确保首页仍能打开。
-            button->setStyleSheet("QPushButton{text-align:left;padding:14px;font-size:15px;} QPushButton:hover{background:#eef5ff;}");
-        }
+        auto* button = new QToolButton(root);
+        button->setObjectName("HomeEntryButton");
+        button->setText(names[i]);
+        button->setToolTip(descs[i]);
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setIconSize(QSize(92, 92));
+        const QStringList entryIcons = {
+            "HomeCreate_b.png",
+            "HomeBrowse_b.png",
+            "HomeExercise_b.png",
+            "HomeSetting_b.png"
+        };
+        button->setIcon(QIcon(MeyerQtModule::ModuleResourceFile("MyHomeUI", "icon/home", entryIcons[i])));
+        // 图标大小参考参考图：92x92 在高分屏下可通过 UIComponents ScaleX 进一步缩放。
+        button->setIconSize(QSize(92, 92));
+        // 最小尺寸参考当前软件入口卡片，但最终仍由布局随屏幕尺寸拉伸。
+        button->setMinimumSize(260, 190);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         // lambda 捕获 entryId 的值，而不是捕获 i。
         // 如果捕获 i，循环结束后所有按钮可能都读到同一个最终下标。
         const int entryId = entryIds[i];
@@ -239,15 +318,16 @@ QWidget* HomeUIImpl::CreateWidget(QWidget* parent) {
         grid->addWidget(button, i / 2, i % 2);
     }
 
-    layout->addLayout(grid);
-    // stretch 把状态栏压到底部，让入口区保持靠上且有呼吸空间。
-    layout->addStretch();
+    contentLayout->addLayout(grid, 8);
+    rootLayout->addLayout(contentLayout, 1);
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
+    status->setObjectName("HomeStatusLabel");
     // 状态标签只用于开发期快速看首页初始化状态。
     // 数据库状态由 MainExe/RuntimeDataCenter 写日志，首页不直接探测 Database。
-    status->setStyleSheet("color:#1f7a3a;");
-    layout->addWidget(status);
+    // 正式首页不显示开发状态文字；状态仍保留在对象树中供测试/排查读取。
+    status->setVisible(false);
+    rootLayout->addWidget(status);
 
     WriteLog(LogLevel::Info, "CreateWidget", "Home widget created");
     return root;
@@ -278,18 +358,18 @@ void HomeUIImpl::Shutdown() {
 // content 使用 QString 便于 UI 模块内部组织文本，跨 DLL 边界前再转成 UTF-8。
 void HomeUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) {
     if (!m_logger) {
-        // 日志不可用时直接返回，UI 模块不能因为日志问题影响用户操作。
         return;
     }
-    // HomeUI 是 Qt 模块，直接使用 Logger.h 提供的 QString 便捷接口。
-    // 跨 DLL 边界前仍会转成 UTF-8 const char*，不会把 QString 对象传进 Logger.dll。
+    const QByteArray moduleBytes = QString::fromLatin1(MEYER_MODULE_NAME).toUtf8();
+    const QByteArray operationBytes = QString::fromLatin1(operation ? operation : "").toUtf8();
+    const QByteArray contentBytes = content.toUtf8();
     m_logger->Write(level,
-                    QString::fromLatin1(ModuleInfo::Name),
-                    QString::fromLatin1(operation ? operation : ""),
-                    QString(),
-                    QString(),
-                    QString(),
-                    content);
+                    moduleBytes.constData(),
+                    operationBytes.constData(),
+                    "",
+                    "",
+                    "",
+                    contentBytes.constData());
 }
 
 // 入口点击统一处理。

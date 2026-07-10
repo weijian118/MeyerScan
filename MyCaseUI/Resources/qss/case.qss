@@ -1,0 +1,98 @@
+QWidget#MeyerScanCaseUIRoot {
+    background: #f5f6f7;
+}
+
+QFrame#CaseTopBar {
+    background: #ffffff;
+    border-bottom: 2px solid #007d68;
+}
+
+QLabel#CaseBrandLabel {
+    color: #007d68;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+QLabel#CaseTitleLabel {
+    color: #111827;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QToolButton#CaseTopToolButton {
+    border: 0;
+    min-width: 38px;
+    min-height: 36px;
+    max-width: 38px;
+    max-height: 36px;
+    border-radius: 6px;
+    background: transparent;
+}
+
+QToolButton#CaseTopToolButton:hover {
+    background: #edf2f5;
+}
+
+QLineEdit {
+    border: 1px solid #cbd5df;
+    border-radius: 7px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    color: #1f2937;
+    min-height: 30px;
+}
+
+QPushButton {
+    border: 1px solid #cfd8dc;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #23313f;
+    padding: 8px 16px;
+    min-height: 30px;
+}
+
+QPushButton:hover {
+    background: #f4f7f9;
+}
+
+QPushButton[role="primary"] {
+    background: #007d68;
+    color: #ffffff;
+    border-color: #007d68;
+    font-weight: 600;
+}
+
+QPushButton[role="primary"]:hover {
+    background: #006f5d;
+}
+
+QTabWidget::pane {
+    border: 0;
+    background: transparent;
+}
+
+QTabBar::tab {
+    min-width: 120px;
+    min-height: 42px;
+    color: #53606c;
+}
+
+QTabBar::tab:selected {
+    color: #007d68;
+    font-weight: 700;
+}
+
+QTableWidget {
+    background: #ffffff;
+    border: 0;
+    gridline-color: #e5e9ed;
+    selection-background-color: #e1f2ee;
+}
+
+QLabel#CaseStatusLabelReady {
+    color: #1f7a3a;
+}
+
+QLabel#CaseStatusLabelWarning {
+    color: #9a3412;
+}

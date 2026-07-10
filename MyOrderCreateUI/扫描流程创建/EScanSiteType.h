@@ -1,4 +1,4 @@
-#ifndef ESCANSITETYPE_H
+﻿#ifndef ESCANSITETYPE_H
 #define ESCANSITETYPE_H
 
 // 扫描位点类型枚举

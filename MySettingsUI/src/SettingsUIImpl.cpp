@@ -2,6 +2,7 @@
 
 #include "Calibration3DUI.h"
 #include "CalibrationColorUI.h"
+#include "MeyerQtModuleUtils.h"
 
 #include <QApplication>
 #include <QByteArray>
@@ -166,14 +167,9 @@ QWidget* SettingsUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanSettingsUIRoot");
     // minimumSize 是下限，不是固定尺寸；窗口放大缩小时仍由 layout 自动伸缩。
     root->setMinimumSize(980, 620);
-    // 当前骨架期样式集中在根控件 QSS；后续成熟后应逐步迁移到 MyUIComponents 统一样式表。
-    root->setStyleSheet(
-        "QWidget#MeyerScanSettingsUIRoot{background:#f3f5f8;}"
-        "QPushButton{font-size:15px;min-height:34px;}"
-        "QPushButton#SettingsPrimary{background:#00856b;color:white;border:0;border-radius:4px;padding:8px 22px;}"
-        "QPushButton#SettingsNav{border:0;text-align:left;padding:12px 16px;background:transparent;}"
-        "QPushButton#SettingsNav:checked{background:#dcefed;color:#063f36;border-radius:4px;}"
-        "QFrame#SettingsCard{background:white;border:1px solid #e3e7ed;border-radius:4px;}");
+    // 样式统一从 Resources/Modules/MySettingsUI/qss/settings.qss 加载。
+    // 业务源码只保留 objectName/property，避免后续改视觉效果时重新编译 DLL。
+    MeyerQtModule::ApplyModuleQss(root, "MySettingsUI", "settings.qss", m_logger);
 
     auto* rootLayout = new QVBoxLayout(root);
     // 根布局外边距设为 0，让设置页填满 MainExe 内容区；内边距由 header/body/footer 自己控制。
@@ -432,18 +428,9 @@ void SettingsUIImpl::LoadRuntimeDataCenter() {
 
 // 写结构化日志。
 void SettingsUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    // 日志模块缺失不能影响设置页打开，因此这里静默返回。
-    if (!m_logger) {
-        return;
-    }
-    // Logger 的 QString 重载在头文件里完成 UTF-8 转换，Logger.dll 本体仍保持轻量 C ABI。
-    m_logger->Write(level,
-                    QString::fromLatin1(ModuleInfo::Name),
-                    QString::fromLatin1(operation ? operation : ""),
-                    QString(),
-                    QString(),
-                    QString(),
-                    content);
+    // 公共 Qt 日志工具会自动使用 MEYER_MODULE_NAME 填充模块名。
+    // 设置模块只关心“发生了什么”，不再重复维护日志字段拼装。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // 上报动作给 MainExe。
@@ -823,7 +810,7 @@ QWidget* SettingsUIImpl::CreateCloudPage(QWidget* parent) {
     accountStatusRow->addWidget(new QLabel(tr("Status:"), loginCard));
     auto* statusLabel = new QLabel(tr("Not logged in"), loginCard);
     // 颜色只是骨架期提示，后续应收敛到 UIComponents 的状态标签样式。
-    statusLabel->setStyleSheet("color:#999999;");
+    statusLabel->setObjectName("SettingsStatusMutedLabel");
     accountStatusRow->addWidget(statusLabel);
     accountStatusRow->addStretch();
     loginLayout->addLayout(accountStatusRow);

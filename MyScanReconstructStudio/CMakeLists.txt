@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(ScanReconstructStudio VERSION 0.1.0 LANGUAGES CXX)
+project(ScanReconstructStudio VERSION 0.1.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -28,7 +28,33 @@ target_link_libraries(ScanReconstructStudio PRIVATE
     Qt5::Widgets
 )
 meyer_link_sibling_module(ScanReconstructStudio MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(ScanReconstructStudio MyScanReconstructStudio)
 set_target_properties(ScanReconstructStudio PROPERTIES LINK_FLAGS "/ENTRY:mainCRTStartup")
+
+add_library(MeyerScan_ScanReconstructStudio SHARED
+    src/ScanReconstructStudioWindow.cpp
+    src/ScanReconstructStudioModule.cpp
+    src/VersionDll.rc
+)
+meyer_configure_module(MeyerScan_ScanReconstructStudio MeyerScan_ScanReconstructStudio)
+meyer_use_dynamic_crt(MeyerScan_ScanReconstructStudio)
+target_compile_definitions(MeyerScan_ScanReconstructStudio PRIVATE
+    MEYERSCAN_SCANRECONSTRUCTSTUDIO_EXPORTS
+    MEYERSCAN_SCANRECONSTRUCTSTUDIO_NO_WINDOW_VERSION_EXPORT
+)
+target_include_directories(MeyerScan_ScanReconstructStudio PRIVATE
+    include
+    ../MyScanWorkflowUI/include
+    ../MyDataProcessUI/include
+    ../MyLogger/include
+)
+target_link_libraries(MeyerScan_ScanReconstructStudio PRIVATE
+    Qt5::Core
+    Qt5::Gui
+    Qt5::Widgets
+)
+meyer_link_sibling_module(MeyerScan_ScanReconstructStudio MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_ScanReconstructStudio MyScanReconstructStudio)
 
 foreach(_scan_runtime_target
         MeyerScan_ScanWorkflowUI
@@ -40,6 +66,20 @@ foreach(_scan_runtime_target
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "$<TARGET_FILE:${_scan_runtime_target}>"
                     "$<TARGET_FILE_DIR:ScanReconstructStudio>"
+        )
+    endif()
+endforeach()
+
+foreach(_scan_runtime_target
+        MeyerScan_ScanWorkflowUI
+        MeyerScan_DataProcessUI
+        MeyerScan_Logger)
+    if(TARGET ${_scan_runtime_target})
+        add_dependencies(MeyerScan_ScanReconstructStudio ${_scan_runtime_target})
+        add_custom_command(TARGET MeyerScan_ScanReconstructStudio POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:${_scan_runtime_target}>"
+                    "$<TARGET_FILE_DIR:MeyerScan_ScanReconstructStudio>"
         )
     endif()
 endforeach()

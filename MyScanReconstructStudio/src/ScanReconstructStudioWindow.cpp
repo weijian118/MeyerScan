@@ -1,4 +1,5 @@
-#include "ScanReconstructStudioWindow.h"
+﻿#include "ScanReconstructStudioWindow.h"
+#include "MeyerQtModuleUtils.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -14,19 +15,19 @@
 
 namespace {
 namespace ModuleInfo {
-// This value is written into the structured log module field.
+// 该名称写入结构化日志的模块字段。
 const char* Name = "ScanReconstructStudio";
 
-// Code version returned by GetMeyerModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "ScanReconstructStudio v0.1.0 (2026-07-05)";
+// GetMeyerModuleVersion() 返回的代码版本，必须与 Version.rc 保持同步。
+const char* Version = "ScanReconstructStudio v0.1.1 (2026-07-10)";
 }
 
-// Plain C function pointer types resolved from child DLLs.
+// 从子 DLL 解析出来的 C ABI 工厂函数类型。
 typedef IScanWorkflowUI* (*GetScanWorkflowUIFunc)();
 typedef IDataProcessUI* (*GetDataProcessUIFunc)();
 }
 
-// Constructs the shell window.
+// 构造扫描重建壳窗口。
 ScanReconstructStudioWindow::ScanReconstructStudioWindow(const QString& appDir,
                                                          const QString& logDir,
                                                          const QByteArray& contextJson,
@@ -37,28 +38,35 @@ ScanReconstructStudioWindow::ScanReconstructStudioWindow(const QString& appDir,
       m_contextJson(contextJson),
       m_scanLibrary(QDir(appDir).filePath("MeyerScan_ScanWorkflowUI.dll")),
       m_processLibrary(QDir(appDir).filePath("MeyerScan_DataProcessUI.dll")) {
-    // Visible text uses English source strings so qm files can translate later.
+    // 可见文本使用英文源文案，后续通过 qm 翻译成中文/英文等语言。
     setWindowTitle(tr("Scan Reconstruct Studio"));
+    // 独立 EXE 和嵌入 DLL 都使用无边框窗口，避免出现 Qt 原生标题栏。
+    setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
     setMinimumSize(1280, 760);
+
+    // 扫描/处理页面内部后续会持有 VTK/OpenGL 资源。
+    // 退出阶段不主动卸载 DLL，可以降低 Qt 对象、OpenGL 上下文、DLL 静态对象析构顺序互相踩踏的风险。
+    m_scanLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    m_processLibrary.setLoadHints(QLibrary::PreventUnloadHint);
 }
 
-// Releases active page resources before unloading child DLLs.
+// 析构前释放当前活动页面资源。
 ScanReconstructStudioWindow::~ScanReconstructStudioWindow() {
-    // Order matters: child widgets must release VTK resources before DLL unload.
+    // 顺序很重要：先让子模块释放 VTK/OpenGL，再清模块指针。
     ReleaseCurrentStepResources();
     UnloadModules();
 }
 
-// Initializes logger, child modules, and default page.
+// 初始化日志、子模块和默认页面。
 bool ScanReconstructStudioWindow::Initialize() {
-    // Logger is initialized first so later failures are recorded.
+    // 日志必须最早初始化，这样后续 DLL 加载失败也能落盘。
     m_logger = GetLogger();
     if (m_logger) {
         m_logger->Init(m_logDir.toUtf8().constData(), LogLevel::Info);
     }
     WriteLog(LogLevel::Info, "Initialize", "ScanReconstructStudio initializing");
 
-    // Load both modules up front; page widgets are still created lazily on switch.
+    // 先加载两个子 DLL，页面 widget 仍在切换时按需创建。
     if (!LoadScanModule()) {
         return false;
     }
@@ -66,45 +74,41 @@ bool ScanReconstructStudioWindow::Initialize() {
         return false;
     }
 
-    // Build the shell and enter scan mode.
+    // 创建壳子 UI，并进入扫描阶段。
     BuildShellUi();
     SwitchToStep(StepScan);
     WriteLog(LogLevel::Info, "Initialize", "ScanReconstructStudio initialized");
     return true;
 }
 
-// Runs a simple headless smoke path.
+// 执行无交互烟测路径。
 bool ScanReconstructStudioWindow::RunSmoke() {
-    // Reuse the real initialize path so dynamic loading and widget creation are covered.
+    // 复用真实初始化路径，确保动态加载和页面创建都被覆盖。
     if (!Initialize()) {
         return false;
     }
 
-    // Switch forward and back to verify page release/recreate behavior.
+    // 前后切换一次，验证页面释放和重建链路。
     SwitchToStep(StepDataProcess);
     SwitchToStep(StepScan);
     WriteLog(LogLevel::Info, "RunSmoke", "ScanReconstructStudio smoke passed");
     return true;
 }
 
-// Creates the shell frame.
+// 创建壳子界面框架。
 void ScanReconstructStudioWindow::BuildShellUi() {
     auto* central = new QWidget(this);
     central->setObjectName("ScanReconstructStudioRoot");
-    central->setStyleSheet(
-        "#ScanReconstructStudioRoot{background:#dfe4ea;}"
-        "QLabel{color:#1f2b36;font-size:13px;}"
-        "QPushButton{border:0;border-radius:4px;background:#f7f9fb;color:#273645;padding:8px 12px;min-height:28px;}"
-        "QPushButton:hover{background:#eef3f6;}"
-        "QPushButton[active=\"true\"]{background:#007d68;color:white;font-weight:600;}"
-        "QFrame[bar=\"true\"]{background:#eef2f5;border-bottom:1px solid #c5d0d8;}"
-    );
+    MeyerQtModule::ApplyModuleQss(central,
+                                  "MyScanReconstructStudio",
+                                  "scan_reconstruct_studio.qss",
+                                  m_logger);
 
     auto* layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    // Top bar is owned by the shell because both child pages share the same flow chrome.
+    // 顶部栏属于壳子，因为扫描和数据处理两个页面共享同一套流程外框。
     auto* topBar = new QFrame(central);
     topBar->setProperty("bar", true);
     auto* topLayout = new QHBoxLayout(topBar);
@@ -114,14 +118,14 @@ void ScanReconstructStudioWindow::BuildShellUi() {
     topLayout->addWidget(CreateWindowToolBar(topBar), 0);
     layout->addWidget(topBar, 0);
 
-    // The stack holds only the active page; old pages are removed and deleted on switch.
+    // stack 只保留当前重页面；切换时旧页面会移除并释放。
     m_stack = new QStackedWidget(central);
     m_stack->setObjectName("ScanReconstructStudioStack");
     layout->addWidget(m_stack, 1);
     setCentralWidget(central);
 }
 
-// Creates the top stage navigation row.
+// 创建顶部阶段导航行。
 QWidget* ScanReconstructStudioWindow::CreateTopStepBar(QWidget* parent) {
     auto* widget = new QWidget(parent);
     auto* layout = new QHBoxLayout(widget);
@@ -152,7 +156,7 @@ QWidget* ScanReconstructStudioWindow::CreateTopStepBar(QWidget* parent) {
     return widget;
 }
 
-// Creates the top-right shell tool row.
+// 创建右上角壳子工具按钮行。
 QWidget* ScanReconstructStudioWindow::CreateWindowToolBar(QWidget* parent) {
     auto* widget = new QWidget(parent);
     auto* layout = new QHBoxLayout(widget);
@@ -178,9 +182,9 @@ QWidget* ScanReconstructStudioWindow::CreateWindowToolBar(QWidget* parent) {
     return widget;
 }
 
-// Switches stages and releases the previous stage resources.
+// 切换扫描/数据处理阶段，并释放上一个阶段的重资源。
 void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
-    // If the requested page is already active, only refresh its label.
+    // 请求的页面已经处于活动状态时，只刷新标题，不重复创建页面。
     if (m_currentStep == step && m_pages.contains(step)) {
         if (m_stepLabel) {
             m_stepLabel->setText(step == StepScan ? tr("Scan") : tr("Data Processing"));
@@ -188,7 +192,7 @@ void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
         return;
     }
 
-    // Release the previous QVTK/OpenGL page before creating the next one.
+    // 创建新页面前先释放上一个 QVTK/OpenGL 页面，避免显存累积。
     ReleaseCurrentStepResources();
     m_currentStep = step;
 
@@ -217,12 +221,15 @@ void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
              QString("Current step: %1").arg(step == StepScan ? "scan" : "data-process"));
 }
 
-// Dynamically loads the scan UI DLL.
+// 动态加载扫描 UI DLL。
 bool ScanReconstructStudioWindow::LoadScanModule() {
     if (!m_scanLibrary.load()) {
-        WriteLog(LogLevel::Error, "LoadScanModule", m_scanLibrary.errorString());
+        WriteLog(LogLevel::Error,
+                 "LoadScanModule",
+                 QString("Load scan workflow DLL failed: %1").arg(m_scanLibrary.errorString()));
         return false;
     }
+    WriteLog(LogLevel::Info, "LoadScanModule", "Scan workflow DLL loaded");
 
     GetScanWorkflowUIFunc getter =
         reinterpret_cast<GetScanWorkflowUIFunc>(m_scanLibrary.resolve("GetScanWorkflowUI"));
@@ -237,19 +244,26 @@ bool ScanReconstructStudioWindow::LoadScanModule() {
         return false;
     }
 
-    m_scanModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    const bool initOk = m_scanModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    if (!initOk) {
+        WriteLog(LogLevel::Error, "LoadScanModule", "Scan module Init returned false");
+        return false;
+    }
     m_scanModule->SetSessionContextJson(m_contextJson.constData());
     m_scanModule->SetActionCallback(&ScanReconstructStudioWindow::OnChildAction, this);
     WriteLog(LogLevel::Info, "LoadScanModule", m_scanModule->GetModuleVersion());
     return true;
 }
 
-// Dynamically loads the data-processing UI DLL.
+// 动态加载数据处理 UI DLL。
 bool ScanReconstructStudioWindow::LoadDataProcessModule() {
     if (!m_processLibrary.load()) {
-        WriteLog(LogLevel::Error, "LoadDataProcessModule", m_processLibrary.errorString());
+        WriteLog(LogLevel::Error,
+                 "LoadDataProcessModule",
+                 QString("Load data process DLL failed: %1").arg(m_processLibrary.errorString()));
         return false;
     }
+    WriteLog(LogLevel::Info, "LoadDataProcessModule", "Data process DLL loaded");
 
     GetDataProcessUIFunc getter =
         reinterpret_cast<GetDataProcessUIFunc>(m_processLibrary.resolve("GetDataProcessUI"));
@@ -264,41 +278,59 @@ bool ScanReconstructStudioWindow::LoadDataProcessModule() {
         return false;
     }
 
-    m_processModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    const bool initOk = m_processModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    if (!initOk) {
+        WriteLog(LogLevel::Error, "LoadDataProcessModule", "Data process module Init returned false");
+        return false;
+    }
     m_processModule->SetSessionContextJson(m_contextJson.constData());
     m_processModule->SetActionCallback(&ScanReconstructStudioWindow::OnChildAction, this);
     WriteLog(LogLevel::Info, "LoadDataProcessModule", m_processModule->GetModuleVersion());
     return true;
 }
 
-// Creates the scan page through the child DLL.
+// 通过子 DLL 创建扫描页面。
 QWidget* ScanReconstructStudioWindow::CreateScanPage() {
     if (!m_scanModule) {
+        WriteLog(LogLevel::Error, "CreateScanPage", "Scan module is null");
         return nullptr;
     }
     QWidget* page = m_scanModule->CreateWidget(m_stack);
+    if (!page) {
+        WriteLog(LogLevel::Error, "CreateScanPage", "Scan widget create returned null");
+        return nullptr;
+    }
     m_scanModule->Activate();
     return page;
 }
 
-// Creates the data-processing page through the child DLL.
+// 通过子 DLL 创建数据处理页面。
 QWidget* ScanReconstructStudioWindow::CreateDataProcessPage() {
     if (!m_processModule) {
+        WriteLog(LogLevel::Error, "CreateDataProcessPage", "Data process module is null");
         return nullptr;
     }
     QWidget* page = m_processModule->CreateWidget(m_stack);
+    if (!page) {
+        WriteLog(LogLevel::Error, "CreateDataProcessPage", "Data process widget create returned null");
+        return nullptr;
+    }
     m_processModule->Activate();
     return page;
 }
 
-// Releases the active page and its heavy resources.
+// 释放当前活动页面及其重资源。
 void ScanReconstructStudioWindow::ReleaseCurrentStepResources() {
     QWidget* page = m_pages.value(m_currentStep, nullptr);
     if (!page) {
         return;
     }
 
-    // Tell the child module to release QVTK/OpenGL resources before widget deletion.
+    WriteLog(LogLevel::Info,
+             "ReleaseCurrentStepResources",
+             QString("Release step resources: %1").arg(m_currentStep));
+
+    // 删除 widget 前先通知子模块释放 QVTK/OpenGL。
     if (m_currentStep == StepScan && m_scanModule) {
         m_scanModule->DeactivateAndRelease();
     }
@@ -312,11 +344,11 @@ void ScanReconstructStudioWindow::ReleaseCurrentStepResources() {
     m_pages.remove(m_currentStep);
     page->deleteLater();
 
-    // Force deferred deletes during smoke tests so the release path is observable.
+    // 烟测时强制处理 DeferredDelete，让释放路径可观察。
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
-// Shuts down child modules and unloads DLL handles.
+// 关闭子模块并清理 DLL 句柄。
 void ScanReconstructStudioWindow::UnloadModules() {
     if (m_scanModule) {
         m_scanModule->Shutdown();
@@ -327,12 +359,9 @@ void ScanReconstructStudioWindow::UnloadModules() {
         m_processModule = nullptr;
     }
 
-    if (m_scanLibrary.isLoaded()) {
-        m_scanLibrary.unload();
-    }
-    if (m_processLibrary.isLoaded()) {
-        m_processLibrary.unload();
-    }
+    // 当前扫描/处理页面包含 QVTK/OpenGL 等重资源。
+    // 为降低退出阶段 DLL 卸载顺序造成崩溃的风险，先不主动 unload 这些 DLL，
+    // 让操作系统在进程退出时统一回收。后续若要做插件热卸载，需要单独设计资源屏障。
 
     if (m_logger) {
         m_logger->Flush();
@@ -340,7 +369,7 @@ void ScanReconstructStudioWindow::UnloadModules() {
     }
 }
 
-// Static callback entry passed to child modules.
+// 传给子模块的静态回调入口。
 void ScanReconstructStudioWindow::OnChildAction(void* context, int actionId) {
     auto* self = static_cast<ScanReconstructStudioWindow*>(context);
     if (self) {
@@ -348,35 +377,35 @@ void ScanReconstructStudioWindow::OnChildAction(void* context, int actionId) {
     }
 }
 
-// Handles child module actions.
+// 处理子模块动作。
 void ScanReconstructStudioWindow::HandleChildAction(int actionId) {
     WriteLog(LogLevel::Info, "HandleChildAction",
              QString("Child action: %1, current step: %2").arg(actionId).arg(m_currentStep));
 
-    // First version only wires the stage flow: scan complete -> processing.
+    // 初版只接通阶段流转：扫描完成进入数据处理。
     if (m_currentStep == StepScan &&
         (actionId == ScanWorkflowActionComplete || actionId == ScanWorkflowActionNext)) {
         SwitchToStep(StepDataProcess);
         return;
     }
 
-    // Data processing can go back to scanning through the stable action id.
+    // 数据处理可通过稳定 actionId 回到扫描。
     if (m_currentStep == StepDataProcess && actionId == DataProcessActionPrevious) {
         SwitchToStep(StepScan);
         return;
     }
 }
 
-// Writes a structured log entry if logger is initialized.
+// 写结构化日志。
 void ScanReconstructStudioWindow::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-    const QByteArray bytes = content.toUtf8();
-    m_logger->Write(level, ModuleInfo::Name, operation ? operation : "", "", "", "", bytes.constData());
+    // ScanReconstructStudio 既可编译为 EXE，也可编译为 DLL。
+    // 统一走公共 Qt 日志工具后，两种形态都会用 MEYER_MODULE_NAME 自动写入模块名。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
-// Unified version export used by runtime version-list collection.
+// 运行时版本清单读取使用的统一版本导出函数。
+#ifndef MEYERSCAN_SCANRECONSTRUCTSTUDIO_NO_WINDOW_VERSION_EXPORT
 extern "C" __declspec(dllexport) const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
 }
+#endif

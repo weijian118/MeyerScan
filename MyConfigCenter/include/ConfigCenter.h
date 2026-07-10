@@ -14,9 +14,10 @@ public:
 
     // 初始化配置中心。
     // appDirUtf8 必须是 MeyerScan.exe 所在目录，不能传当前工作目录。
-    // TODO(v0.2.0/Core): 当前骨架阶段为保持调用链简单暂时返回 bool。
-    // Core.lib 的 ErrorCode/VoidResult 落地后，应升级为可携带失败原因的返回类型，
-    // 并将“应用目录”和“配置文件路径”的语义拆清楚，避免调用方误传。
+    // TODO(v0.2.0): 当前骨架阶段为保持调用链简单暂时返回 bool。
+    // 等真实失败语义稳定后，应升级为可携带失败原因的返回类型；是否与其它模块
+    // 共用结果类型，要以真实重复为依据，不能为了统一形式先建立公共大包。
+    // 同时要拆清“应用目录”和“配置文件路径”的语义，避免调用方误传。
     virtual bool Init(const char* appDirUtf8) = 0;
 
     // 读取布尔配置。key 使用点号分隔，例如 feature.home.settingsVisible。

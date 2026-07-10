@@ -1,6 +1,7 @@
 # version_modules.json 字段说明
 
 `version_modules.json` 用来声明 MeyerScan 启动时需要写入 `logs/versionList/versionList_yyyyMMdd_HHmmss_zzz.json` 的拆分模块文件。
+当前默认清单记录 23 个自研启动文件，包含 MainExe、外部登录 DLL、基础模块、界面模块、扫描重建 EXE/DLL 双形态和发送模块。
 
 ## 设计规则
 
@@ -41,6 +42,6 @@ MainExe 启动后读取本清单，输出以下关键字段：
 
 ## 动态加载关系
 
-MainExe 对 HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter、ConfigCenter、Permission、UIComponents、RuntimeDataCenter、DatabaseQtAdapter、Logger 等自研模块采用运行时动态加载 DLL 的方式。扫描相关的 `ScanReconstructStudio.exe`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 已纳入本清单，启动时同样记录文件版本与代码版本。工程仍包含接口头文件，但不链接这些模块的 import lib。
+MainExe 对 HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter、ConfigCenter、Permission、UIComponents、RuntimeDataCenter、DatabaseQtAdapter、Logger 等自研模块采用运行时动态加载 DLL 的方式。扫描相关的 `ScanReconstructStudio.exe`、`MeyerScan_ScanReconstructStudio.dll`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 和 `MeyerScan_SendUI.dll` 已纳入本清单，启动时同样记录文件版本与代码版本。工程仍包含接口头文件，但不链接这些模块的 import lib。
 
 Qt、Windows `Version.lib`、既有外部登录模块 `MeyerLoginWidget.lib` 仍按当前阶段静态/导入库方式链接。后续若登录模块也整理出稳定适配层，再单独讨论是否改为动态加载。

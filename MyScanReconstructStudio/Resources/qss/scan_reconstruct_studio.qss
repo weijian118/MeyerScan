@@ -1,0 +1,32 @@
+QWidget#ScanReconstructStudioRoot {
+    background: #dfe4ea;
+}
+
+QLabel {
+    color: #1f2b36;
+    font-size: 13px;
+}
+
+QPushButton {
+    border: 0;
+    border-radius: 4px;
+    background: #f7f9fb;
+    color: #273645;
+    padding: 8px 12px;
+    min-height: 28px;
+}
+
+QPushButton:hover {
+    background: #eef3f6;
+}
+
+QPushButton[active="true"] {
+    background: #007d68;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+QFrame[bar="true"] {
+    background: #eef2f5;
+    border-bottom: 1px solid #c5d0d8;
+}

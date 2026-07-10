@@ -31,6 +31,7 @@ target_link_libraries(MeyerScan_ScanWorkflowUI PRIVATE
     ${OpenCV_LIBS}
 )
 meyer_link_sibling_module(MeyerScan_ScanWorkflowUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_ScanWorkflowUI MyScanWorkflowUI)
 
 option(MEYER_BUILD_SCANWORKFLOWUITEST "Build ScanWorkflowUITest.exe" ON)
 if(MEYER_BUILD_SCANWORKFLOWUITEST)
@@ -47,4 +48,5 @@ if(MEYER_BUILD_SCANWORKFLOWUITEST)
         ${OpenCV_LIBS}
     )
     meyer_link_sibling_module(ScanWorkflowUITest MyLogger MeyerScan_Logger)
+    meyer_copy_module_resources(ScanWorkflowUITest MyScanWorkflowUI)
 endif()

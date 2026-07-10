@@ -1,0 +1,26 @@
+QWidget#MeyerScanSendUIRoot {
+    background: #eef2f5;
+    color: #23313f;
+}
+
+QLabel {
+    color: #23313f;
+}
+
+QPushButton {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #23313f;
+    padding: 8px 14px;
+}
+
+QPushButton:hover {
+    background: #f4f7f9;
+}
+
+QPushButton[role="primary"] {
+    background: #007d68;
+    color: #ffffff;
+    border-color: #007d68;
+}

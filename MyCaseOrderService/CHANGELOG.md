@@ -6,6 +6,10 @@
 - 复核当前服务链路仍保持 `CaseOrderService -> DatabaseQtAdapter -> Database`，公共接口继续使用 UTF-8 JSON 和调用方缓冲区，不把 Qt 类型暴露到跨 DLL 边界。
 - 已在根聚合 CMake `Release` 构建中验证本模块和测试宿主可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
 
+## 2026-07-10
+
+- 修正结果类型和失败构造函数中的旧 Core.lib 前置说明：患者/订单合同由服务 DTO、版本化 UTF-8 JSON、schemaVersion/extensions 管理；公共结果类型只在多个服务形成稳定一致语义后按需抽取，本轮不修改 ABI。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

@@ -6,6 +6,10 @@
 - 复核当前实现仍不包含 QtCore、QtSql、QString、QSqlDatabase、QSqlQuery 或 QMutex，SQLite 继续通过原生 `sqlite3.dll` C API 动态加载。
 - 已在根聚合 CMake `Release` 构建中验证 Database 与 DatabaseTest 可以随全工程编译通过；CMake 使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 与 VS2015 x64 生成器。
 
+## 2026-07-10
+
+- 修正 `Database.h` 中把 ErrorCode/Result 迁入 Core.lib 视为必做项的旧 TODO；当前结果类型属于 Database 公共 ABI，只有多个基础模块形成稳定一致合同后才评估抽取，本轮不修改接口布局和运行逻辑。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

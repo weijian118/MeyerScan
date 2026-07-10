@@ -9,7 +9,6 @@
 
 #include "Logger.h"
 
-class QLabel;
 class QPushButton;
 class QStackedWidget;
 
@@ -73,9 +72,6 @@ private:
     // 为暂未接入的步骤创建占位页面。
     QWidget* CreatePlaceholder(int step, QWidget* parent) const;
 
-    // 刷新顶部当前步骤标签。
-    void RefreshStepLabel();
-
     // 刷新顶部步骤按钮的选中状态。
     void RefreshStepButtons();
 
@@ -100,9 +96,6 @@ private:
 
     // 工作区根界面弱引用。
     QWidget* m_root = nullptr;
-
-    // 顶部当前步骤标题标签。
-    QLabel* m_stepLabel = nullptr;
 
     // 步骤页面栈。
     QStackedWidget* m_stack = nullptr;

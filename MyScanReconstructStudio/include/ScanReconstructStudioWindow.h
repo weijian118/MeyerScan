@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QByteArray>
 #include <QHash>
@@ -14,71 +14,70 @@ class QLabel;
 class QStackedWidget;
 class QPushButton;
 
-// Shell window for ScanReconstructStudio.exe.
-// The shell owns stage navigation, dynamic DLL loading, page switching, and
-// heavy-resource release. Scan and data-processing business details stay in
-// their own DLLs.
+// ScanReconstructStudio 的壳窗口。
+// 壳窗口只负责阶段导航、动态加载 DLL、页面切换和重资源释放；
+// 扫描、数据处理的业务细节继续留在各自 DLL 内。
 class ScanReconstructStudioWindow : public QMainWindow {
 public:
-    // Receives the executable directory, log directory, and optional session JSON.
+    // 接收程序目录、日志目录和可选会话 JSON。
     explicit ScanReconstructStudioWindow(const QString& appDir,
                                          const QString& logDir,
                                          const QByteArray& contextJson,
                                          QWidget* parent = nullptr);
 
-    // Releases active page resources before unloading child DLLs.
+    // 析构前释放活动页面资源。
     ~ScanReconstructStudioWindow() override;
 
-    // Loads child modules, builds the shell UI, and enters the scan stage.
+    // 加载子模块，创建壳 UI，并进入扫描阶段。
     bool Initialize();
 
-    // Used by automated smoke checks: load both pages and switch once.
+    // 自动化烟测入口：加载两个页面并切换一次。
     bool RunSmoke();
 
 private:
-    // Work stages hosted by ScanReconstructStudio.exe.
+    // 壳窗口承载的工作阶段。
     enum StudioStep {
         StepScan = 1,
         StepDataProcess = 2,
     };
 
-    // Creates the shell frame.
+    // 创建壳窗口框架。
     void BuildShellUi();
 
-    // Creates the top stage navigation row.
+    // 创建顶部阶段导航行。
     QWidget* CreateTopStepBar(QWidget* parent);
 
-    // Creates the top-right shell tool row.
+    // 创建右上角工具按钮行。
     QWidget* CreateWindowToolBar(QWidget* parent);
 
-    // Switches to the requested stage and releases the previous stage resources.
+    // 切换到目标阶段，并释放上一个阶段的资源。
     void SwitchToStep(StudioStep step);
 
-    // Dynamically loads MeyerScan_ScanWorkflowUI.dll.
+    // 动态加载 MeyerScan_ScanWorkflowUI.dll。
     bool LoadScanModule();
 
-    // Dynamically loads MeyerScan_DataProcessUI.dll.
+    // 动态加载 MeyerScan_DataProcessUI.dll。
     bool LoadDataProcessModule();
 
-    // Creates the scan page through the child DLL interface.
+    // 通过子 DLL 接口创建扫描页面。
     QWidget* CreateScanPage();
 
-    // Creates the data-processing page through the child DLL interface.
+    // 通过子 DLL 接口创建数据处理页面。
     QWidget* CreateDataProcessPage();
 
-    // Releases the current page and its VTK/OpenGL resources.
+    // 释放当前页面和它持有的 VTK/OpenGL 资源。
     void ReleaseCurrentStepResources();
 
-    // Shuts down child modules and unloads DLL handles.
+    // 关闭子模块并清理 DLL 句柄。
     void UnloadModules();
 
-    // Static callback entry used by child modules.
+    // 子模块使用的静态回调入口。
     static void OnChildAction(void* context, int actionId);
 
-    // Instance handler for child actions.
+    // 实例级子模块动作处理。
     void HandleChildAction(int actionId);
 
-    // Writes a structured log line if logger is available.
+    // 写结构化日志。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 
 private:

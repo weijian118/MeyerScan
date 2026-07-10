@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderScanWorkspaceShell VERSION 0.1.1 LANGUAGES CXX)
+project(MeyerScan_OrderScanWorkspaceShell VERSION 0.1.2 LANGUAGES CXX)
 
 
 
@@ -29,6 +29,7 @@ target_include_directories(MeyerScan_OrderScanWorkspaceShell
 )
 
 meyer_link_sibling_module(MeyerScan_OrderScanWorkspaceShell MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_OrderScanWorkspaceShell MyOrderScanWorkspaceShell)
 
 
 
@@ -47,6 +48,7 @@ if(MEYER_BUILD_ORDERSCANWORKSPACESHELLTEST)
     target_link_libraries(OrderScanWorkspaceShellTest PRIVATE MeyerScan_OrderScanWorkspaceShell Qt5::Core Qt5::Gui Qt5::Widgets)
 
     meyer_link_sibling_module(OrderScanWorkspaceShellTest MyLogger MeyerScan_Logger)
+    meyer_copy_module_resources(OrderScanWorkspaceShellTest MyOrderScanWorkspaceShell)
 
 
 

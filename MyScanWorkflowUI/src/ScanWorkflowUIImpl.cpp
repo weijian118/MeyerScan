@@ -1,5 +1,6 @@
 ﻿#include "ScanWorkflowUIImpl.h"
 
+#include "MeyerQtModuleUtils.h"
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -202,17 +203,7 @@ QWidget* ScanWorkflowUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanScanWorkflowUIRoot");
     root->setMinimumSize(960, 600);
     root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    root->setStyleSheet(QString(
-        "#MeyerScanScanWorkflowUIRoot{background:%1;}"
-        "QLabel{color:#1f2b36;font-size:13px;}"
-        "QLabel[muted=\"true\"]{color:%2;}"
-        "QPushButton{border:0;border-radius:4px;background:#f7f9fb;color:#273645;padding:8px 12px;min-height:28px;}"
-        "QPushButton:hover{background:#eef3f6;}"
-        "QPushButton[primary=\"true\"]{background:%3;color:#ffffff;font-weight:600;}"
-        "QPushButton[primary=\"true\"]:hover{background:#009176;}"
-        "QFrame[panel=\"true\"]{background:%4;border:1px solid %5;border-radius:6px;}"
-        "QFrame[toolPanel=\"true\"]{background:%4;border-radius:6px;}"
-    ).arg(kPageBackground, kMutedText, kPrimaryColor, kPanelBackground, kBorderColor));
+    MeyerQtModule::ApplyModuleQss(root, "MyScanWorkflowUI", "scan_workflow.qss", m_logger);
 
     // Main layout: mode bar, central VTK area, and bottom controls.
     auto* mainLayout = new QVBoxLayout(root);
@@ -558,7 +549,7 @@ QWidget* ScanWorkflowUIImpl::CreateHintPanel(QWidget* parent) {
     layout->setSpacing(8);
 
     auto* title = new QLabel(tr("Hint"), frame);
-    title->setStyleSheet("font-weight:600;");
+    title->setObjectName("ScanWorkflowPanelTitle");
     layout->addWidget(title);
 
     auto* text = new QLabel(tr("Keep scanner moving steadily and fill missing areas before completion."), frame);
@@ -663,11 +654,9 @@ void ScanWorkflowUIImpl::EmitAction(int actionId, const QString& operation) {
 
 // Writes a structured log entry if logger is initialized.
 void ScanWorkflowUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-    const QByteArray bytes = content.toUtf8();
-    m_logger->Write(level, ModuleInfo::Name, operation ? operation : "", "", "", "", bytes.constData());
+    // MeyerQtModule::WriteQtLog 会自动补充 MEYER_MODULE_NAME，
+    // 并把 QString 在跨 DLL 前转换成 UTF-8 const char*。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // C ABI factory used by the shell through QLibrary/GetProcAddress.

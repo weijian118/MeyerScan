@@ -22,6 +22,7 @@
 ## 当前边界
 
 - MainExe 只做启动、模块编排和窗口容器。
+- MainExe 使用无边框全屏顶层窗口和单内容区，但不绘制所有页面共享的可见标题栏；HomeUI、CaseUI、OrderScanWorkspaceShell 各自提供页面语义顶部区域，窗口动作仍由 MainExe 执行。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
 - MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ScanWorkflowUI、DataProcessUI、SendUI、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
@@ -41,7 +42,7 @@
 - `MyExternalLaunchAdapter` 只负责把第三方 JSON 转成标准建单上下文，MainExe 不解析各第三方私有字段，OrderCreateUI 也不认识第三方私有字段。
 - 标准建单上下文必须包含 `source.thirdPartyType`，用于区分多个第三方来源；新增第三方优先改 ExternalLaunchAdapter 映射规则。
 - 首页进入浏览、浏览返回首页、浏览进入扫描重建前准备都按“替换当前页面 + 释放离开页面资源”处理，避免隐藏页面长期占用内存/显存。
-- 创建工作台和练习工作台共用 `OrderScanWorkspaceShell`：创建模式显示 Order / Scan / Process / Send；练习模式只显示 Scan / Process。工作台右上角只显示 `Minimize` / `Close`，关闭工作台表示返回首页并释放工作台资源，不退出 MeyerScan.exe。
+- 创建工作台和练习工作台共用 `OrderScanWorkspaceShell`：创建模式显示 Order / Scan / Process / Send；练习模式只显示 Scan / Process。工作台顶部步骤导航只有这一套；OrderCreateUI/ScanWorkflowUI/DataProcessUI/SendUI 不重复绘制。最小化、关闭和返回通过动作 ID 交给 MainExe，关闭工作台表示返回首页并释放资源，不退出 MeyerScan.exe。
 - `scanProcess` 是建单流程传给 Scan/Process 的轻量 JSON 合同：OrderCreateUI 生成，MainExe 合并/转发，ScanWorkflowUI/DataProcessUI 渲染 `steps`。MainExe 不解析具体临床规则，Scan/Process 不反向读取建单控件。
 - 工作台 Scan / Process 页面由 MainExe 按步骤懒加载；切换离开时主动调用对应模块释放 QVTK/VTK/OpenGL 重资源，并用占位页替换旧步骤，避免壳子继续持有等待删除的 QWidget。
 - 工作台 Send 页面由 MainExe 按步骤懒加载并注入订单上下文；SendUI 只上报导出、压缩、邮件发送、上传、上一步、完成等动作，真实发送能力后续走 DataExport / Network 等服务模块。

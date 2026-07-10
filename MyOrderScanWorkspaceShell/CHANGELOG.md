@@ -1,5 +1,13 @@
 ﻿# MeyerScan OrderScanWorkspaceShell 变更记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.1.2`，同步更新代码版本、CMake 和 `Version.rc`。
+- 顶部区域整合品牌、返回入口、唯一的 Order/Scan/Process/Send 步骤导航、最小化和关闭；创建/练习内容页不得再绘制第二套步骤条。
+- 新增 `WorkspaceShellActionBack`，返回、最小化和关闭均只上报稳定动作 ID，由 MainExe 执行顶层窗口或页面操作。
+- 删除重复的 `Current Step` 文本，步骤按钮的选中态直接表达当前步骤。
+- 单模块解决方案补齐 Logger 工程依赖，测试宿主增加返回动作回调验证。
+
 ## 2026-07-07
 
 - 版本升级为 `v0.1.1`，同步更新 `ModuleInfo::Version`、CMake `project(VERSION)` 和 `Version.rc` 文件版本。

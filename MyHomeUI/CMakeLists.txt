@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_HomeUI VERSION 0.2.0 LANGUAGES CXX)
+project(MeyerScan_HomeUI VERSION 0.2.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
@@ -18,6 +18,7 @@ target_include_directories(MeyerScan_HomeUI
 )
 meyer_link_sibling_module(MeyerScan_HomeUI MyLogger MeyerScan_Logger)
 meyer_link_sibling_module(MeyerScan_HomeUI MyUIComponents MeyerScan_UIComponents)
+meyer_copy_module_resources(MeyerScan_HomeUI MyHomeUI)
 
 option(MEYER_BUILD_HOMEUI_TEST "Build HomeUITest.exe" ON)
 if(MEYER_BUILD_HOMEUI_TEST)
@@ -27,4 +28,5 @@ if(MEYER_BUILD_HOMEUI_TEST)
     target_include_directories(HomeUITest PRIVATE include)
     target_link_libraries(HomeUITest PRIVATE MeyerScan_HomeUI Qt5::Core Qt5::Gui Qt5::Widgets)
     set_target_properties(HomeUITest PROPERTIES WIN32_EXECUTABLE TRUE)
+    meyer_copy_module_resources(HomeUITest MyHomeUI)
 endif()

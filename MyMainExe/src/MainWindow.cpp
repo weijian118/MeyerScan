@@ -35,7 +35,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.3 (2026-07-07)";
+const char* Version = "MeyerScan_MainExe v0.1.4 (2026-07-10)";
 }
 
 struct VersionModuleEntry {
@@ -63,6 +63,7 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_Calibration3DUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CalibrationColorUI.dll", "GetMeyerModuleVersion"},
     {"ScanReconstructStudio.exe", "GetMeyerModuleVersion"},
+    {"MeyerScan_ScanReconstructStudio.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_ScanWorkflowUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DataProcessUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_SendUI.dll", "GetMeyerModuleVersion"},
@@ -79,6 +80,11 @@ MainWindow::MainWindow(QWidget* parent)
     // 这里设置的是默认窗口尺寸，不是固定尺寸。
     // 具体分辨率适配交给 Qt Layout 和 UIComponents 的统一策略处理。
     resize(1180, 760);
+
+    // MainExe 只负责操作系统窗口能力，不绘制一条所有页面共用的可见标题栏。
+    // 首页、浏览、创建/练习的顶部区域包含不同业务导航，应由各自 UI/壳模块绘制；
+    // 这里仅关闭 Qt 原生边框和系统标题栏，避免出现两套窗口控制按钮。
+    setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
 
     // 日志必须尽早初始化，尽量覆盖从构造函数开始的启动问题。
     // 后续所有客户操作日志都复用 m_logger 这个缓存指针。
@@ -198,7 +204,7 @@ void MainWindow::StartWithoutLoginForSmoke() {
     m_loginCompleted = true;
     InitPages();
     ShowHome();
-    show();
+    ShowMainWindow();
     // 用定时器模拟用户切页面，验证页面创建、切换和释放不会阻塞事件循环。
     // 先覆盖首页打开设置，再覆盖浏览页和扫描前资源释放，防止入口回调断链后人工才发现。
     QTimer::singleShot(400, this, [this]() { ShowSettings(SettingsOpenSourceHome); });
@@ -243,7 +249,7 @@ void MainWindow::StartExternalOrder(const QString& inputJsonPath, const QString&
         // 归一化失败时保留主窗口等待/错误状态，不跳到首页，避免第三方流程误进入手工操作。
         HideWaitPage();
         WriteStatus(tr("External order failed"));
-        show();
+        ShowMainWindow();
         return;
     }
 
@@ -257,7 +263,7 @@ void MainWindow::StartExternalOrder(const QString& inputJsonPath, const QString&
         // 如果创建入口被权限禁用，不能绕过首页入口规则直接进入建单。
         HideWaitPage();
         WriteStatus(tr("Create entry is disabled"));
-        show();
+        ShowMainWindow();
         return;
     }
 
@@ -265,7 +271,7 @@ void MainWindow::StartExternalOrder(const QString& inputJsonPath, const QString&
     WriteUserAction("HomeEntryAutoCreate",
                     QString("External order enters create workspace, thirdPartyType=%1").arg(thirdPartyType));
     ShowOrderWorkspace(normalizedContextJson);
-    show();
+    ShowMainWindow();
 }
 
 // 第三方启动时不显示首页，但仍后台准备 HomeUI 的创建入口规则。
@@ -356,7 +362,7 @@ void MainWindow::OnLoginStatusReturn(const LoginReturnParameters& result) {
     InitInfrastructure();
     InitPages();
     ShowHome();
-    show();
+    ShowMainWindow();
 }
 
 // 既有登录 DLL 当前把 LOGIN_SUCCESS 和 WRITECLOUDMSG_SUCCESS 视为可进入主界面。
@@ -502,7 +508,7 @@ void MainWindow::ShowWaitPage(const QString& message) {
         }
     }
     ReplaceContentWidget(m_waitWidget, "Wait");
-    show();
+    ShowMainWindow();
     // 启动准备通常在同一事件循环周期内执行。
     // 主动 processEvents 可以让等待页先绘制出来，避免用户看到空白窗口。
     QApplication::processEvents();
@@ -624,6 +630,25 @@ void MainWindow::HandleHomeEntryClicked(int entryId) {
         // 练习入口进入同一个工作台壳，但只显示 Scan/Process 两步。
         ShowPracticeWorkspace();
         break;
+    case HomeActionMinimize:
+        // 页面模块只上报动作，真正的顶层窗口操作始终由 MainExe 执行。
+        showMinimized();
+        break;
+    case HomeActionClose:
+        close();
+        break;
+    case HomeActionCalibration:
+        // 校准入口当前先进入设置模块；具体打开三维还是颜色校准由设置页继续选择。
+        ShowSettings(SettingsOpenSourceHome);
+        break;
+    case HomeActionCloud:
+        // 云端页面尚未拆分，先保留完整日志和状态，不在 HomeUI 中伪造业务流程。
+        WriteStatus(tr("Cloud action recorded"));
+        break;
+    case HomeActionHelp:
+        // 帮助中心后续按独立页面/外部文档入口接入，当前只记录动作。
+        WriteStatus(tr("Help action recorded"));
+        break;
     default:
         WriteStatus(tr("Home entry %1 is not implemented yet").arg(entryId));
         break;
@@ -655,6 +680,13 @@ void MainWindow::HandleCaseAction(int actionId) {
     case CaseActionOpenSettings:
         // 浏览页打开设置，关闭设置后回到浏览页。
         ShowSettings(SettingsOpenSourceCase);
+        break;
+    case CaseActionMinimize:
+        showMinimized();
+        break;
+    case CaseActionClose:
+        // 浏览页右上角关闭按钮的产品语义是关闭当前浏览页并回到首页。
+        ShowHome();
         break;
     case CaseActionSwitchTab:
         break;
@@ -748,6 +780,10 @@ void MainWindow::HandleWorkspaceShellAction(int actionId) {
         showMinimized();
         break;
     case WorkspaceShellActionClose:
+        ShowHome();
+        break;
+    case WorkspaceShellActionBack:
+        // 创建和练习工作台的返回按钮统一回到首页，子页面不直接操作 MainWindow。
         ShowHome();
         break;
     default:
@@ -2395,6 +2431,17 @@ void MainWindow::WriteStatus(const QString& text) {
         // 状态栏更新只影响本地 UI，不写日志，避免高频状态变化刷屏。
         m_status->setText(text);
     }
+}
+
+// 统一显示无边框全屏主窗口。
+// 所有页面切换只替换 m_contentRoot 内的当前 QWidget，不再创建多个顶层窗口。
+void MainWindow::ShowMainWindow() {
+    // showFullScreen 会保留构造期设置的 FramelessWindowHint，并覆盖此前最小化状态。
+    // 统一从这里显示可以防止某个流程误用普通 show() 后退回带边框的小窗口。
+    showFullScreen();
+    raise();
+    activateWindow();
+    WriteUserAction("WindowShow", "Frameless full-screen main window shown");
 }
 
 // 早期日志初始化。

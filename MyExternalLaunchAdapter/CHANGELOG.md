@@ -1,5 +1,9 @@
 ﻿# MyExternalLaunchAdapter 修改记录
 
+## 2026-07-10
+
+- `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；第三方字段到标准建单 JSON 的映射边界保持不变。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

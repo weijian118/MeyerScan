@@ -1,5 +1,9 @@
 ﻿# MeyerScan RuntimeDataCenter 变更记录
 
+## 2026-07-10
+
+- `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；运行时只读 domain JSON 快照边界保持不变。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

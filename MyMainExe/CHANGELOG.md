@@ -1,5 +1,14 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.1.4`，同步更新 `ModuleInfo::Version`、CMake 工程版本和 `Version.rc` 文件版本。
+- 主窗口固定使用 `Qt::FramelessWindowHint + showFullScreen()`；补齐 `ShowMainWindow()`，单实例激活和最小化恢复后仍回到全屏无边框状态。
+- 删除此前试验性的 36px 跨页面通用可见标题栏。MainExe 只保留顶层窗口、单内容区和窗口动作执行，HomeUI、CaseUI、OrderScanWorkspaceShell 各自维护页面语义顶部区域。
+- 接入 HomeUI、CaseUI、OrderScanWorkspaceShell 新增的最小化、关闭、返回动作 ID；页面模块只上报动作，MainExe 统一执行窗口操作和页面替换。
+- 根方案和 MainExe 依赖补齐 `MeyerScan_ScanReconstructStudio.dll`；版本清单默认增加该 DLL，确保 EXE/DLL 双形态同时记录文件版本和代码版本。
+- `--smoke-main` 继续覆盖首页、浏览、创建/练习工作台、Scan/Process/Send 切换和重资源释放。
+
 ## 2026-07-08
 
 - MainExe CMake 和 VS2015 PostBuild 补充复制 `MyOrderCreateUI/Resources/icon/createModule/sacanPlan`，运行目录统一落到 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan`。

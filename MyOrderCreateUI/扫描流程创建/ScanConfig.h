@@ -1,4 +1,4 @@
-#ifndef SCANCONFIG_H
+﻿#ifndef SCANCONFIG_H
 #define SCANCONFIG_H
 
 #include "EScanSiteType.h"

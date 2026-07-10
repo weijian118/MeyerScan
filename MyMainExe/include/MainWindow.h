@@ -192,6 +192,10 @@ private:
     // 释放发送页面根控件。
     void ReleaseSendPage();
 
+    // 统一显示主窗口。
+    // 首页、浏览、创建、练习都必须在无边框全屏主窗口中显示，不能散落调用普通 show()。
+    void ShowMainWindow();
+
     // 释放指定页面指针。allowActive=false 时不会释放当前正在显示的页面。
     void ReleasePageWidget(QWidget*& pageWidget, const QString& pageName, bool allowActive);
 

@@ -1,10 +1,18 @@
 ﻿#include "OrderScanWorkspaceShellImpl.h"
 
+#include "MeyerQtModuleUtils.h"
+
+#include <QFrame>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QStyle>
 #include <QStackedWidget>
+#include <QToolButton>
+#include <QVariant>
 #include <QVBoxLayout>
 
 namespace {
@@ -13,7 +21,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderScanWorkspaceShell";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.1 (2026-07-07)";
+const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.2 (2026-07-10)";
 }
 }
 
@@ -54,56 +62,121 @@ QWidget* OrderScanWorkspaceShellImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanOrderScanWorkspaceShellRoot");
     // 最小尺寸保护占位页面和步骤条不会被压到不可用。
     root->setMinimumSize(980, 620);
+    MeyerQtModule::ApplyModuleQss(root, "MyOrderScanWorkspaceShell", "workspace_shell.qss", m_logger);
 
-    // 使用纵向布局：顶部当前步骤、步骤条、中间页面栈。
+    // 使用纵向布局：顶部业务导航区 + 中间页面栈。
+    // 步骤导航只在壳子中保留一份，OrderCreateUI 不再重复绘制第二套步骤条。
     auto* layout = new QVBoxLayout(root);
-    // 统一内容边距，避免每个子页面自己贴边处理。
-    layout->setContentsMargins(14, 12, 14, 14);
-    layout->setSpacing(10);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
 
     // 顶部栏左侧显示当前步骤，右侧只放最小化和关闭，符合创建/练习工作区的窗口控制要求。
-    auto* headerLayout = new QHBoxLayout();
-    headerLayout->setContentsMargins(0, 0, 0, 0);
-    headerLayout->setSpacing(8);
+    auto* headerFrame = new QFrame(root);
+    headerFrame->setObjectName("WorkspaceTopBar");
+    auto* headerLayout = new QHBoxLayout(headerFrame);
+    headerLayout->setContentsMargins(20, 8, 18, 8);
+    headerLayout->setSpacing(10);
 
-    // 当前步骤标题单独显示，便于后续加状态、进度或订单信息。
-    m_stepLabel = new QLabel(root);
-    QFont font = m_stepLabel->font();
-    // 复制当前字体后只改大小/粗细，保留系统字体族和语言渲染能力。
-    font.setPointSize(14);
-    font.setBold(true);
-    m_stepLabel->setFont(font);
-    headerLayout->addWidget(m_stepLabel, 1);
+    // 品牌与返回按钮属于创建/练习工作台顶部业务区。
+    auto* brandLabel = new QLabel(headerFrame);
+    brandLabel->setObjectName("WorkspaceBrandLabel");
+    const QPixmap brandPixmap(MeyerQtModule::ModuleResourceFile(
+        "MyOrderScanWorkspaceShell", "icon/workspace", "logo.png"));
+    if (!brandPixmap.isNull()) {
+        brandLabel->setPixmap(brandPixmap.scaledToHeight(42, Qt::SmoothTransformation));
+    } else {
+        brandLabel->setText(tr("MEYER"));
+    }
+    headerLayout->addWidget(brandLabel, 0, Qt::AlignVCenter);
 
-    auto* minimizeButton = new QPushButton(tr("Minimize"), root);
-    minimizeButton->setObjectName("WorkspaceMinimizeButton");
-    minimizeButton->setMinimumSize(86, 32);
-    minimizeButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    QObject::connect(minimizeButton, &QPushButton::clicked, [this]() {
-        EmitShellAction(WorkspaceShellActionMinimize);
+    auto* backButton = new QToolButton(headerFrame);
+    backButton->setObjectName("WorkspaceBackButton");
+    backButton->setProperty("workspaceShellAction", WorkspaceShellActionBack);
+    backButton->setToolTip(tr("Back"));
+    backButton->setCursor(Qt::PointingHandCursor);
+    backButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    QIcon backIcon;
+    backIcon.addFile(MeyerQtModule::ModuleResourceFile(
+                         "MyOrderScanWorkspaceShell", "icon/workspace", "back_b.png"),
+                     QSize(25, 25), QIcon::Normal, QIcon::Off);
+    backIcon.addFile(MeyerQtModule::ModuleResourceFile(
+                         "MyOrderScanWorkspaceShell", "icon/workspace", "back_h.png"),
+                     QSize(25, 25), QIcon::Active, QIcon::Off);
+    backButton->setIcon(backIcon);
+    backButton->setIconSize(QSize(25, 25));
+    backButton->setFixedSize(42, 38);
+    QObject::connect(backButton, &QToolButton::clicked, [this]() {
+        EmitShellAction(WorkspaceShellActionBack);
     });
-    headerLayout->addWidget(minimizeButton, 0);
+    headerLayout->addWidget(backButton, 0, Qt::AlignVCenter);
 
-    auto* closeButton = new QPushButton(tr("Close"), root);
-    closeButton->setObjectName("WorkspaceCloseButton");
-    closeButton->setMinimumSize(72, 32);
-    closeButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    QObject::connect(closeButton, &QPushButton::clicked, [this]() {
-        EmitShellAction(WorkspaceShellActionClose);
-    });
-    headerLayout->addWidget(closeButton, 0);
+    // 创建/练习工作区右上角只保留最小化和关闭两个自绘按钮。
+    // 按钮图片来自模块 Resources，窗口本身仍由 MainExe 全屏无边框承载。
+    auto createWindowButton = [headerFrame](const QString& objectName,
+                                            const QString& tooltip,
+                                            const QString& normalIcon,
+                                            const QString& hoverIcon) {
+        auto* button = new QToolButton(headerFrame);
+        button->setObjectName(objectName);
+        button->setToolTip(tooltip);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setMinimumSize(40, 34);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    layout->addLayout(headerLayout);
+        // QIcon 可以同时登记普通和悬停态图标。
+        // QSS 只负责按钮背景/边框，图标资源路径仍通过公共资源函数从 EXE 目录解析。
+        QIcon icon;
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyOrderScanWorkspaceShell", "icon/workspace", normalIcon),
+                     QSize(22, 22),
+                     QIcon::Normal,
+                     QIcon::Off);
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyOrderScanWorkspaceShell", "icon/workspace", hoverIcon),
+                     QSize(22, 22),
+                     QIcon::Active,
+                     QIcon::Off);
+        button->setIcon(icon);
+        button->setIconSize(QSize(22, 22));
+        return button;
+    };
 
-    auto* stepBar = new QHBoxLayout();
     const QList<int> steps = VisibleSteps();
+    headerLayout->addStretch(1);
 
-    // 顶部步骤条使用按钮而不是 QLabel；用户点击 Order/Scan/Process/Send 时由壳子内部切换 QStackedWidget。
+    // 步骤导航位于工作台唯一顶部区。OrderCreateUI、ScanWorkflowUI 等子页只绘制各自内容，
+    // 不再各自复制 Order/Scan/Process/Send 导航，避免状态不一致和重复占用高度。
     for (int step : steps) {
-        auto* button = new QPushButton(StepTitle(step), root);
+        auto* button = new QPushButton(StepTitle(step), headerFrame);
+        button->setProperty("workspaceStep", true);
         // setCheckable 让当前步骤能保持选中状态，避免用户不知道当前处于哪一步。
         button->setCheckable(true);
-        button->setMinimumHeight(34);
+        button->setMinimumSize(112, 44);
+        button->setCursor(Qt::PointingHandCursor);
+
+        // 不同步骤只选择对应业务图标；按钮状态和切换逻辑仍由同一个 step ID 驱动。
+        QString iconBaseName;
+        switch (step) {
+        case WorkspaceStepOrderCreate: iconBaseName = "order"; break;
+        case WorkspaceStepScan: iconBaseName = "scan"; break;
+        case WorkspaceStepProcess: iconBaseName = "process"; break;
+        case WorkspaceStepSend: iconBaseName = "send"; break;
+        default: break;
+        }
+        if (!iconBaseName.isEmpty()) {
+            QIcon stepIcon;
+            stepIcon.addFile(MeyerQtModule::ModuleResourceFile(
+                                 "MyOrderScanWorkspaceShell",
+                                 "icon/workspace",
+                                 QString("%1_b.png").arg(iconBaseName)),
+                             QSize(24, 24), QIcon::Normal, QIcon::Off);
+            stepIcon.addFile(MeyerQtModule::ModuleResourceFile(
+                                 "MyOrderScanWorkspaceShell",
+                                 "icon/workspace",
+                                 QString("%1_h.png").arg(iconBaseName)),
+                             QSize(24, 24), QIcon::Normal, QIcon::On);
+            button->setIcon(stepIcon);
+            button->setIconSize(QSize(24, 24));
+        }
         // objectName 便于测试宿主和后续自动化脚本定位具体步骤按钮。
         button->setObjectName(QString("WorkspaceStep%1Button").arg(step));
         // lambda 捕获 step 的值；点击按钮后统一进入 HandleStepButtonClicked，避免多个槽函数重复。
@@ -111,10 +184,31 @@ QWidget* OrderScanWorkspaceShellImpl::CreateWidget(QWidget* parent) {
             HandleStepButtonClicked(step);
         });
         m_stepButtons.insert(step, button);
-        // QHBoxLayout 会平均分配可用空间，让四个步骤视觉上均匀排列。
-        stepBar->addWidget(button);
+        headerLayout->addWidget(button, 0, Qt::AlignVCenter);
     }
-    layout->addLayout(stepBar);
+    headerLayout->addStretch(1);
+
+    auto* minimizeButton = createWindowButton("WorkspaceMinimizeButton",
+                                              tr("Minimize"),
+                                              "min_b.png",
+                                              "min_h.png");
+    minimizeButton->setProperty("workspaceShellAction", WorkspaceShellActionMinimize);
+    QObject::connect(minimizeButton, &QToolButton::clicked, [this]() {
+        EmitShellAction(WorkspaceShellActionMinimize);
+    });
+    headerLayout->addWidget(minimizeButton, 0, Qt::AlignVCenter);
+
+    auto* closeButton = createWindowButton("WorkspaceCloseButton",
+                                           tr("Close"),
+                                           "close_b.png",
+                                           "close_h.png");
+    closeButton->setProperty("workspaceShellAction", WorkspaceShellActionClose);
+    QObject::connect(closeButton, &QToolButton::clicked, [this]() {
+        EmitShellAction(WorkspaceShellActionClose);
+    });
+    headerLayout->addWidget(closeButton, 0, Qt::AlignVCenter);
+
+    layout->addWidget(headerFrame, 0);
 
     // QStackedWidget 负责页面切换，避免多个顶层窗口 close/show 造成闪现。
     m_stack = new QStackedWidget(root);
@@ -163,7 +257,6 @@ void OrderScanWorkspaceShellImpl::SetStep(int step) {
             m_stack->setCurrentWidget(widget);
         }
     }
-    RefreshStepLabel();
     RefreshStepButtons();
     WriteLog(LogLevel::Info, "SetStep", QString("Current step: %1").arg(step));
 
@@ -224,7 +317,6 @@ void OrderScanWorkspaceShellImpl::Shutdown() {
     // 清空所有 QWidget 弱引用。真实对象由 Qt 父子树或外部容器销毁。
     // 这里不遍历 delete m_stepWidgets，因为其中可能包含外部模块创建并由父对象持有的页面。
     m_root = nullptr;
-    m_stepLabel = nullptr;
     m_stack = nullptr;
     m_stepWidgets.clear();
     m_stepButtons.clear();
@@ -335,18 +427,9 @@ QWidget* OrderScanWorkspaceShellImpl::CreatePlaceholder(int step, QWidget* paren
     // tr("%1 placeholder").arg(...) 先翻译模板，再填入步骤标题，便于多语言语序调整。
     auto* widget = new QLabel(tr("%1 placeholder").arg(StepTitle(step)), parent);
     widget->setObjectName(QString("WorkspaceStep%1Placeholder").arg(step));
+    widget->setProperty("workspacePlaceholder", true);
     widget->setAlignment(Qt::AlignCenter);
-    widget->setStyleSheet("QLabel{color:#607080;background:#ffffff;border:1px dashed #b0bec5;}");
     return widget;
-}
-
-// 刷新当前步骤标题。
-void OrderScanWorkspaceShellImpl::RefreshStepLabel() {
-    if (m_stepLabel) {
-        // 标题根据当前步骤动态拼接。源文案仍保持英文，翻译由 qm 处理。
-        // m_stepLabel 可能在 CreateWidget 前为空，所以调用方可先 SetStep 再创建界面。
-        m_stepLabel->setText(tr("Current Step: %1").arg(StepTitle(m_currentStep)));
-    }
 }
 
 // 刷新顶部步骤按钮状态。
@@ -362,12 +445,9 @@ void OrderScanWorkspaceShellImpl::RefreshStepButtons() {
         // 当前步骤按钮显示为选中，其它按钮取消选中。
         button->setChecked(it.key() == m_currentStep);
 
-        // 动态样式比多个硬编码 qss 更直观；后续可迁入 UIComponents 统一步骤按钮样式。
-        button->setStyleSheet(button->isChecked()
-            ? "QPushButton{border:1px solid #1b6ac9;border-radius:4px;padding:6px;color:#ffffff;background:#1f7ae0;font-weight:600;}"
-              "QPushButton:hover{background:#286fd0;}"
-            : "QPushButton{border:1px solid #cfd8dc;border-radius:4px;padding:6px;color:#23313f;background:#f7f9fb;}"
-              "QPushButton:hover{background:#edf3f8;}");
+        // checked 属性变化后刷新 qss，保证步骤高亮立即生效。
+        button->style()->unpolish(button);
+        button->style()->polish(button);
     }
 }
 
@@ -390,15 +470,9 @@ void OrderScanWorkspaceShellImpl::EmitShellAction(int actionId) {
 // 写结构化日志。
 // 日志不可用时直接跳过，壳子界面不能因为日志 DLL 问题影响主流程。
 void OrderScanWorkspaceShellImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-
-    // Logger ABI 使用 UTF-8 C 字符串，Qt 字符串在调用前转换。
-    const QByteArray bytes = content.toUtf8();
-    // bytes 的生命周期覆盖整个 Write 调用，constData() 指针不会悬空。
-    // 工作台壳当前没有真实操作员上下文，传空字符串让 Logger 省略 Op 字段。
-    m_logger->Write(level, ModuleInfo::Name, operation, "", "", "", bytes.constData());
+    // 公共 Qt 日志工具会自动使用 MEYER_MODULE_NAME 填充模块名。
+    // 工作台壳只传操作名和内容，设备/订单/操作员字段暂由后续上下文扩展。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // 导出工作区壳子模块实例。

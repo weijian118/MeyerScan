@@ -46,8 +46,10 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_Calibration3DUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CalibrationColorUI.dll", "GetMeyerModuleVersion"},
     {"ScanReconstructStudio.exe", "GetMeyerModuleVersion"},
+    {"MeyerScan_ScanReconstructStudio.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_ScanWorkflowUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DataProcessUI.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_SendUI.dll", "GetMeyerModuleVersion"},
 };
 }
 

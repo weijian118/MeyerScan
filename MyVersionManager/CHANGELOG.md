@@ -1,5 +1,9 @@
 # MeyerScan VersionManager 变更记录
 
+## 2026-07-10
+
+- `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；历史骨架继续读取 `version_modules.json`，当前正式运行时版本清单仍由 MainExe 内置能力生成。
+
 ## 2026-07-06
 
 - 历史 VersionManager 骨架默认清单同步 MainExe 当前 21 模块口径，补入 `ScanReconstructStudio.exe`、`MeyerScan_ScanWorkflowUI.dll` 和 `MeyerScan_DataProcessUI.dll`，避免后续误用历史骨架时版本清单退回旧范围。

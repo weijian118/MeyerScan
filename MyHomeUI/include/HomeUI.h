@@ -52,6 +52,14 @@ enum HomeEntryId {
     HomeEntryBrowse = 2,    // 案例管理/浏览入口
     HomeEntryPractice = 3,  // 练习入口
     HomeEntrySettings = 4,  // 设置入口
+
+    // 900 段用于首页顶部工具和窗口动作，避免与四个业务入口 ID 混淆。
+    // HomeUI 仍只上报稳定整数，真正的窗口/页面操作由 MainExe 完成。
+    HomeActionMinimize = 901,
+    HomeActionClose = 902,
+    HomeActionCalibration = 903,
+    HomeActionCloud = 904,
+    HomeActionHelp = 905,
 };
 
 // C ABI 工厂函数。

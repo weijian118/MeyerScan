@@ -1,12 +1,17 @@
 ﻿#include "CaseUIImpl.h"
+#include "MeyerQtModuleUtils.h"
+#include <QFrame>
 #include <QHeaderView>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPixmap>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QToolButton>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <cstring>
@@ -22,7 +27,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CaseUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_CaseUI v0.2.0 (2026-06-26)";
+const char* Version = "MeyerScan_CaseUI v0.2.1 (2026-07-10)";
 }
 }
 
@@ -208,63 +213,108 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     // MainExe 删除 root 时，Qt 会自动删除内部 Layout、按钮、表格等对象。
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanCaseUIRoot");
-    root->setMinimumSize(900, 560);
+    root->setMinimumSize(960, 600);
+    MeyerQtModule::ApplyModuleQss(root, "MyCaseUI", "case.qss", m_logger);
 
-    // 使用 Layout 而不是固定坐标，避免多语言文本变长后遮挡或错位。
+    // 浏览页参考旧软件的全屏顶栏结构：品牌在左，订单/患者入口在中间，窗口工具在右。
+    // 业务动作仍通过 NotifyAction 上报 MainExe，不在 UI 内直接切换主页面。
     auto* layout = new QVBoxLayout(root);
-    layout->setContentsMargins(18, 18, 18, 18);
-    layout->setSpacing(12);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
 
-    auto* headerLayout = new QHBoxLayout();
-    // 可见文本必须使用 tr("English source text")，中文显示由 qm 翻译文件处理。
-    QPushButton* backButton = m_uiComponents
-        ? m_uiComponents->CreateButton(MeyerButtonRoleSecondary,
-                                       MeyerButtonContentTextOnly,
-                                       tr("Back Home").toUtf8().constData(),
-                                       "",
-                                       root)
-        : new QPushButton(tr("Back Home"), root);
-    // setMinimumWidth 是下限，不是固定宽度；多语言文本更长时按钮仍可被布局拉伸。
-    backButton->setMinimumWidth(120);
+    auto* topBar = new QFrame(root);
+    topBar->setObjectName("CaseTopBar");
+    auto* headerLayout = new QHBoxLayout(topBar);
+    headerLayout->setContentsMargins(22, 12, 20, 10);
+    headerLayout->setSpacing(14);
+
+    auto* brand = new QLabel(topBar);
+    brand->setObjectName("CaseBrandLabel");
+    brand->setMinimumWidth(180);
+    const QPixmap brandPixmap(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", "logoEn.png"));
+    if (!brandPixmap.isNull()) {
+        // 图片按高度缩放并保持宽高比，避免不同分辨率下固定坐标拉伸品牌图形。
+        brand->setPixmap(brandPixmap.scaledToHeight(44, Qt::SmoothTransformation));
+    } else {
+        brand->setText(tr("MEYER"));
+    }
+    headerLayout->addWidget(brand, 0);
+
+    auto* header = new QLabel(tr("Orders"), topBar);
+    header->setObjectName("CaseTitleLabel");
+    headerLayout->addWidget(header, 1, Qt::AlignCenter);
+
+    // 顶部工具按钮统一登记普通/悬停图标，并只通过动作 ID 上报 MainExe。
+    auto createTopButton = [topBar](const QString& tooltip,
+                                    const QString& normalIcon,
+                                    const QString& hoverIcon) {
+        auto* button = new QToolButton(topBar);
+        button->setObjectName("CaseTopToolButton");
+        button->setToolTip(tooltip);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setFixedSize(38, 36);
+
+        QIcon icon;
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", normalIcon),
+                     QSize(23, 23),
+                     QIcon::Normal,
+                     QIcon::Off);
+        icon.addFile(MeyerQtModule::ModuleResourceFile("MyCaseUI", "icon/browse/top", hoverIcon),
+                     QSize(23, 23),
+                     QIcon::Active,
+                     QIcon::Off);
+        button->setIcon(icon);
+        button->setIconSize(QSize(23, 23));
+        return button;
+    };
+
+    auto* settingsButton = createTopButton(tr("Settings"), "set_b.png", "set_h.png");
+    settingsButton->setProperty("caseActionId", CaseActionOpenSettings);
+    settingsButton->setVisible(IsActionVisible(CaseActionOpenSettings));
+    settingsButton->setEnabled(IsActionEnabled(CaseActionOpenSettings));
+    QObject::connect(settingsButton, &QToolButton::clicked, [this]() {
+        NotifyAction(CaseActionOpenSettings, "OpenSettings");
+    });
+    headerLayout->addWidget(settingsButton, 0);
+
+    auto* backButton = createTopButton(tr("Back Home"), "home_b.png", "home_h.png");
+    backButton->setProperty("caseActionId", CaseActionBackHome);
     // 返回按钮的显隐来自 MainExe 综合配置中心和权限模块后的结果。
     backButton->setVisible(IsActionVisible(CaseActionBackHome));
     // enabled=false 时保留按钮位置但禁止点击，避免未授权动作进入流程。
     backButton->setEnabled(IsActionEnabled(CaseActionBackHome));
-    QObject::connect(backButton, &QPushButton::clicked, [this]() {
+    QObject::connect(backButton, &QToolButton::clicked, [this]() {
         // clicked 信号没有业务参数，所以用 lambda 把固定 actionId 包进去。
         // 这种写法比给每个按钮写单独槽函数更短，但仍然保持动作 ID 集中管理。
         // 按钮本身不直接访问 MainWindow，只上报动作 ID，保持模块间低耦合。
         NotifyAction(CaseActionBackHome, "BackHome");
     });
-    QPushButton* settingsButton = m_uiComponents
-        ? m_uiComponents->CreateButton(MeyerButtonRoleSecondary,
-                                       MeyerButtonContentTextOnly,
-                                       tr("Settings").toUtf8().constData(),
-                                       "",
-                                       root)
-        : new QPushButton(tr("Settings"), root);
-    settingsButton->setMinimumWidth(120);
-    // 设置入口也由 MainExe 统一下发显隐和启用态，CaseUI 不自己读取 Permission。
-    settingsButton->setVisible(IsActionVisible(CaseActionOpenSettings));
-    settingsButton->setEnabled(IsActionEnabled(CaseActionOpenSettings));
-    QObject::connect(settingsButton, &QPushButton::clicked, [this]() {
-        // lambda 捕获 this 后调用成员函数；Qt 会在 sender 或 receiver 销毁时自动断开连接。
-        // 浏览模块只上报“打开设置”，真正打开设置页面由 MainExe 负责。
-        NotifyAction(CaseActionOpenSettings, "OpenSettings");
-    });
-
-    auto* header = new QLabel(tr("Case Management"), root);
-    QFont headerFont = header->font();
-    headerFont.setPointSize(20);
-    headerFont.setBold(true);
-    header->setFont(headerFont);
-    headerLayout->addWidget(header, 1);
-    headerLayout->addWidget(settingsButton);
     headerLayout->addWidget(backButton);
-    layout->addLayout(headerLayout);
+
+    auto* minimizeButton = createTopButton(tr("Minimize"), "min_b.png", "min_h.png");
+    minimizeButton->setProperty("caseActionId", CaseActionMinimize);
+    QObject::connect(minimizeButton, &QToolButton::clicked, [this]() {
+        NotifyAction(CaseActionMinimize, "Minimize");
+    });
+    headerLayout->addWidget(minimizeButton);
+
+    auto* closeButton = createTopButton(tr("Close"), "close_b.png", "close_h.png");
+    closeButton->setProperty("caseActionId", CaseActionClose);
+    QObject::connect(closeButton, &QToolButton::clicked, [this]() {
+        // 浏览页的 Close 语义是退出浏览并返回首页，不直接结束整个进程。
+        NotifyAction(CaseActionClose, "Close");
+    });
+    headerLayout->addWidget(closeButton);
+    layout->addWidget(topBar, 0);
+
+    auto* body = new QWidget(root);
+    auto* bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(20, 20, 20, 24);
+    bodyLayout->setSpacing(12);
 
     // 患者和订单先保留两个 Tab，后续每个 Tab 内部可继续拆成更小的子页面类。
-    auto* tabs = new QTabWidget(root);
+    auto* tabs = new QTabWidget(body);
     tabs->addTab(CreatePatientTab(tabs), tr("Patients"));
     tabs->addTab(CreateOrderTab(tabs), tr("Orders"));
     QObject::connect(tabs, &QTabWidget::currentChanged, [this, tabs](int index) {
@@ -272,13 +322,14 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
         // Tab 切换也按客户操作写日志，后续问题排查可以还原用户路径。
         NotifyAction(CaseActionSwitchTab, QString("SwitchTab:%1").arg(tabs->tabText(index)));
     });
-    layout->addWidget(tabs, 1);
+    bodyLayout->addWidget(tabs, 1);
 
-    auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), root);
+    auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), body);
+    status->setObjectName(m_runtimeDataReady ? "CaseStatusLabelReady" : "CaseStatusLabelWarning");
     // 当前状态标签用于开发期确认只读快照链路是否可用。
     // 正式界面可由 UIComponents 提供统一状态提示样式。
-    status->setStyleSheet(m_runtimeDataReady ? "color:#1f7a3a;" : "color:#9a3412;");
-    layout->addWidget(status);
+    bodyLayout->addWidget(status);
+    layout->addWidget(body, 1);
 
     WriteLog(LogLevel::Info, "CreateWidget", "Case widget created");
     return root;
@@ -462,19 +513,9 @@ void CaseUIImpl::Shutdown() {
 // 写结构化日志。
 // UI 内部使用 QString 组织内容，写入 Logger 前统一转 UTF-8。
 void CaseUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) {
-    if (!m_logger) {
-        // 日志模块不可用时，UI 仍应能正常响应。
-        return;
-    }
-    // CaseUI 是 Qt 模块，直接使用 Logger.h 提供的 QString 便捷接口。
-    // 跨 DLL 边界前仍会转成 UTF-8 const char*，不会把 QString 对象传进 Logger.dll。
-    m_logger->Write(level,
-                    QString::fromLatin1(ModuleInfo::Name),
-                    QString::fromLatin1(operation ? operation : ""),
-                    QString(),
-                    QString(),
-                    QString(),
-                    content);
+    // 公共 Qt 日志工具会自动使用 MEYER_MODULE_NAME 填充模块名。
+    // CaseUI 只传操作名和内容，保持 UI 模块内部写日志足够轻。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 // 统一处理客户操作。

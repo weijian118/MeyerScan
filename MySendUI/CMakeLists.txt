@@ -17,6 +17,7 @@ target_include_directories(MeyerScan_SendUI
 )
 
 meyer_link_sibling_module(MeyerScan_SendUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_SendUI MySendUI)
 
 if(TARGET MeyerScan_Logger)
     add_custom_command(TARGET MeyerScan_SendUI POST_BUILD
@@ -67,4 +68,5 @@ if(MEYER_BUILD_SENDUI_TEST)
     add_custom_command(TARGET SendUITest POST_BUILD
         ${send_ui_test_post_build_commands}
     )
+    meyer_copy_module_resources(SendUITest MySendUI)
 endif()

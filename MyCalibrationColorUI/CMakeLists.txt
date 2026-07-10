@@ -29,6 +29,7 @@ target_include_directories(MeyerScan_CalibrationColorUI
 )
 
 meyer_link_sibling_module(MeyerScan_CalibrationColorUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_CalibrationColorUI MyCalibrationColorUI)
 
 
 
@@ -47,6 +48,7 @@ if(MEYER_BUILD_CALIBRATIONCOLORUITEST)
     target_link_libraries(CalibrationColorUITest PRIVATE MeyerScan_CalibrationColorUI Qt5::Core Qt5::Gui Qt5::Widgets)
 
     meyer_link_sibling_module(CalibrationColorUITest MyLogger MeyerScan_Logger)
+    meyer_copy_module_resources(CalibrationColorUITest MyCalibrationColorUI)
 
 
 

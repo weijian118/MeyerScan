@@ -29,6 +29,7 @@ enum OrderScanWorkspaceMode {
 enum OrderScanWorkspaceShellAction {
     WorkspaceShellActionMinimize = 1,
     WorkspaceShellActionClose = 2,
+    WorkspaceShellActionBack = 3,
 };
 
 // IOrderScanWorkspaceShell 是建单模块和扫描重建模块之间的统一工作区壳子。

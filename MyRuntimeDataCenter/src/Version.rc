@@ -18,6 +18,7 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "LegalCopyright", "Copyright (C) 2026 HEFEI MEYER"
             VALUE "FileDescription", "MeyerScan RuntimeDataCenter Module"
             VALUE "FileVersion", "0.1.0.0"
             VALUE "InternalName", "MeyerScan_RuntimeDataCenter"

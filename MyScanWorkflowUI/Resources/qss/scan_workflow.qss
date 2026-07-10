@@ -1,0 +1,29 @@
+QWidget#MeyerScanScanWorkflowUIRoot {
+    background: #101820;
+    color: #ffffff;
+}
+
+QLabel {
+    color: #e8eef3;
+}
+
+QLabel#ScanWorkflowPanelTitle {
+    font-weight: 600;
+}
+
+QPushButton {
+    border: 1px solid #3b4a58;
+    border-radius: 5px;
+    background: #1e2a35;
+    color: #f8fafc;
+    padding: 7px 12px;
+}
+
+QPushButton:hover {
+    background: #263746;
+}
+
+QPushButton:checked {
+    background: #007d68;
+    border-color: #007d68;
+}

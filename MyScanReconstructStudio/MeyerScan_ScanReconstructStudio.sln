@@ -9,6 +9,13 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ScanReconstructStudio", "Sc
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_ScanReconstructStudio", "MeyerScan_ScanReconstructStudio.vcxproj", "{21C11E83-0CE3-4E60-9D4B-0AA38CB6E972}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C34C9F82-BC2F-4F9B-96AC-3287F8073A4D} = {C34C9F82-BC2F-4F9B-96AC-3287F8073A4D}
+		{DAF07FB8-37C6-4E17-8B7E-DB6167003692} = {DAF07FB8-37C6-4E17-8B7E-DB6167003692}
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+	EndProjectSection
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_ScanWorkflowUI", "..\MyScanWorkflowUI\MeyerScan_ScanWorkflowUI.vcxproj", "{C34C9F82-BC2F-4F9B-96AC-3287F8073A4D}"
 	ProjectSection(ProjectDependencies) = postProject
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -28,6 +35,8 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{9811FF19-7751-4BD4-A9E4-A54640714EE1}.Release|x64.ActiveCfg = Release|x64
 		{9811FF19-7751-4BD4-A9E4-A54640714EE1}.Release|x64.Build.0 = Release|x64
+		{21C11E83-0CE3-4E60-9D4B-0AA38CB6E972}.Release|x64.ActiveCfg = Release|x64
+		{21C11E83-0CE3-4E60-9D4B-0AA38CB6E972}.Release|x64.Build.0 = Release|x64
 		{C34C9F82-BC2F-4F9B-96AC-3287F8073A4D}.Release|x64.ActiveCfg = Release|x64
 		{C34C9F82-BC2F-4F9B-96AC-3287F8073A4D}.Release|x64.Build.0 = Release|x64
 		{DAF07FB8-37C6-4E17-8B7E-DB6167003692}.Release|x64.ActiveCfg = Release|x64
@@ -39,4 +48,3 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
-

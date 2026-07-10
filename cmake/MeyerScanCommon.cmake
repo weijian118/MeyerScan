@@ -1,13 +1,13 @@
 # =============================================================================
 # MeyerScanCommon.cmake
 #
-# 用途:
-#   所有模块共用的 CMake 规则集中在这里，避免每个模块复制一套 Qt 路径、
-#   输出目录、C++ 标准、MSVC 运行时和兄弟模块链接写法。
+# 用途：
+#   所有模块共用的 CMake 工程规则集中放在这里，避免每个模块重复维护
+#   Qt 路径、输出目录、C++ 标准、MSVC 运行时和兄弟模块链接写法。
 #
-# 维护原则:
+# 维护原则：
 #   - 这里只放工程规则，不放业务判断。
-#   - 新增模块优先复用这些函数，不在模块 CMakeLists 里自造路径规则。
+#   - 新增模块优先复用这些函数，不在模块 CMakeLists.txt 中自造路径规则。
 # =============================================================================
 
 get_filename_component(MEYER_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
@@ -30,7 +30,7 @@ if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
-# 将每个模块的产物继续输出到自身 bin/<Config>，保持和 VS2015 工程一致。
+# 将每个模块的产物输出到自身 bin/<Config>，保持和 VS2015 工程一致。
 function(meyer_set_module_output target)
     set_target_properties(${target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/$<CONFIG>"
@@ -59,6 +59,7 @@ endfunction()
 function(meyer_configure_module target module_name)
     meyer_set_module_output(${target})
     target_compile_definitions(${target} PRIVATE MEYER_MODULE_NAME="${module_name}")
+    target_include_directories(${target} PRIVATE "${MEYER_ROOT_DIR}/Common/include")
 endfunction()
 
 # 复制 SQLite x64 运行时到目标输出目录。
@@ -79,8 +80,25 @@ function(meyer_copy_sqlite_runtime target)
     endif()
 endfunction()
 
+# 复制模块 Resources 到运行目录约定位置：
+#   <target 输出目录>/Resources/Modules/<module_dir>/
+# 每个模块源码目录保留自己的资源，构建/打包时再汇总到 MeyerScan.exe 同级目录。
+function(meyer_copy_module_resources target module_dir)
+    set(_meyer_resource_source "${MEYER_ROOT_DIR}/${module_dir}/Resources")
+    if(EXISTS "${_meyer_resource_source}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_FILE_DIR:${target}>/Resources/Modules/${module_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${_meyer_resource_source}"
+                    "$<TARGET_FILE_DIR:${target}>/Resources/Modules/${module_dir}"
+        )
+    endif()
+endfunction()
+
 # 链接同仓库兄弟模块。
-# 根工程构建时直接链接 target；单模块独立 CMake 构建时回退到兄弟模块 bin/<Config> 下的导入库。
+# 根工程构建时直接链接 target；单模块独立 CMake 构建时回退到兄弟模块
+# bin/<Config> 下的导入库。
 function(meyer_link_sibling_module consumer module_dir target_name)
     target_include_directories(${consumer} PRIVATE "${MEYER_ROOT_DIR}/${module_dir}/include")
     if(TARGET ${target_name})

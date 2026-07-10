@@ -1,5 +1,12 @@
 ﻿# MeyerScan HomeUI 变更记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.2.1`，同步更新代码版本、CMake 和 `Version.rc`。
+- 首页顶部区域增加品牌图片、校准、云端、帮助、最小化和关闭入口；窗口动作使用稳定 ID 回调 MainExe，HomeUI 不直接操作顶层窗口。
+- 改为统一使用 `Common/include/MeyerQtModuleUtils.h` 解析模块资源、加载 QSS 和写 Qt 日志，删除模块内重复工具函数。
+- HomeUITest 增加顶部动作按钮回调验证，确认页面动作 ID 与 MainExe 约定一致。
+
 ## 2026-07-05
 
 - 新增统一 C ABI 版本函数 `GetMeyerModuleVersion()`，供 MainExe / VersionManager 生成运行时版本清单时读取 `codeVersion`；该函数只返回 `ModuleInfo::Version`，不创建业务对象。

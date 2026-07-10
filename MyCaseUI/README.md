@@ -3,6 +3,7 @@
 CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 
 - 提供患者管理和订单管理页签框架，对应帮助文档中的浏览模块。
+- 浏览页自行绘制品牌、设置、返回首页、最小化和关闭等页面语义顶部入口；最小化/关闭使用 `CaseActionMinimize` / `CaseActionClose` 上报 MainExe，CaseUI 不直接操作顶层窗口。
 - 提供“返回首页”按钮，通过 `SetActionCallback()` 向 MainExe 上报 `CaseActionBackHome`；CaseUI 不直接切换首页。
 - 通过 `SetActionVisible()` / `SetActionEnabled()` 接收 MainExe 计算后的操作显隐和启用态；CaseUI 不直接读取权限文件。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。

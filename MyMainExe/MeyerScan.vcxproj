@@ -43,7 +43,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_MainExe";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MySendUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MySendUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -108,12 +108,24 @@ xcopy /Y /D "$(ProjectDir)..\MyScanWorkflowUI\bin\$(Configuration)\MeyerScan_Sca
 xcopy /Y /D "$(ProjectDir)..\MyDataProcessUI\bin\$(Configuration)\MeyerScan_DataProcessUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MySendUI\bin\$(Configuration)\MeyerScan_SendUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyScanReconstructStudio\bin\$(Configuration)\ScanReconstructStudio.exe" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyScanReconstructStudio\bin\$(Configuration)\MeyerScan_ScanReconstructStudio.dll" "$(OutDir)"
 xcopy /Y /D "$(VtkRoot)\bin\*.dll" "$(OutDir)"
 xcopy /Y /D "$(OpenCVBinDir)\opencv_world330.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\ThirdParty\SQLite\win-x64\sqlite3.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
 if exist "$(ProjectDir)..\bin\$(Configuration)\MeyerScan_*.dll" xcopy /Y "$(ProjectDir)..\bin\$(Configuration)\MeyerScan_*.dll" "$(OutDir)"
-if exist "$(ProjectDir)..\MyOrderCreateUI\Resources\icon" xcopy /Y /E /I "$(ProjectDir)..\MyOrderCreateUI\Resources\icon" "$(OutDir)Resources\Modules\MyOrderCreateUI\icon"
+if exist "$(ProjectDir)..\MyHomeUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyHomeUI\Resources" "$(OutDir)Resources\Modules\MyHomeUI"
+if exist "$(ProjectDir)..\MyCaseUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyCaseUI\Resources" "$(OutDir)Resources\Modules\MyCaseUI"
+if exist "$(ProjectDir)..\MySettingsUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MySettingsUI\Resources" "$(OutDir)Resources\Modules\MySettingsUI"
+if exist "$(ProjectDir)..\MyOrderCreateUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyOrderCreateUI\Resources" "$(OutDir)Resources\Modules\MyOrderCreateUI"
+if exist "$(ProjectDir)..\MyOrderScanWorkspaceShell\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyOrderScanWorkspaceShell\Resources" "$(OutDir)Resources\Modules\MyOrderScanWorkspaceShell"
+if exist "$(ProjectDir)..\MyScanWorkflowUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyScanWorkflowUI\Resources" "$(OutDir)Resources\Modules\MyScanWorkflowUI"
+if exist "$(ProjectDir)..\MyDataProcessUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyDataProcessUI\Resources" "$(OutDir)Resources\Modules\MyDataProcessUI"
+if exist "$(ProjectDir)..\MySendUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MySendUI\Resources" "$(OutDir)Resources\Modules\MySendUI"
+if exist "$(ProjectDir)..\MyScanReconstructStudio\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyScanReconstructStudio\Resources" "$(OutDir)Resources\Modules\MyScanReconstructStudio"
+if exist "$(ProjectDir)..\MyUIComponents\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyUIComponents\Resources" "$(OutDir)Resources\Modules\MyUIComponents"
+if exist "$(ProjectDir)..\MyCalibration3DUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyCalibration3DUI\Resources" "$(OutDir)Resources\Modules\MyCalibration3DUI"
+if exist "$(ProjectDir)..\MyCalibrationColorUI\Resources" xcopy /Y /E /I "$(ProjectDir)..\MyCalibrationColorUI\Resources" "$(OutDir)Resources\Modules\MyCalibrationColorUI"
 xcopy /Y /D /I "$(ProjectDir)..\MyDatabase\config\*.json" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)config\*.json" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)config\*.md" "$(OutDir)config\"

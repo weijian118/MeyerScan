@@ -16,7 +16,7 @@ struct CaseOrderServiceResult {
 
     // 判断本次服务调用是否成功。
     // 调用方优先使用这个小函数，而不是到处手写 errorCode == 0，
-    // 后续迁移到 Core.lib 的 Result/VoidResult 时也更容易统一替换。
+    // 后续若多个服务形成语义一致的稳定结果合同，也更容易集中抽取或统一替换。
     bool IsSuccess() const { return errorCode == 0; }
 
     // 判断本次服务调用是否失败。

@@ -29,6 +29,7 @@ target_include_directories(MeyerScan_Calibration3DUI
 )
 
 meyer_link_sibling_module(MeyerScan_Calibration3DUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_Calibration3DUI MyCalibration3DUI)
 
 
 
@@ -47,6 +48,7 @@ if(MEYER_BUILD_CALIBRATION3DUITEST)
     target_link_libraries(Calibration3DUITest PRIVATE MeyerScan_Calibration3DUI Qt5::Core Qt5::Gui Qt5::Widgets)
 
     meyer_link_sibling_module(Calibration3DUITest MyLogger MeyerScan_Logger)
+    meyer_copy_module_resources(Calibration3DUITest MyCalibration3DUI)
 
 
 

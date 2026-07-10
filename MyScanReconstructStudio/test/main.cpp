@@ -1,4 +1,4 @@
-#include "ScanReconstructStudioWindow.h"
+﻿#include "ScanReconstructStudioWindow.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -73,7 +73,6 @@ int main(int argc, char* argv[]) {
         return 4;
     }
 
-    window.resize(1440, 860);
-    window.show();
+    window.showFullScreen();
     return app.exec();
 }

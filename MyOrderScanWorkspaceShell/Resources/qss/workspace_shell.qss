@@ -1,0 +1,59 @@
+QWidget#MeyerScanOrderScanWorkspaceShellRoot {
+    background: #dfe3e9;
+}
+
+QFrame#WorkspaceTopBar {
+    background: #e3e7ec;
+    border-bottom: 1px solid #c4ccd4;
+    min-height: 58px;
+}
+
+QLabel#WorkspaceBrandLabel {
+    color: #111111;
+    font-size: 22px;
+    font-weight: 700;
+    min-width: 172px;
+}
+
+QToolButton#WorkspaceBackButton,
+QToolButton#WorkspaceMinimizeButton,
+QToolButton#WorkspaceCloseButton {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #6f7b87;
+    min-width: 40px;
+    min-height: 34px;
+}
+
+QToolButton#WorkspaceMinimizeButton:hover,
+QToolButton#WorkspaceCloseButton:hover,
+QToolButton#WorkspaceBackButton:hover {
+    background: #edf1f4;
+}
+
+QPushButton[workspaceStep="true"] {
+    border: 0;
+    border-radius: 6px;
+    padding: 7px 14px;
+    color: #5f6c79;
+    background: transparent;
+    font-weight: 500;
+    min-width: 112px;
+    min-height: 44px;
+}
+
+QPushButton[workspaceStep="true"]:checked {
+    color: #007d68;
+    font-weight: 700;
+    background: #edf5f2;
+}
+QPushButton[workspaceStep="true"]:hover:!checked {
+    background: #f0f2f5;
+}
+
+QLabel#WorkspacePlaceholder {
+    color: #607080;
+    background: #ffffff;
+    border: 1px dashed #b0bec5;
+}

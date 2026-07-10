@@ -79,6 +79,10 @@
             "versionFunction": "GetMeyerModuleVersion"
         },
         {
+            "file": "MeyerScan_ScanReconstructStudio.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
             "file": "MeyerScan_ScanWorkflowUI.dll",
             "versionFunction": "GetMeyerModuleVersion"
         },

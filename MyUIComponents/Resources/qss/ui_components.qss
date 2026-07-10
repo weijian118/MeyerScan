@@ -1,0 +1,150 @@
+QWidget#MeyerScanWaitWidget {
+    background: #f4f6f8;
+    color: #23313f;
+}
+
+QLabel#MeyerPageTitleLabel {
+    color: #23313f;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QLabel#MeyerWaitMessageLabel {
+    color: #607080;
+    font-size: 15px;
+}
+
+QProgressBar#MeyerWaitProgressBar {
+    border: 0;
+    border-radius: 4px;
+    background: #dde5eb;
+}
+
+QProgressBar#MeyerWaitProgressBar::chunk {
+    border-radius: 4px;
+    background: #007d68;
+}
+
+QPushButton#MeyerPushButton,
+QToolButton#MeyerToolButton {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    background: #f6f8fa;
+    color: #23313f;
+    padding: 8px 16px;
+}
+
+QPushButton#MeyerPushButton:hover,
+QToolButton#MeyerToolButton:hover {
+    background: #edf2f5;
+}
+
+QPushButton#MeyerPushButton:pressed,
+QToolButton#MeyerToolButton:pressed {
+    background: #e1e8ec;
+}
+
+QPushButton#MeyerPushButton:disabled,
+QToolButton#MeyerToolButton:disabled {
+    color: #999999;
+    border-color: #dddddd;
+    background: #f4f4f4;
+}
+
+QPushButton#MeyerPushButton[role="primary"],
+QToolButton#MeyerToolButton[role="primary"] {
+    background: #007d68;
+    color: #ffffff;
+    border: 0;
+    font-weight: 600;
+}
+
+QPushButton#MeyerPushButton[role="primary"]:hover,
+QToolButton#MeyerToolButton[role="primary"]:hover {
+    background: #009176;
+}
+
+QPushButton#MeyerPushButton[role="primary"]:pressed,
+QToolButton#MeyerToolButton[role="primary"]:pressed {
+    background: #006652;
+}
+
+QPushButton#MeyerPushButton[role="text"],
+QToolButton#MeyerToolButton[role="text"] {
+    background: transparent;
+    color: #007d68;
+    border: 0;
+    padding: 6px 10px;
+}
+
+QPushButton#MeyerPushButton[role="danger"],
+QToolButton#MeyerToolButton[role="danger"] {
+    background: #c0392b;
+    color: #ffffff;
+    border: 0;
+}
+
+QPushButton#MeyerPushButton[role="entry"],
+QToolButton#MeyerToolButton[role="entry"] {
+    text-align: left;
+    background: #ffffff;
+    color: #23313f;
+    border: 1px solid #d8e1e7;
+    border-radius: 7px;
+    padding: 14px;
+}
+
+QPushButton#MeyerPushButton[role="entry"]:hover,
+QToolButton#MeyerToolButton[role="entry"]:hover {
+    background: #edf8f5;
+    border-color: #9ccfc3;
+}
+
+QLineEdit#MeyerLineEdit,
+QComboBox#MeyerComboBox,
+QDateEdit#MeyerDateEdit,
+QTextEdit#MeyerTextEdit {
+    border: 1px solid #cfd8dc;
+    border-radius: 5px;
+    padding: 6px 10px;
+    background: #ffffff;
+    color: #23313f;
+    selection-background-color: #007d68;
+}
+
+QLineEdit#MeyerLineEdit:focus,
+QComboBox#MeyerComboBox:focus,
+QDateEdit#MeyerDateEdit:focus,
+QTextEdit#MeyerTextEdit:focus {
+    border-color: #007d68;
+}
+
+QLabel#MeyerFieldLabel {
+    color: #4f5f6f;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QTableWidget#MeyerTableWidget {
+    background: #ffffff;
+    border: 1px solid #d8e1e7;
+    border-radius: 5px;
+    gridline-color: #edf1f4;
+    color: #23313f;
+    alternate-background-color: #f8fafb;
+    selection-background-color: #dff1ec;
+    selection-color: #23313f;
+}
+
+QTableWidget#MeyerTableWidget::item {
+    padding: 6px;
+}
+
+QHeaderView::section {
+    background: #edf3f5;
+    color: #23313f;
+    border: 0;
+    border-bottom: 1px solid #d8e1e7;
+    padding: 7px;
+    font-weight: 600;
+}

@@ -13,6 +13,8 @@
 #include <QSize>
 #include <QTableWidget>
 #include <QTimer>
+#include <QToolButton>
+#include <QVariant>
 #include <QWidget>
 #include <cstring>
 
@@ -32,6 +34,15 @@
 // =============================================================================
 
 namespace {
+
+// 保存浏览页顶部按钮最近一次上报的动作 ID。
+// 测试只验证模块边界，不直接执行 MainExe 的页面切换或窗口操作。
+int g_lastCaseAction = 0;
+
+void OnCaseAction(void* /*context*/, int actionId) {
+    g_lastCaseAction = actionId;
+}
+
 // 将测试窗口居中显示到当前屏幕。
 // 测试宿主没有 MainExe 的统一窗口，因此这里做一个最小窗口摆放逻辑。
 void ShowOnCurrentScreen(QWidget* widget) {
@@ -381,9 +392,30 @@ int main(int argc, char* argv[]) {
     const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
     // Init 不接管 QByteArray 内存，只在调用期间读取 constData()。
     caseUi->Init(databaseConfigBytes.constData(), logDirBytes.constData());
+    caseUi->SetActionCallback(&OnCaseAction, nullptr);
 
     // 创建案例管理界面并显示。窗口标题使用模块版本，便于人工确认 DLL 版本。
     QWidget* widget = caseUi->CreateWidget();
+    // 通过动态属性定位关闭按钮，避免测试依赖顶部按钮的排列顺序。
+    const QList<QToolButton*> topButtons = widget->findChildren<QToolButton*>("CaseTopToolButton");
+    QToolButton* closeButton = nullptr;
+    for (QToolButton* button : topButtons) {
+        if (button && button->property("caseActionId").toInt() == CaseActionClose) {
+            closeButton = button;
+            break;
+        }
+    }
+    if (!closeButton) {
+        delete widget;
+        caseUi->Shutdown();
+        return 6;
+    }
+    closeButton->click();
+    if (g_lastCaseAction != CaseActionClose) {
+        delete widget;
+        caseUi->Shutdown();
+        return 7;
+    }
     // CreateWidget 当前应总是返回有效 QWidget；如果后续改成可失败，测试宿主应补空指针判断。
     // 测试宿主没有 MainExe 标题栏上下文，所以直接展示模块版本。
     widget->setWindowTitle(caseUi->GetModuleVersion());

@@ -1,4 +1,4 @@
-#include "ScanProcessGenerator.h"
+﻿#include "ScanProcessGenerator.h"
 
 ScanProcessGenerator::ScanProcessGenerator(const ScanConfig& config)
     : m_config(config)

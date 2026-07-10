@@ -21,6 +21,7 @@ target_include_directories(MeyerScan_SettingsUI
 meyer_link_sibling_module(MeyerScan_SettingsUI MyLogger MeyerScan_Logger)
 meyer_link_sibling_module(MeyerScan_SettingsUI MyRuntimeDataCenter MeyerScan_RuntimeDataCenter)
 meyer_copy_sqlite_runtime(MeyerScan_SettingsUI)
+meyer_copy_module_resources(MeyerScan_SettingsUI MySettingsUI)
 
 option(MEYER_BUILD_SETTINGSUI_TEST "Build SettingsUITest.exe" ON)
 if(MEYER_BUILD_SETTINGSUI_TEST)
@@ -37,4 +38,5 @@ if(MEYER_BUILD_SETTINGSUI_TEST)
     )
     set_target_properties(SettingsUITest PROPERTIES WIN32_EXECUTABLE TRUE)
     meyer_copy_sqlite_runtime(SettingsUITest)
+    meyer_copy_module_resources(SettingsUITest MySettingsUI)
 endif()

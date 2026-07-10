@@ -1,5 +1,9 @@
 # MeyerScan MyLogin 变更记录
 
+## 2026-07-10
+
+- 测试宿主 `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；既有外部登录 DLL、qm、许可和登录参数链路保持不变。
+
 ## 2026-07-02
 
 - 新增登录测试宿主 `CMakeLists.txt`，支持 VSCode/CMake Tools 与 VS2015 生成器构建；外部既有 `MeyerLoginWidget.dll/lib` 仍作为已交付依赖链接，不把登录源码纳入当前仓库重写。

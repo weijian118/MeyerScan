@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.4.0 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.4.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -18,6 +18,7 @@ target_include_directories(MeyerScan_OrderCreateUI
 )
 
 meyer_link_sibling_module(MeyerScan_OrderCreateUI MyLogger MeyerScan_Logger)
+meyer_copy_module_resources(MeyerScan_OrderCreateUI MyOrderCreateUI)
 if(TARGET MeyerScan_UIComponents)
     add_dependencies(MeyerScan_OrderCreateUI MeyerScan_UIComponents)
 
@@ -69,4 +70,5 @@ if(MEYER_BUILD_ORDERCREATEUITEST)
     add_custom_command(TARGET OrderCreateUITest POST_BUILD
         ${order_create_test_post_build_commands}
     )
+    meyer_copy_module_resources(OrderCreateUITest MyOrderCreateUI)
 endif()

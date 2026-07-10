@@ -1,5 +1,10 @@
 # MySendUI 修改记录
 
+## 2026-07-10
+
+- 发送页样式迁入 `Resources/qss/send.qss`，源码通过公共资源/QSS/日志辅助函数加载；CMake/VS2015 工程补齐模块资源复制。
+- SendUI 继续只提供 Send 步骤内容和动作上报，不复制工作台步骤导航；`Version.rc` 补齐版权字段。
+
 ## 2026-07-07
 
 - 新增 `MeyerScan_SendUI.dll` 初版框架，提供发送页 UI、动作回调、日志和版本导出。

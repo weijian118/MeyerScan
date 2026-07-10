@@ -5,10 +5,10 @@
 ## 当前定位
 
 - 建单模块和扫描重建模块直接相邻，用户体验上不能割裂。
-- 本模块负责顶部步骤、页面容器、当前步骤切换和后续进程/窗口嵌入的统一边界。
+- 本模块负责品牌、返回入口、唯一的顶部步骤导航、页面容器、当前步骤切换和后续进程/窗口嵌入的统一边界。
 - 顶部 Order / Scan / Process / Send 必须是可点击步骤按钮，点击后由壳子内部调用 `SetStep()` 切换 `QStackedWidget` 页面；不能用只展示文字的 `QLabel` 伪装按钮。
 - 壳子支持两种模式：`WorkspaceModeOrderCreate` 显示 Order / Scan / Process / Send；`WorkspaceModePractice` 只显示 Scan / Process，用于首页“Practice”入口。
-- 创建模块和练习模块右上角只保留 `Minimize` 和 `Close` 两个壳按钮；壳子只通过回调上报动作，具体最小化或关闭工作台回首页由 MainExe 处理。
+- 创建模块和练习模块右上角只保留 `Minimize` 和 `Close` 两个壳按钮，左侧可以提供返回入口；壳子通过 `WorkspaceShellActionBack/Minimize/Close` 上报动作，具体窗口和页面操作由 MainExe 处理。
 - `OrderCreateUI`、`ScanWorkflowUI`、`DataProcessUI`、`SendUI` 和后续 `ScanReconstructStudio.exe` 作为工作台内页面或进程容器接入。
 - 本模块是 Qt Widgets UI 容器模块，可以使用 `QWidget`、`QStackedWidget`、Qt Layout、信号槽、`QString` 和 `QMap` 组织界面；建单保存、加载规则、扫描采集和数据处理不进入本模块。跨进程同步扫描状态时必须收敛为 IPC/POD/UTF-8 JSON。
 - 当前 MainExe 已把 `OrderCreateUI` 挂载到 `WorkspaceStepOrderCreate`；首页点击“Create”和第三方自动拉起建单都进入本工作台壳。
@@ -16,6 +16,7 @@
 ## 边界
 
 - 只做容器、导航和视觉一致性。
+- OrderCreateUI、ScanWorkflowUI、DataProcessUI 和 SendUI 只提供内容页，不得复制本壳的步骤导航。
 - 不保存建单数据。
 - 不做加载订单规则。
 - 不做扫描采集、算法重建或设备通信。
@@ -35,4 +36,4 @@
 - VS2015：打开 `MeyerScan_OrderScanWorkspaceShell.sln`，构建并运行 `OrderScanWorkspaceShellTest.exe`。
 - CMake/VSCode：默认开启 `OrderScanWorkspaceShellTest` 测试目标，可通过 `MEYER_BUILD_ORDERSCANWORKSPACESHELLTEST` 控制。
 - 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。
-- 当前测试覆盖创建模式步骤点击、练习模式只显示 Scan/Process、非法 step 防崩溃和根控件释放。
+- 当前测试覆盖创建模式步骤点击、练习模式只显示 Scan/Process、返回动作回调、非法 step 防崩溃和根控件释放。

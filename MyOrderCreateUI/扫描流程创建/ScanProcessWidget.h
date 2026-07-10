@@ -1,4 +1,4 @@
-// ==================== ScanProcessWidget.h ====================
+﻿// ==================== ScanProcessWidget.h ====================
 #ifndef SCANPROCESSWIDGET_H
 #define SCANPROCESSWIDGET_H
 

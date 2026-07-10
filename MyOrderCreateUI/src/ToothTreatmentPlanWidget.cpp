@@ -110,13 +110,6 @@ ToothTreatmentPlanWidget::ToothTreatmentPlanWidget(QWidget* parent)
     m_clearButton->setObjectName("OrderCreateClearAllButton");
     m_clearButton->setCursor(Qt::PointingHandCursor);
     m_clearButton->setMinimumSize(180, 38);
-    m_clearButton->setStyleSheet(
-        "QPushButton#OrderCreateClearAllButton{"
-        "background:#ffffff;border:1px solid #c8d2dc;border-radius:5px;color:#23313f;"
-        "font-size:13px;font-weight:500;padding:6px 18px;}"
-        "QPushButton#OrderCreateClearAllButton:hover{background:#f7fafc;border-color:#aebdcc;}"
-        "QPushButton#OrderCreateClearAllButton:pressed{background:#eef3f6;}"
-    );
     connect(m_clearButton, &QPushButton::clicked, [this]() {
         if (m_clearClickedCallback) {
             m_clearClickedCallback();

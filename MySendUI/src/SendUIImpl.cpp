@@ -1,5 +1,6 @@
-#include "SendUIImpl.h"
+﻿#include "SendUIImpl.h"
 
+#include "MeyerQtModuleUtils.h"
 #include <QComboBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -50,22 +51,7 @@ QWidget* SendUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanSendUIRoot");
     root->setMinimumSize(920, 560);
     root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    root->setStyleSheet(QString(
-        "#MeyerScanSendUIRoot{background:%1;}"
-        "QLabel{color:#1f2b36;font-size:13px;}"
-        "QLabel[sectionTitle=\"true\"]{font-size:20px;font-weight:600;color:#132536;}"
-        "QLabel[fieldLabel=\"true\"]{color:#1f2b36;font-size:13px;font-weight:500;}"
-        "QLineEdit,QComboBox,QTextEdit{border:1px solid %2;border-radius:5px;background:#ffffff;color:#162433;font-size:14px;}"
-        "QLineEdit,QComboBox{min-height:34px;padding:6px 10px;}"
-        "QTextEdit{padding:8px 10px;}"
-        "QLineEdit[readonly=\"true\"]{background:#f2f4f6;color:#1f2b36;}"
-        "QPushButton{border:1px solid %3;border-radius:5px;background:#ffffff;color:%3;min-height:38px;padding:6px 16px;font-size:14px;}"
-        "QPushButton:hover{background:#edf8f5;}"
-        "QPushButton[primary=\"true\"]{background:%3;color:#ffffff;font-weight:600;}"
-        "QPushButton[primary=\"true\"]:hover{background:#008b72;}"
-        "QFrame[card=\"true\"]{background:%4;border:1px solid %2;border-radius:6px;}"
-        "QFrame[divider=\"true\"]{background:#e8edf1;}"
-    ).arg(kPageBackground, kBorderColor, kPrimaryColor, kPanelBackground));
+    MeyerQtModule::ApplyModuleQss(root, "MySendUI", "send.qss", m_logger);
 
     auto* outerLayout = new QVBoxLayout(root);
     outerLayout->setContentsMargins(22, 20, 22, 22);
@@ -382,11 +368,9 @@ void SendUIImpl::EmitAction(int actionId, const QString& operation) {
 }
 
 void SendUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
-    if (!m_logger) {
-        return;
-    }
-    const QByteArray bytes = content.toUtf8();
-    m_logger->Write(level, ModuleInfo::Name, operation ? operation : "", "", "", "", bytes.constData());
+    // MeyerQtModule::WriteQtLog 会自动补充 MEYER_MODULE_NAME，
+    // 并把 QString 在跨 DLL 前转换成 UTF-8 const char*。
+    MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
 extern "C" MEYERSCAN_SENDUI_API ISendUI* GetSendUI() {

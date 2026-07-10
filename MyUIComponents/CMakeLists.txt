@@ -24,9 +24,13 @@ target_include_directories(MeyerScan_UIComponents
 
     PUBLIC include
 
-    PRIVATE src
+    PRIVATE
+        src
+        ../MyLogger/include
 
 )
+
+meyer_copy_module_resources(MeyerScan_UIComponents MyUIComponents)
 
 
 
@@ -40,9 +44,11 @@ if(MEYER_BUILD_UICOMPONENTSTEST)
 
     meyer_use_dynamic_crt(UIComponentsTest)
 
-    target_include_directories(UIComponentsTest PRIVATE include)
+    target_include_directories(UIComponentsTest PRIVATE include ../MyLogger/include)
 
     target_link_libraries(UIComponentsTest PRIVATE MeyerScan_UIComponents Qt5::Core Qt5::Gui Qt5::Widgets)
+
+    meyer_copy_module_resources(UIComponentsTest MyUIComponents)
 
 
 

@@ -1,5 +1,10 @@
 # 变更记录
 
+## 2026-07-10
+
+- 数据处理页样式迁入 `Resources/qss/data_process.qss`，源码通过公共资源/QSS/日志辅助函数加载；CMake/VS2015 工程补齐模块资源复制。
+- 保持 Process 页只提供步骤内容和部位流程按钮，不复制 OrderScanWorkspaceShell 的工作台步骤导航；`Version.rc` 补齐版权字段。
+
 ## 2026-07-07
 
 - 版本升级为 `v0.2.1`，顶部处理流程按钮补充手型 hover、tooltip、选中态刷新和点击切换当前处理部位显示数据。

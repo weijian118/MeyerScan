@@ -87,9 +87,6 @@ private:
     UIComponentsImpl(const UIComponentsImpl&) = delete;
     UIComponentsImpl& operator=(const UIComponentsImpl&) = delete;
 
-    // 生成不同按钮角色对应的 QSS。
-    QString ButtonStyleSheet(int role) const;
-
     // 根据按钮角色返回建议最小高度。
     int ButtonMinimumHeight(int role) const;
 
@@ -98,9 +95,6 @@ private:
 
     // 统一加载图标；空路径或加载失败时返回空图标，按钮仍正常显示文字。
     QIcon LoadIcon(const char* iconResourcePathUtf8) const;
-
-    // 返回普通输入控件统一 QSS，供 QLineEdit/QComboBox/QDateEdit/QTextEdit 复用。
-    QString InputStyleSheet(const QString& selector) const;
 
 private:
     // 基于当前屏幕相对 1920x1080 的横向辅助缩放系数。

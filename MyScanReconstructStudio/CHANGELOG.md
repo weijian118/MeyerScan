@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-07-10
+
+- 版本升级为 `v0.1.1`，独立 EXE 和嵌入 DLL 分别编译 `Version.rc` / `VersionDll.rc`，文件版本与代码版本保持一致。
+- 新增 `MeyerScan_ScanReconstructStudio.dll` 和公开 `IScanReconstructStudio` 接口，同一套实现可生成可嵌入 QWidget，也可生成 `ScanReconstructStudio.exe` 独立运行。
+- 新增 DLL VS2015 工程并加入单模块/根聚合解决方案；CMake 同时生成 EXE、DLL 和 smoke 入口。
+- 界面样式和资源统一迁入模块 `Resources`，源码通过公共 QSS/资源函数加载。
+- 嵌入工作台时由外层 OrderScanWorkspaceShell 负责品牌和步骤导航，后续接入必须避免双壳/双步骤条；独立 EXE 才拥有独立窗口显示形态。
+
 ## 2026-07-06
 
 - CMake 根聚合 `Release` 构建已通过，`ScanReconstructStudio.exe --smoke` 返回 0。

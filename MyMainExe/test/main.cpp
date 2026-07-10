@@ -147,7 +147,9 @@ int main(int argc, char* argv[]) {
                     window.StartExternalOrder(message.value("externalOrderPath").toString(),
                                               message.value("externalOrderType").toString());
                 } else if (window.isVisible()) {
-                    window.showNormal();
+                    // 主窗口采用固定无边框全屏流程；从最小化恢复时不能调用 showNormal，
+                    // 否则会短暂变回普通窗口并破坏首页/浏览/工作台的全屏一致性。
+                    window.showFullScreen();
                     window.raise();
                     window.activateWindow();
                 }

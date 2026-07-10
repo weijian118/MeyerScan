@@ -1,5 +1,7 @@
 ﻿#include "OrderCreateUIImpl.h"
 
+#include "MeyerQtModuleUtils.h"
+
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QButtonGroup>
@@ -45,19 +47,8 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.4.0 (2026-07-08)";
+const char* Version = "MeyerScan_OrderCreateUI v0.4.1 (2026-07-10)";
 }
-
-// 建单界面仍保留少量业务专属颜色，例如牙位选中态和页面容器色。
-// 通用按钮、输入框和下拉框优先交给 MyUIComponents，避免每个 UI 模块各写一套基础控件样式。
-const char* kPrimaryColor = "#007d68";
-const char* kPrimaryHoverColor = "#009176";
-const char* kBorderColor = "#d8e1e7";
-const char* kPanelBackground = "#ffffff";
-const char* kPageBackground = "#f3f6f8";
-const char* kTextColor = "#23313f";
-const char* kSecondaryTextColor = "#607080";
-const char* kFieldBackground = "#fbfcfd";
 
 const char* kOcclusionNatural = "natural";
 const char* kOcclusionMaxillaTemporary = "maxilla_temporary";
@@ -157,7 +148,7 @@ bool OrderCreateUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     m_appDir = QByteArray(appDirUtf8 ? appDirUtf8 : "");
     m_logDir = QByteArray(logDirUtf8 ? logDirUtf8 : "");
 
-    // 初始化时缓存日志接口。后续所有日志都通过 m_logger 输出，符合“每模块一份日志变量”的规则。
+    // 初始化时缓存日志接口。后续所有日志都通过 m_logger 输出，符合"每模块一份日志变量"的规则。
     m_logger = GetLogger();
     if (m_logger && !m_logDir.isEmpty()) {
         m_logger->Init(m_logDir.constData(), LogLevel::Info);
@@ -197,66 +188,14 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     root->setMinimumSize(960, 600);
     root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
+    // 建单页面所有视觉规则从模块 QSS 读取；业务源码只设置 objectName、动态属性和布局。
+    // 工作台步骤导航由 OrderScanWorkspaceShell 唯一持有，本页不再复制第二套步骤条。
+    MeyerQtModule::ApplyModuleQss(root, "MyOrderCreateUI", "order_create.qss", m_logger);
+
     // 根布局使用三栏：左基本信息，中间牙位规划，右订单摘要。
     auto* pageLayout = new QVBoxLayout(root);
     pageLayout->setContentsMargins(12, 10, 12, 12);
     pageLayout->setSpacing(10);
-
-    // 样式只限定在本模块根对象下，避免污染其它模块的控件外观。
-    root->setStyleSheet(QString(
-        "#MeyerScanOrderCreateUIRoot{background:%1;}"
-        "QGroupBox{background:%2;border:1px solid %3;border-radius:6px;margin-top:16px;}"
-        "QGroupBox::title{subcontrol-origin:margin;left:16px;padding:0 6px;color:%4;font-size:14px;font-weight:600;}"
-        "QLabel#OrderCreatePageTitle{color:%4;font-size:24px;font-weight:700;}"
-        "QLabel#OrderCreatePageSubtitle{color:%5;font-size:13px;}"
-        "QLabel{color:%5;font-size:13px;}"
-        "QLabel[valueText=\"true\"]{color:%4;font-weight:600;}"
-        "QScrollArea{background:transparent;border:0;}"
-        "QRadioButton{color:%4;font-size:13px;spacing:6px;}"
-        "QCheckBox{color:%4;font-size:13px;spacing:6px;}"
-        "QPushButton[typeButton=\"true\"]{border:1px solid #cfd8dc;border-radius:6px;background:#f8fafb;color:%4;min-height:40px;padding:6px 8px;font-size:12px;font-weight:600;}"
-        "QPushButton[typeButton=\"true\"]:hover{background:#edf2f5;border-color:#b7c5ce;}"
-        "QPushButton[typeButton=\"true\"]:pressed{background:#e1e8ec;}"
-        "QPushButton[typeSelected=\"true\"]{background:%6;border-color:%6;color:#ffffff;font-weight:600;}"
-        "QPushButton[typeSelected=\"true\"]:hover{background:%7;border-color:%7;}"
-        "QToolButton[typeButton=\"true\"]{border:0;border-radius:8px;background:transparent;color:%4;min-height:76px;padding:4px 4px;font-size:12px;font-weight:600;}"
-        "QToolButton[typeButton=\"true\"]:hover{background:#edf5f2;}"
-        "QToolButton[typeButton=\"true\"]:pressed{background:#dfeee9;}"
-        "QToolButton[typeSelected=\"true\"]{background:%6;color:#ffffff;}"
-        "QToolButton[typeSelected=\"true\"]:hover{background:%7;color:#ffffff;}"
-        "QLabel#OrderCreateCurrentTypeSummary{background:#e4f4ef;border:1px solid %6;border-radius:6px;color:%6;font-size:16px;font-weight:700;padding:10px 12px;}"
-    ).arg(kPageBackground,
-          kPanelBackground,
-          kBorderColor,
-          kTextColor,
-          kSecondaryTextColor,
-          kPrimaryColor,
-          kPrimaryHoverColor));
-
-    // 顶部标题区只说明当前工作台上下文，不承载可点击业务动作。
-    // 这让客户进入第三方建单时能立即知道自己处在“建单工作台”，而不是普通弹窗。
-    auto* headerLayout = new QHBoxLayout();
-    auto* titleLabel = m_uiComponents
-        ? m_uiComponents->CreatePageTitle(tr("Order Creation").toUtf8().constData(), root)
-        : new QLabel(tr("Order Creation"), root);
-    titleLabel->setObjectName("OrderCreatePageTitle");
-    if (!m_uiComponents) {
-        QFont titleFont = titleLabel->font();
-        titleFont.setPointSize(20);
-        titleFont.setBold(true);
-        titleLabel->setFont(titleFont);
-    }
-    auto* subtitleLabel = new QLabel(tr("Complete patient details, scan plan, and order confirmation in one workspace."), root);
-    subtitleLabel->setObjectName("OrderCreatePageSubtitle");
-    subtitleLabel->setWordWrap(true);
-
-    auto* titleBox = new QVBoxLayout();
-    titleBox->setContentsMargins(0, 0, 0, 0);
-    titleBox->setSpacing(3);
-    titleBox->addWidget(titleLabel);
-    titleBox->addWidget(subtitleLabel);
-    headerLayout->addLayout(titleBox, 1);
-    pageLayout->addLayout(headerLayout);
 
     auto* rootLayout = new QHBoxLayout();
     rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -328,7 +267,7 @@ bool OrderCreateUIImpl::SetOrderContextJson(const char* contextJsonUtf8) {
         return false;
     }
 
-    // 保存一份原始 UTF-8 文本，保证“先设置上下文、后创建界面”的调用顺序可用。
+    // 保存一份原始 UTF-8 文本，保证"先设置上下文、后创建界面"的调用顺序可用。
     m_pendingContextJson = QByteArray(contextJsonUtf8);
     m_hasPendingContext = true;
 
@@ -527,7 +466,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     genderLayout->addWidget(m_genderUnknown);
     outerLayout->addLayout(genderLayout);
 
-    // 类型按钮先保留“修复/正畸”的可视选择，后续可接权限和建单规则。
+    // 类型按钮先保留"修复/正畸"的可视选择，后续可接权限和建单规则。
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Case Type")));
     auto* caseTypeLayout = new QHBoxLayout();
     caseTypeLayout->addWidget(CreateCheckButton(parent, tr("Restoration"), true));
@@ -598,7 +537,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
 
 // 创建左侧工作区。
 QWidget* OrderCreateUIImpl::CreateLeftWorkflowPanel(QWidget* parent) {
-    // 左侧工作区本身不画边框，只负责把“治疗类型”和“基本信息”两张卡按视频顺序垂直摆放。
+    // 左侧工作区本身不画边框，只负责把"治疗类型"和"基本信息"两张卡按视频顺序垂直摆放。
     auto* container = new QWidget(parent);
     container->setObjectName("OrderCreateLeftWorkflowPanel");
     container->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
@@ -756,7 +695,7 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     m_selectionTable->setMinimumHeight(140);
     mainLayout->addWidget(m_selectionTable, 1);
 
-    // 桥记录单独展示，避免把“相邻牙位连接关系”误放进单颗牙位明细表。
+    // 桥记录单独展示，避免把"相邻牙位连接关系"误放进单颗牙位明细表。
     auto* bridgeGroup = new QGroupBox(tr("Bridge Records"), parent);
     auto* bridgeLayout = new QVBoxLayout(bridgeGroup);
     bridgeLayout->setContentsMargins(12, 16, 12, 12);
@@ -764,7 +703,6 @@ QWidget* OrderCreateUIImpl::CreateOrderSummaryPanel(QWidget* parent) {
     m_bridgeSummaryLabel = new QLabel(tr("No bridge selected"), parent);
     m_bridgeSummaryLabel->setObjectName("OrderCreateBridgeSummaryLabel");
     m_bridgeSummaryLabel->setWordWrap(true);
-    m_bridgeSummaryLabel->setStyleSheet("QLabel#OrderCreateBridgeSummaryLabel{color:#23313f;font-size:13px;font-weight:600;}");
     bridgeLayout->addWidget(m_bridgeSummaryLabel);
     mainLayout->addWidget(bridgeGroup, 0);
 
@@ -883,7 +821,7 @@ QToolButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString&
     m_typeButtons.insert(code, button);
 
     QObject::connect(button, &QToolButton::clicked, [this, code]() {
-        // 类型按钮只改变“后续点击牙位使用的类型”，不会 retroactively 修改已选牙位。
+        // 类型按钮只改变"后续点击牙位使用的类型"，不会 retroactively 修改已选牙位。
         SetCurrentType(code);
     });
     return button;
@@ -1169,7 +1107,7 @@ void OrderCreateUIImpl::SetCurrentType(const QString& typeCode) {
         m_treatmentPlanWidget->SetCurrentTreatmentType(m_currentTypeCode);
     }
     if (m_currentTypeSummaryLabel) {
-        // 左侧摘要显示当前工具类型，帮助用户确认“下一次点击牙位会使用什么治疗类型”。
+        // 左侧摘要显示当前工具类型，帮助用户确认"下一次点击牙位会使用什么治疗类型"。
         m_currentTypeSummaryLabel->setText(CurrentTypeText());
     }
 
@@ -1540,20 +1478,15 @@ QPushButton* OrderCreateUIImpl::CreateStandardButton(QWidget* parent, const QStr
                                             parent);
     }
 
-    // 降级路径只使用 Qt 原生按钮，并在本地套一份最小通用样式。
+    // 降级路径只创建 Qt 原生按钮并写语义属性，视觉仍由当前页面根 QSS 统一处理。
     auto* button = new QPushButton(text, parent);
+    button->setObjectName("OrderCreateFallbackButton");
     if (role == MeyerButtonRolePrimary) {
-        button->setStyleSheet("QPushButton{background:#007d68;color:white;border:0;border-radius:4px;padding:8px 18px;min-height:36px;}"
-                              "QPushButton:hover{background:#009176;}"
-                              "QPushButton:pressed{background:#006652;}");
+        button->setProperty("role", "primary");
     } else if (role == MeyerButtonRoleText) {
-        button->setStyleSheet("QPushButton{background:transparent;color:#007d68;border:0;border-radius:4px;padding:6px 10px;min-height:30px;}"
-                              "QPushButton:hover{background:#e7f3f0;}"
-                              "QPushButton:pressed{background:#d6ebe6;}");
+        button->setProperty("role", "text");
     } else {
-        button->setStyleSheet("QPushButton{background:#f6f8fa;color:#23313f;border:1px solid #cfd8dc;border-radius:4px;padding:8px 16px;min-height:36px;}"
-                              "QPushButton:hover{background:#edf2f5;}"
-                              "QPushButton:pressed{background:#e1e8ec;}");
+        button->setProperty("role", "secondary");
     }
     return button;
 }
@@ -1565,9 +1498,8 @@ QLineEdit* OrderCreateUIImpl::CreateStandardLineEdit(QWidget* parent, const QStr
         ? m_uiComponents->CreateLineEdit(placeholderBytes.constData(), parent)
         : new QLineEdit(parent);
     if (!m_uiComponents) {
-        edit->setStyleSheet("QLineEdit{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;min-height:34px;}"
-                            "QLineEdit:focus{border-color:#007d68;}"
-                            "QLineEdit[readOnly=\"true\"]{background:#eef2f5;color:#23313f;}");
+        edit->setObjectName("OrderCreateFallbackLineEdit");
+        edit->setProperty("meyerInput", true);
     }
 
     // 文本值由建单模块设置，UIComponents 只负责输入框基础视觉。
@@ -1581,8 +1513,8 @@ QComboBox* OrderCreateUIImpl::CreateStandardComboBox(QWidget* parent) const {
         ? m_uiComponents->CreateComboBox(parent)
         : new QComboBox(parent);
     if (!m_uiComponents) {
-        combo->setStyleSheet("QComboBox{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;min-height:34px;}"
-                             "QComboBox:focus{border-color:#007d68;}");
+        combo->setObjectName("OrderCreateFallbackComboBox");
+        combo->setProperty("meyerInput", true);
     }
     return combo;
 }
@@ -1594,8 +1526,8 @@ QDateEdit* OrderCreateUIImpl::CreateStandardDateEdit(QWidget* parent) const {
         : new QDateEdit(parent);
     if (!m_uiComponents) {
         edit->setCalendarPopup(true);
-        edit->setStyleSheet("QDateEdit{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;min-height:34px;}"
-                            "QDateEdit:focus{border-color:#007d68;}");
+        edit->setObjectName("OrderCreateFallbackDateEdit");
+        edit->setProperty("meyerInput", true);
     }
     return edit;
 }
@@ -1606,8 +1538,8 @@ QTextEdit* OrderCreateUIImpl::CreateStandardTextEdit(QWidget* parent, int fixedH
         ? m_uiComponents->CreateTextEdit(parent)
         : new QTextEdit(parent);
     if (!m_uiComponents) {
-        edit->setStyleSheet("QTextEdit{border:1px solid #cfd8dc;border-radius:4px;padding:6px 10px;background:#ffffff;color:#23313f;min-height:56px;}"
-                            "QTextEdit:focus{border-color:#007d68;}");
+        edit->setObjectName("OrderCreateFallbackTextEdit");
+        edit->setProperty("meyerInput", true);
     }
 
     // 建单页面需要让备注框在三栏布局内保持稳定高度，避免输入内容改变时挤压牙位区。
@@ -1624,7 +1556,8 @@ QLabel* OrderCreateUIImpl::CreateStandardFieldLabel(QWidget* parent, const QStri
         ? m_uiComponents->CreateFieldLabel(textBytes.constData(), parent)
         : new QLabel(text, parent);
     if (!m_uiComponents) {
-        label->setStyleSheet("QLabel{color:#4f5f6f;font-size:13px;font-weight:500;}");
+        label->setObjectName("OrderCreateFallbackFieldLabel");
+        label->setProperty("fieldLabel", true);
     }
 
     // 字段标签允许换行，多语言翻译变长时优先扩展高度，而不是挤压相邻控件。
@@ -1647,13 +1580,8 @@ QTableWidget* OrderCreateUIImpl::CreateStandardTableWidget(QWidget* parent) cons
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         table->setAlternatingRowColors(true);
         table->setShowGrid(false);
-        table->setStyleSheet(
-            "QTableWidget{background:#ffffff;border:1px solid #d8e1e7;border-radius:4px;"
-            "gridline-color:#edf1f4;color:#23313f;alternate-background-color:#f8fafb;"
-            "selection-background-color:#dff1ec;selection-color:#23313f;}"
-            "QTableWidget::item{padding:6px;}"
-            "QHeaderView::section{background:#edf3f5;color:#23313f;border:0;"
-            "border-bottom:1px solid #d8e1e7;padding:7px;font-weight:600;}");
+        table->setObjectName("OrderCreateFallbackTable");
+        table->setProperty("meyerTable", true);
     }
     return table;
 }
@@ -1675,9 +1603,6 @@ QCheckBox* OrderCreateUIImpl::CreateScanProcessSwitch(QWidget* parent,
 QWidget* OrderCreateUIImpl::CreateScanProcessConfigPanel(QWidget* parent) {
     auto* frame = new QFrame(parent);
     frame->setObjectName("OrderCreateScanProcessConfigPanel");
-    frame->setStyleSheet("QFrame#OrderCreateScanProcessConfigPanel{background:#f8fafb;border:1px solid #d8e1e7;border-radius:6px;}"
-                         "QLabel#OrderCreateScanProcessTitle{color:#23313f;font-size:13px;font-weight:600;}"
-                         "QLabel#OrderCreateScanProcessPreview{color:#607080;font-size:12px;}");
 
     auto* layout = new QVBoxLayout(frame);
     layout->setContentsMargins(10, 10, 10, 10);
@@ -1810,7 +1735,7 @@ QJsonArray OrderCreateUIImpl::BuildScanProcessSteps(const QJsonObject& configObj
         AppendScanProcessStep(&steps, "maxilla", "maxilla_cuff", tr("Maxilla cuff"));
     } else {
         AppendScanProcessStep(&steps, "maxilla", "maxilla_natural", tr("Natural maxilla"));
-        // “扫描杆分段”只表示第二扫描杆是否显示，不代表该颌一定存在种植扫描杆。
+        // "扫描杆分段"只表示第二扫描杆是否显示，不代表该颌一定存在种植扫描杆。
         // 因此普通扫描杆流程仍然由牙位里的 implant 类型触发，避免用户只勾选分段时凭空生成扫描杆按钮。
         if (maxillaImplant) {
             if (maxillaTemporary) {
