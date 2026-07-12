@@ -2901,7 +2901,7 @@ translations/
 | **CMake 双构建入口** | 每个模块和测试宿主都必须有 `CMakeLists.txt`；根目录 `F:\MeyerScan\CMakeLists.txt` 作为 VSCode/CMake Tools 聚合入口，VS2015 继续保留 `.sln/.vcxproj` | 支持 VSCode 和 VS2015 双环境编译，也便于移植到其他电脑 |
 | **本地备份仓库** | `F:\MeyerScan-Reposit` 作为本地整体备份仓库；除 Qt、VTK、OpenCV、PCL、VC/UCRT、OpenSSL、AWS、SQL 驱动等第三方库外，自研源码、测试项目、工程文件、CMake、文档、配置模板和自研 DLL/EXE/LIB 都要整体备份 | GitHub 之外增加离线恢复点；每次备份所有模块一起提交，避免跨模块状态不一致 |
 | **本地备份提交日志** | 本地仓库提交日志使用中文，并详细描述本次变更内容、影响模块和验证结果 | 便于人工追溯完整工程快照，而不是只看单模块历史 |
-| **本地备份过滤规则** | 统一使用 `tools/BackupToLocalRepository.ps1`；脚本只同步自研源码、测试项目、VS2015 工程、CMake、配置说明、README/CHANGELOG、重构 Markdown 快照和自研 DLL/EXE/LIB。Qt 插件、VC/UCRT、OpenSSL、AWS、MySQL/SQLiteStudio/SQL 驱动、日志、数据库现场文件、IDE 临时文件必须过滤。镜像完成后必须主动清理目标仓库中被 `/XD`、`/XF` 排除的历史遗留内容，并验证排除规则命中数为 0；脚本保存为带 BOM 的 UTF-8，以兼容 Windows PowerShell 5.1 | 避免本地仓库变成第三方依赖仓库或运行现场仓库，并防止排除规则只阻止新增却无法清除旧提交内容 |
+| **本地备份过滤规则** | 统一使用 `tools/BackupToLocalRepository.ps1`；脚本只同步自研源码、测试项目、VS2015 工程、CMake、配置说明、README/CHANGELOG、重构 Markdown 快照和自研 DLL/EXE/LIB。Qt 插件、VC/UCRT、OpenSSL、AWS、MySQL/SQLiteStudio/SQL 驱动、日志、数据库现场文件、IDE 临时文件必须过滤。镜像完成后必须主动清理目标仓库中被 `/XD`、`/XF` 排除的历史遗留内容，并验证排除规则命中数为 0；`_RefactorDocs` 从主源码镜像中排除，默认由 `D:\wj\重构文档` 单独更新，外部来源不可用时保留已有快照；脚本保存为带 BOM 的 UTF-8，以兼容 Windows PowerShell 5.1 | 避免本地仓库变成第三方依赖仓库或运行现场仓库，并防止排除规则只阻止新增却无法清除旧提交内容 |
 | **文档更新** | 代码改动完成后统一更新 4 个 MD 文档 | 保证文档与实际代码一致 |
 | **测试宿主覆盖规则** | 当前活跃自研 DLL 模块必须有独立 `*Test.exe`、模块 `.sln`、测试 `.vcxproj` 和同模块 `CMakeLists.txt` 测试目标；主 EXE 使用 `MeyerScan.exe --smoke-main` 验证主链路；根 `MeyerScan_AllModules.sln` 必须纳入活跃自研测试项目 | 测试入口随模块存在，既能单模块调试，也能在根输出目录暴露跨模块依赖和复制问题 |
 | **HomeUI/CaseUI 框架** | 已创建 Qt Widgets DLL 框架，接入 Logger、UIComponents、RuntimeDataCenter 和 MainExe 回调；数据库健康检查由 MainExe + DatabaseQtAdapter 统一处理 | 先跑通 UI 模块生命周期和底座依赖，避免 UI 直连 Database 扩散 |

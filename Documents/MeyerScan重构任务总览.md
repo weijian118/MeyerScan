@@ -424,7 +424,7 @@ RuntimeDataCenter 的快照读取只适合轻量上下文：诊所/技工所/医
 - **本地备份仓库**：`F:\MeyerScan-Reposit`。除 Qt、VTK、OpenCV、PCL、VC/UCRT、OpenSSL、AWS、SQL 驱动等第三方库外，所有自研源码、测试项目、`.sln`、`.vcxproj`、`CMakeLists.txt`、配置模板、README、CHANGELOG、自研 DLL/EXE/LIB 等都要备份到该本地仓库。
 - **本地仓库提交规则**：每次本地备份必须以所有模块为一个整体提交，不能只备份单个模块。备份提交日志必须使用中文，并尽量详细说明本次涉及的模块、工程文件、文档和验证结果，确保后续能按本地仓库恢复完整工程状态。
 - **第三方依赖处理**：Qt、VTK、OpenCV、PCL、VC/UCRT、OpenSSL、AWS、SQL 驱动等第三方运行库不进入本地备份仓库；它们由安装包/依赖说明/开发环境配置负责。外部已开发但不在本仓库维护源码的模块，应按“是否自研且是否属于当前发布依赖”单独登记，避免和第三方库混在一起。
-- **本地备份脚本**：统一使用 `F:\MeyerScan\tools\BackupToLocalRepository.ps1` 生成 `F:\MeyerScan-Reposit` 快照；调用时必须传入中文提交日志，例如 `-CommitMessage "本地完整备份：说明本次变更、影响模块和验证结果"`。脚本使用 `robocopy /MIR`，会排除 `.git/.vs/obj/build/logs/plugins/MySQL/SQLite/backup/CMakeFiles` 以及 Qt、VC/UCRT、OpenSSL、AWS、MySQL/SQLiteStudio、SQL 驱动等第三方运行文件。由于 `robocopy /MIR` 不会删除目标仓库中已被 `/XD`、`/XF` 排除的历史遗留内容，脚本必须在镜像后执行带目标路径边界校验的主动清理；脚本必须保存为“带 BOM 的 UTF-8”，确保 Windows PowerShell 5.1 正确解析中文注释和后续代码行。
+- **本地备份脚本**：统一使用 `F:\MeyerScan\tools\BackupToLocalRepository.ps1` 生成 `F:\MeyerScan-Reposit` 快照；调用时必须传入中文提交日志，例如 `-CommitMessage "本地完整备份：说明本次变更、影响模块和验证结果"`。脚本使用 `robocopy /MIR`，会排除 `.git/.vs/obj/build/logs/plugins/MySQL/SQLite/backup/CMakeFiles` 以及 Qt、VC/UCRT、OpenSSL、AWS、MySQL/SQLiteStudio、SQL 驱动等第三方运行文件。由于 `robocopy /MIR` 不会删除目标仓库中已被 `/XD`、`/XF` 排除的历史遗留内容，脚本必须在镜像后执行带目标路径边界校验的主动清理；`_RefactorDocs` 必须从主镜像中排除并默认从 `D:\wj\重构文档` 单独更新，外部文档目录不可用时也不得删除已有快照；脚本必须保存为“带 BOM 的 UTF-8”，确保 Windows PowerShell 5.1 正确解析中文注释和后续代码行。
 - **重构文档快照**：本地仓库额外保存 `D:\wj\重构文档` 的 Markdown 快照到 `_RefactorDocs`，只同步 `.md` 文件，不同步 API token、临时 txt、图片、docx 提取缓存等非 Markdown 文件。
 - **仓库结构**：`MeyerScan/ModuleName/`（每个模块独立一级目录）
 - **模块目录规则**：日志、数据库、首页、案例管理等模块都必须和 `MyLogger/`、`MyDatabase/` 同级存放和提交；当前已采用 `MyHomeUI/`、`MyCaseUI/` 作为首页和案例管理模块目录

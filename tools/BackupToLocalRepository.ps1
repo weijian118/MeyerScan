@@ -2,7 +2,7 @@
 param(
     [string]$SourceRoot = "F:\MeyerScan",
     [string]$BackupRoot = "F:\MeyerScan-Reposit",
-    [string]$RefactorDocsRoot = "",
+    [string]$RefactorDocsRoot = "D:\wj\重构文档",
     [string]$CommitMessage = "Local full backup: sync MeyerScan modules"
 )
 
@@ -111,6 +111,10 @@ $excludeDirs = @(
     "plugins", "MySQL", "SQLite", "backup", "CMakeFiles"
 )
 
+# _RefactorDocs 由脚本后半段从外部文档目录单独维护，不属于 SourceRoot 镜像。
+# 主 /MIR 必须跳过它；否则 RefactorDocsRoot 为空或暂时不可访问时，会先删除已有快照。
+$preservedBackupDirs = @("_RefactorDocs")
+
 $excludeFiles = @(
     "Qt5*.dll",
     "api-ms-win-*.dll",
@@ -190,7 +194,7 @@ $robocopyArgs = @(
     "/NDL",
     "/NP",
     "/XD"
-) + $excludeDirs + @("/XF") + $excludeFiles
+) + $excludeDirs + $preservedBackupDirs + @("/XF") + $excludeFiles
 
 Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
 
