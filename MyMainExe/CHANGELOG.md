@@ -1,5 +1,12 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-12
+
+- 本轮未修改 MainExe 业务代码，版本保持 `v0.1.6`；因 OrderCreateUI/UIResources 依赖更新，强制 Rebuild 根输出和单模块输出，避免增量构建让 `MeyerScan.exe` 时间戳停留在 7 月 10 日。
+- 历史称谓 `minMain` 统一解释为 `MeyerScan.exe --smoke-main` 最小集成链路，不再维护独立 minMain 项目；根输出和单模块输出均返回 0。
+- 根输出同时通过 `--smoke` 和外部 JSON 建单 smoke；最新 versionList 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。
+- 最终资源 DLL 生成后再次完整 Rebuild 根 VS2015 方案，`F:\MeyerScan\bin\Release\MeyerScan.exe` 更新时间为 2026-07-12 17:00:15；随后 OrderCreateUI、UIResources、`--smoke-main` 和外部 JSON 建单四项测试再次返回 0。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.1.6`，接收浏览页云端/截图稳定动作 ID 并记录状态，实际云端与截图服务继续留待后续模块实现。

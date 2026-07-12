@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDate>
@@ -16,15 +17,19 @@
 #include <QEvent>
 #include <QFileInfo>
 #include <QFrame>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollArea>
@@ -36,6 +41,7 @@
 #include <QTableWidgetItem>
 #include <QTextEdit>
 #include <QToolButton>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -51,7 +57,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.5.1 (2026-07-12)";
+const char* Version = "MeyerScan_OrderCreateUI v0.5.2 (2026-07-12)";
 }
 
 const char* kOcclusionNatural = "natural";
@@ -71,7 +77,7 @@ const char* kTreatmentPlanSourceRelativePath = "Resources/icon/createModule/saca
 const char* kTreatmentPlanLegacyRelativePath = "icon/createModule/sacanPlan";
 
 // 治疗类型按钮需要在普通、悬停和选中状态之间切换不同 PNG。
-// QSS 继续负责背景/边框，子类只切换资源图标，不在 C++ 中保存视觉颜色。
+// QSS 负责按钮背景/边框，子类负责切换资源，并把白色 h 图合成到仅限图标区域的彩色圆底上。
 class TreatmentTypeButton : public QToolButton {
 public:
     explicit TreatmentTypeButton(QWidget* parent = nullptr)
@@ -79,9 +85,14 @@ public:
     }
 
     // 保存普通态和高亮态资源；路径可以是 qrc，也可以是源码调试降级目录。
-    void SetIconPaths(const QString& normalPath, const QString& highlightedPath) {
+    void SetIconPaths(const QString& normalPath,
+                      const QString& highlightedPath,
+                      bool useCircularHighlight) {
         m_normalPath = normalPath;
         m_highlightedPath = highlightedPath;
+        m_useCircularHighlight = useCircularHighlight;
+        m_normalIcon = LoadIcon(m_normalPath);
+        m_highlightedIcon = BuildHighlightedIcon();
         RefreshIcon();
     }
 
@@ -109,14 +120,82 @@ protected:
     }
 
 private:
+    // 从资源路径加载普通 QIcon；路径失效时返回空图标，让上层日志和资源测试暴露缺失问题。
+    QIcon LoadIcon(const QString& path) const {
+        return path.isEmpty() || !QFileInfo::exists(path) ? QIcon() : QIcon(path);
+    }
+
+    // 为前四种修复类型合成“彩色圆底 + 白色 h 图”。
+    //
+    // 原始 h PNG 只有白色图形，并不包含视频中的彩色圆底；如果给整个 QToolButton 加背景，
+    // 就会出现用户反馈的绿色矩形。这里从 b PNG 的非透明像素自动计算主色，再只在图标画布内画圆，
+    // 所有颜色仍来自图片资源，不在 C++ 中维护第二套主题色。种植体由 QSS 绘制整行背景，不走此分支。
+    QIcon BuildHighlightedIcon() const {
+        if (!m_useCircularHighlight) {
+            return LoadIcon(m_highlightedPath);
+        }
+
+        QImage normalImage(m_normalPath);
+        QImage highlightedImage(m_highlightedPath);
+        if (normalImage.isNull() || highlightedImage.isNull()) {
+            return QIcon();
+        }
+        normalImage = normalImage.convertToFormat(QImage::Format_ARGB32);
+        highlightedImage = highlightedImage.convertToFormat(QImage::Format_ARGB32);
+
+        // 使用 alpha 作为权重求普通图标主色；抗锯齿半透明像素对结果影响较小，1x/2x 都能得到一致颜色。
+        quint64 alphaSum = 0;
+        quint64 redSum = 0;
+        quint64 greenSum = 0;
+        quint64 blueSum = 0;
+        for (int y = 0; y < normalImage.height(); ++y) {
+            const QRgb* scanLine = reinterpret_cast<const QRgb*>(normalImage.constScanLine(y));
+            for (int x = 0; x < normalImage.width(); ++x) {
+                const QRgb pixel = scanLine[x];
+                const int alpha = qAlpha(pixel);
+                if (alpha == 0) {
+                    continue;
+                }
+                alphaSum += static_cast<quint64>(alpha);
+                redSum += static_cast<quint64>(qRed(pixel) * alpha);
+                greenSum += static_cast<quint64>(qGreen(pixel) * alpha);
+                blueSum += static_cast<quint64>(qBlue(pixel) * alpha);
+            }
+        }
+        if (alphaSum == 0) {
+            return LoadIcon(m_highlightedPath);
+        }
+
+        const QColor circleColor(static_cast<int>(redSum / alphaSum),
+                                 static_cast<int>(greenSum / alphaSum),
+                                 static_cast<int>(blueSum / alphaSum));
+        QImage composedImage(highlightedImage.size(), QImage::Format_ARGB32_Premultiplied);
+        composedImage.fill(Qt::transparent);
+
+        // QPainter 的抗锯齿圆只占图标画布，不改变按钮矩形背景；随后把白色 h 图原尺寸叠在圆上。
+        QPainter painter(&composedImage);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(circleColor);
+        painter.drawEllipse(QRectF(0.5,
+                                   0.5,
+                                   composedImage.width() - 1.0,
+                                   composedImage.height() - 1.0));
+        painter.drawImage(0, 0, highlightedImage);
+        painter.end();
+        return QIcon(QPixmap::fromImage(composedImage));
+    }
+
     // 根据当前交互状态加载图标；QIcon 自身会缓存 pixmap，频繁 hover 不会重复解码图片。
     void RefreshIcon() {
-        const QString path = (m_selected || m_hovered) ? m_highlightedPath : m_normalPath;
-        setIcon(path.isEmpty() || !QFileInfo::exists(path) ? QIcon() : QIcon(path));
+        setIcon((m_selected || m_hovered) ? m_highlightedIcon : m_normalIcon);
     }
 
     QString m_normalPath;
     QString m_highlightedPath;
+    QIcon m_normalIcon;
+    QIcon m_highlightedIcon;
+    bool m_useCircularHighlight = false;
     bool m_selected = false;
     bool m_hovered = false;
 };
@@ -316,7 +395,10 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
     QWidget* toothPanel = CreateToothPlanPanel(root);
     toothPanel->setMinimumWidth(460);
     toothPanel->setMaximumWidth(980);
-    toothPanelHostLayout->addWidget(toothPanel, 1, Qt::AlignHCenter);
+    // 2K/4K 只增加工作区留白，不把 Scan Plan 卡片纵向拉到整屏高度；1060px 接近 1920x1080 基准内容高度。
+    // 同时使用水平/垂直居中，让额外空间留在无边框宿主背景中，而不是被牙弓内部上下两半平均分走。
+    toothPanel->setMaximumHeight(1060);
+    toothPanelHostLayout->addWidget(toothPanel, 1, Qt::AlignHCenter | Qt::AlignVCenter);
     workspaceSplitter->addWidget(toothPanelHost);
 
     // 右侧摘要区宽度和左侧相近，便于用户边选牙位边确认明细。
@@ -928,6 +1010,9 @@ QToolButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString&
     button->setChecked(checked);
     button->setProperty("typeButton", true);
     button->setProperty("typeSelected", checked);
+    // 把稳定的业务类型编码交给 QSS，样式层即可分别设置五种类型的文字色和种植体宽按钮状态。
+    // 这里传编码而不是中文显示文字，避免语言切换后 QSS 选择器失效。
+    button->setProperty("treatmentCode", code);
     button->setToolTip(text);
     button->setCursor(Qt::PointingHandCursor);
 
@@ -935,7 +1020,8 @@ QToolButton* OrderCreateUIImpl::CreateTypeButton(QWidget* parent, const QString&
     // 按钮子类在 enter/leave 时切换 b/h 图，避免只改变背景而图标不变。
     const bool highResolution = UseHighResolutionTreatmentIcons(parent);
     button->SetIconPaths(TypeButtonIconPath(code, false, highResolution),
-                         TypeButtonIconPath(code, true, highResolution));
+                         TypeButtonIconPath(code, true, highResolution),
+                         code != "implant");
     button->SetTypeSelected(checked);
 
     m_typeButtons.insert(code, button);
@@ -1216,6 +1302,16 @@ QString OrderCreateUIImpl::TypeButtonIconPath(const QString& typeCode,
 
 // 根据按钮所在显示器选择图标资源倍率。
 bool OrderCreateUIImpl::UseHighResolutionTreatmentIcons(const QWidget* widget) const {
+    // 截图测试使用不显示到桌面的固定画布，不能从真实显示器推导目标截图档位。
+    // 测试宿主通过 QApplication 动态属性传入视口尺寸；正式程序没有该属性，仍走实际显示器逻辑。
+    if (qApp) {
+        const QSize testViewportSize =
+            qApp->property("MeyerScanTreatmentIconTestViewportSize").toSize();
+        if (testViewportSize.isValid()) {
+            return MeyerScanTreatmentPlanRules::ShouldUseHighResolutionIcons(testViewportSize);
+        }
+    }
+
     QDesktopWidget* desktop = QApplication::desktop();
     if (!desktop) {
         return false;
@@ -1248,7 +1344,8 @@ void OrderCreateUIImpl::SetCurrentType(const QString& typeCode) {
         auto* treatmentButton = static_cast<TreatmentTypeButton*>(it.value());
         const bool highResolution = UseHighResolutionTreatmentIcons(treatmentButton);
         treatmentButton->SetIconPaths(TypeButtonIconPath(it.key(), false, highResolution),
-                                      TypeButtonIconPath(it.key(), true, highResolution));
+                                      TypeButtonIconPath(it.key(), true, highResolution),
+                                      it.key() != "implant");
         treatmentButton->SetTypeSelected(selected);
         it.value()->style()->unpolish(it.value());
         it.value()->style()->polish(it.value());
@@ -1796,7 +1893,12 @@ QWidget* OrderCreateUIImpl::CreateScanProcessConfigPanel(QWidget* parent) {
 
     m_scanProcessPreviewLabel = new QLabel(frame);
     m_scanProcessPreviewLabel->setObjectName("OrderCreateScanProcessPreview");
-    m_scanProcessPreviewLabel->setWordWrap(true);
+    // 扫描步骤会因种植体、分段扫描杆等输入而变长。若允许 QLabel 自动换行，标签会增高并向上挤压牙弓，
+    // 用户就会看到“选择种植体后牙位图缩小”。固定为单行高度后，业务状态变化只改文字，不改页面几何。
+    m_scanProcessPreviewLabel->setWordWrap(false);
+    m_scanProcessPreviewLabel->setTextFormat(Qt::PlainText);
+    m_scanProcessPreviewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_scanProcessPreviewLabel->setFixedHeight(m_scanProcessPreviewLabel->fontMetrics().lineSpacing() + 10);
     layout->addWidget(m_scanProcessPreviewLabel);
 
     const QList<QCheckBox*> switches = QList<QCheckBox*>()
@@ -2031,7 +2133,11 @@ void OrderCreateUIImpl::RefreshScanProcessPreview(bool emitAction) {
             const QJsonObject item = value.toObject();
             labels << item.value("label").toString();
         }
-        m_scanProcessPreviewLabel->setText(tr("Process: %1").arg(labels.join(tr(" -> "))));
+        const QString previewText = tr("Process: %1").arg(labels.join(tr(" -> ")));
+        // 标签保持稳定单行；宽度不足时 Qt 会裁剪绘制，tooltip 则保留完整流程供用户查看。
+        // 这种做法不会按语言或分辨率写坐标分支，也不会让动态文本反向改变牙弓区域大小。
+        m_scanProcessPreviewLabel->setText(previewText);
+        m_scanProcessPreviewLabel->setToolTip(previewText);
     }
 
     WriteLog(LogLevel::Info,

@@ -297,15 +297,13 @@ extern "C" MEYER_LOGGER_API ILogger* GetLogger();
 #  define MEYER_MODULE_NAME "Unknown"
 #endif
 
-// 模式:
-//   do {                                    \
-//       auto* _l = GetLogger();             \  // 获取单例指针
-//       if (_l)                             \  // 如果 DLL 尚未加载则为空
-//           _l->Write(level,                \
-//                     MEYER_MODULE_NAME,     \  // 编译期常量
-//                     op, dev, caseId,      \
-//                     oper, content);        \
-//   } while(0)                                 // 要求宏后跟分号
+// 等价执行流程如下。示例故意不写宏定义中的行尾反斜杠，避免注释自身触发 C/C++ 预处理续行：
+//   do {
+//       auto* logger = GetLogger();
+//       if (logger) {
+//           logger->Write(level, MEYER_MODULE_NAME, operation, deviceId, caseId, operatorId, content);
+//       }
+//   } while (0);
 
 #define MEYER_LOG_DEBUG(op, dev, caseId, oper, content)  \
     do { auto* _l = GetLogger(); if (_l) _l->Write(LogLevel::Debug,  MEYER_MODULE_NAME, op, dev, caseId, oper, content); } while(0)

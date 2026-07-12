@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.5.1 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.5.2 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -40,6 +40,10 @@ if(MEYER_BUILD_ORDERCREATEUITEST)
     meyer_link_sibling_module(OrderCreateUITest MyLogger MeyerScan_Logger)
     if(TARGET MeyerScan_UIComponents)
         add_dependencies(OrderCreateUITest MeyerScan_UIComponents)
+    endif()
+    if(TARGET MeyerScan_UIResources)
+        # 测试必须在资源 DLL 重新打包后运行，避免输出目录残留旧 QSS 遮盖当前源码。
+        add_dependencies(OrderCreateUITest MeyerScan_UIResources)
     endif()
 
     set(order_create_test_post_build_commands

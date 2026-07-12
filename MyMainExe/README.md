@@ -81,6 +81,7 @@ cd F:\MeyerScan\MyMainExe\bin\Release
 
 - `--smoke`：按正式流程初始化日志/数据库并拉起登录模块，3 秒后退出。
 - `--smoke-main`：跳过登录，自动覆盖等待页、首页、设置、创建工作台、练习工作台、Scan/Process/Send 切换、浏览和扫描前资源释放链路，5 秒后退出，用于验证主界面模块装载、页面切换和重资源释放。
+- 历史文档或沟通中的 `minMain` 当前就是此 `--smoke-main` 最小集成验证，不对应另一个解决方案或 EXE。
 - `--smoke-external-order`：跳过登录，走 ExternalLaunchAdapter → 后台首页 Create 入口复核 → OrderScanWorkspaceShell → OrderCreateUI 链路，3 秒后退出。
 
 ## 第三方拉起模拟

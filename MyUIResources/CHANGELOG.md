@@ -2,6 +2,8 @@
 
 ## 2026-07-12
 
+- 版本升级为 `v0.1.3`，重新打包 MyOrderCreateUI v0.5.2 的五类型 hover QSS 和扫描流程稳定布局样式。
+- 普通四种修复类型不再出现整块绿色 hover，种植体继续使用独立宽按钮状态；资源 DLL 与业务 DLL 同批更新，便于 versionList 定位现场样式版本。
 - 版本升级为 `v0.1.2`，重新打包 MyOrderCreateUI v0.5.1 的治疗类型 hover/选中 QSS 和多分辨率布局样式。
 - 资源清单继续由脚本自动生成，共收录 608 个允许类型资源；全冠、缺失牙、嵌体、贴面、种植体的 b/h 与 1x/2x 图标均可从资源 DLL 读取。
 - 验证：根 VS2015 方案重新生成 qrc 并构建通过，`UIResourcesTest.exe --smoke` 返回 0，OrderCreateUI 根输出 smoke 和三档截图均使用新版资源 DLL。

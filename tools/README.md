@@ -11,6 +11,9 @@
    查看 UTF-8 Markdown 时固定使用 `Get-Content -Encoding UTF8`；终端乱码不代表文件已经损坏，禁止据此直接批量转码。
 5. VS2015 `rc.exe` 是例外：`.rc` 文件若含中文和 UTF-8 BOM 可能误解析 `RCDATA/VS_VERSION_INFO`。资源脚本保持纯 ASCII；C++、头文件和 `.ps1` 继续使用 UTF-8 BOM。
 6. 命令行正则同时含有单双引号、反斜杠和 Unicode 范围时，不要继续嵌套进一条 PowerShell 字符串。优先拆成多个 `rg` 命令，或把复杂模式放进脚本变量/独立文件，避免外层引号提前闭合。
+7. C/C++ 的 `//` 注释必须独占物理行，后续代码从下一行开始；注释末尾严禁反斜杠 `\`，因为预处理续行发生在注释删除之前，会把下一行代码一并吞掉。
+8. 禁止用 `/* ... */` 临时包住待禁用代码。需要短期关闭代码时使用带原因说明的 `#if 0`，避免块注释边界在补丁换行后错位。
+9. 修改中文注释后必须运行 `tools\CheckSourceCommentSafety.ps1`；脚本硬性检查中文源码 BOM、`.rc` 纯 ASCII 和注释末尾续行，并提示疑似“注释与代码粘在同一物理行”。检查通过不能替代 VS2015/CMake 实际编译。
 
 ## 2. 执行与退出码
 
@@ -21,6 +24,8 @@
 5. 子 PowerShell 或原生命令的中文控制台输出可能在捕获终端中显示乱码；以文件内容、Git 提交信息和退出码复核，不根据显示乱码判断文件已损坏。
 6. `rg` 在“没有匹配项”时返回退出码 1，这通常表示规则检查通过，不是工具故障。批量自动化必须区分“无匹配=预期”与退出码 2 的真实错误，不能让一个预期无匹配中断其它独立检查。
 7. PowerShell 直接调用 Windows GUI 子系统 EXE 时，`$LASTEXITCODE` 可能为空或沿用旧值。GUI smoke/截图测试统一使用 `Start-Process -Wait -PassThru` 并读取进程对象的 `ExitCode`；后台启动时同时使用 `-WindowStyle Hidden`，避免测试窗口干扰桌面。
+8. VS2015 根方案与 CMake 方案虽然构建目录不同，但当前模块产物都会写入各模块 `bin\Release`；禁止并行构建同一模块，否则会争用 `.exp/.lib/.dll` 并触发 LNK1104。两套构建必须串行执行。
+9. 发生构建文件锁后，先确认没有仍在运行的构建任务，再结束 MSBuild 节点并用 `/nodeReuse:false` 重跑；不能通过删除正在使用的输出文件绕过锁。
 
 ## 3. 路径与参数
 
@@ -43,6 +48,7 @@
 ## 5. 当前脚本
 
 - `BackupToLocalRepository.ps1`：整体同步到 `F:\MeyerScan-Reposit`，负责第三方/现场文件过滤、历史排除内容清理和中文 Git 提交。
+- `CheckSourceCommentSafety.ps1`：检查自研源码的 UTF-8 BOM、`.rc` ASCII 约束、`//` 续行和疑似注释粘连；提交前和批量补注释后必须执行。
 - `MyUIResources/tools/GenerateResourceManifest.ps1`：扫描各模块 `Resources`，用 `XmlWriter` 生成确定性 qrc 清单；只允许 PNG/QSS/SVG/ICO/JPG/BMP/GIF/QM 等 UI 资源类型。
 
 每次修改脚本后必须完成：PowerShell AST 解析、Windows PowerShell 5.1 实际执行、关键输出存在性检查、重复执行检查和 `git diff --check`。

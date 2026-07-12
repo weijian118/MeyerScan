@@ -18,6 +18,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QLayout>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTimer>
@@ -81,6 +82,11 @@ int main(int argc, char* argv[]) {
     const bool smokeMode = arguments.contains("--smoke");
     const int captureArgumentIndex = arguments.indexOf("--capture-screenshot");
     const bool captureMode = captureArgumentIndex >= 0;
+    const int captureHoverArgumentIndex = arguments.indexOf("--capture-hover-type");
+    const QString captureHoverType =
+        captureHoverArgumentIndex >= 0 && captureHoverArgumentIndex + 1 < arguments.size()
+            ? arguments.at(captureHoverArgumentIndex + 1).trimmed().toLower()
+            : QString();
     QString capturePath = QDir::temp().filePath("OrderCreateUITest_treatment_plan_latest.png");
     if (captureMode && captureArgumentIndex + 1 < arguments.size()) {
         // 命令行显式给出路径时使用该路径，便于和视频关键帧放到同一个目录对比。
@@ -102,6 +108,11 @@ int main(int argc, char* argv[]) {
     // 模块代码中的确认框在 smoke 模式下会阻塞自动化测试。
     // 通过 QApplication 动态属性告知模块：当前是自动测试，危险操作可直接确认。
     app.setProperty("MeyerScanSmokeTest", smokeMode || captureMode);
+    if (captureMode) {
+        // 截图窗口不显示到真实桌面，因此模块用这个测试属性选择 1x/2x 治疗类型图源。
+        // 生产运行不设置该属性，仍根据控件所在显示器的真实分辨率判断。
+        app.setProperty("MeyerScanTreatmentIconTestViewportSize", captureSize);
+    }
 
     // 双击运行时不需要黑色控制台窗口；测试输出只在 --smoke 模式保留。
     // FreeConsole 只分离当前进程控制台，不影响 Qt 主窗口显示。
@@ -233,11 +244,40 @@ int main(int argc, char* argv[]) {
 
     // 截图模式用于视觉验收：不执行 smoke 后续点击，避免截图状态被测试逻辑修改。
     if (captureMode) {
-        widget->resize(captureSize);
+        // 不创建真实桌面窗口，避免 Windows 把 1920/2560 测试尺寸压缩到当前显示器可用区域。
+        // 固定画布后 QWidget::grab 会按请求的真实像素尺寸离屏渲染，测试也不会改变用户桌面分辨率。
+        widget->setAttribute(Qt::WA_DontShowOnScreen, true);
+        widget->setFixedSize(captureSize);
         widget->show();
 
         int captureExitCode = 0;
         QTimer::singleShot(500, [&]() {
+            // 可选 hover 参数让自动截图覆盖真实 QSS :hover 与 h 图组合，不需要人工把鼠标停在按钮上。
+            if (!captureHoverType.isEmpty()) {
+                QToolButton* hoverButton = widget->findChild<QToolButton*>(
+                    QString("OrderCreateType_%1_Button").arg(captureHoverType));
+                if (!hoverButton) {
+                    captureExitCode = 31;
+                    std::fprintf(stderr,
+                                 "[FAIL] hover treatment type not found: %s\n",
+                                 captureHoverType.toUtf8().constData());
+                } else {
+                    QEvent hoverEnterEvent(QEvent::Enter);
+                    QApplication::sendEvent(hoverButton, &hoverEnterEvent);
+                    QApplication::processEvents();
+                }
+            }
+
+            if (widget->size() != captureSize) {
+                captureExitCode = 32;
+                std::fprintf(stderr,
+                             "[FAIL] capture viewport mismatch: expected=%dx%d actual=%dx%d\n",
+                             captureSize.width(),
+                             captureSize.height(),
+                             widget->width(),
+                             widget->height());
+            }
+
             // QWidget::grab 只截取建单模块内容，不包含 Windows 桌面和窗口边框，便于和视频内容区对比。
             const QPixmap pixmap = widget->grab();
             if (!pixmap.save(capturePath)) {
@@ -291,6 +331,13 @@ int main(int argc, char* argv[]) {
         return 8;
     }
 
+    // smoke 窗口不显示到桌面，但仍让 Qt 完成一次真实布局；只有这样才能比较状态变化前后的控件尺寸。
+    // WA_DontShowOnScreen 保留 show() 触发布局/样式计算的效果，同时避免自动测试期间窗口闪现。
+    widget->setAttribute(Qt::WA_DontShowOnScreen, true);
+    widget->resize(1440, 860);
+    widget->show();
+    QApplication::processEvents();
+
     // 锁定当前软件的五种修复类型，防止 Inner Crown/Bridge 再次被误加成修复类型按钮。
     auto* crownButton = widget->findChild<QToolButton*>("OrderCreateType_crown_Button");
     auto* missingButton = widget->findChild<QToolButton*>("OrderCreateType_missing_Button");
@@ -300,6 +347,12 @@ int main(int argc, char* argv[]) {
     if (!Check(crownButton && missingButton && inlayButton && veneerButton && implantButton,
                "全冠、缺失牙、嵌体、贴面和种植体五个按钮均存在")) {
         return 25;
+    }
+    if (!Check(crownButton->property("treatmentCode").toString() == "crown"
+                   && missingButton->property("treatmentCode").toString() == "missing"
+                   && implantButton->property("treatmentCode").toString() == "implant",
+               "治疗类型按钮向 QSS 暴露稳定英文编码")) {
+        return 34;
     }
     if (!Check(widget->findChild<QToolButton*>("OrderCreateType_inner_crown_Button") == nullptr
                    && widget->findChild<QToolButton*>("OrderCreateType_bridge_Button") == nullptr,
@@ -351,9 +404,16 @@ int main(int argc, char* argv[]) {
 
     // 未选中的缺失牙按钮进入 hover 后必须从 missing_b 切换到 missing_h。
     const QImage missingNormalIcon = missingButton->icon().pixmap(QSize(48, 48)).toImage();
+    QPixmap missingNormalButton(missingButton->size());
+    missingNormalButton.fill(Qt::transparent);
+    missingButton->render(&missingNormalButton);
     QEvent enterEvent(QEvent::Enter);
     QApplication::sendEvent(missingButton, &enterEvent);
+    QApplication::processEvents();
     const QImage missingHoverIcon = missingButton->icon().pixmap(QSize(48, 48)).toImage();
+    QPixmap missingHoverButton(missingButton->size());
+    missingHoverButton.fill(Qt::transparent);
+    missingButton->render(&missingHoverButton);
     QEvent leaveEvent(QEvent::Leave);
     QApplication::sendEvent(missingButton, &leaveEvent);
     if (!Check(!missingNormalIcon.isNull() && !missingHoverIcon.isNull()
@@ -361,6 +421,58 @@ int main(int argc, char* argv[]) {
                "治疗类型按钮 hover 会切换到 h 图标资源")) {
         return 31;
     }
+
+    // h 图只应改变按钮中央的圆形图标。采样左侧空白区可防止 QSS 再次误加整块绿色矩形背景。
+    const QPoint backgroundSamplePoint(4, missingButton->height() / 2);
+    const QRgb normalBackground = missingNormalButton.toImage().pixel(
+        backgroundSamplePoint.x(), backgroundSamplePoint.y());
+    const QRgb hoverBackground = missingHoverButton.toImage().pixel(
+        backgroundSamplePoint.x(), backgroundSamplePoint.y());
+    // QSS 圆角边缘可能因 hover 重绘产生少量抗锯齿差异，因此比较通道差总量，不要求二进制像素完全相等。
+    // 历史错误会把采样点从浅色背景改成 #007d68，通道差远大于这里允许的轻微绘制误差。
+    const int backgroundChannelDelta =
+        qAbs(qRed(normalBackground) - qRed(hoverBackground))
+        + qAbs(qGreen(normalBackground) - qGreen(hoverBackground))
+        + qAbs(qBlue(normalBackground) - qBlue(hoverBackground))
+        + qAbs(qAlpha(normalBackground) - qAlpha(hoverBackground));
+    std::printf("[INFO] treatment hover background rgba normal=%u hover=%u delta=%d\n",
+                static_cast<unsigned int>(normalBackground),
+                static_cast<unsigned int>(hoverBackground),
+                backgroundChannelDelta);
+    if (!Check(backgroundChannelDelta <= 90,
+               "普通修复类型 hover 不改变按钮整块背景")) {
+        return 35;
+    }
+
+    // 记录普通治疗方案下的牙弓控件尺寸，再注入包含种植体的上下文。
+    // 种植体会增加扫描流程步骤；此断言专门防止预览文字换行后挤压牙弓的历史问题。
+    const QSize normalTreatmentPlanSize = treatmentPlanWidget->size();
+    QJsonArray implantItems;
+    QJsonObject implantTooth;
+    implantTooth.insert("tooth", 11);
+    implantTooth.insert("type", "implant");
+    implantItems.append(implantTooth);
+    QJsonObject implantScanPlan;
+    implantScanPlan.insert("items", implantItems);
+    QJsonObject implantContextRoot = contextRoot;
+    implantContextRoot.insert("scanPlan", implantScanPlan);
+    const QByteArray implantContextBytes = QJsonDocument(implantContextRoot).toJson(QJsonDocument::Compact);
+    if (!Check(orderCreate->SetOrderContextJson(implantContextBytes.constData()), "种植体治疗方案上下文设置成功")) {
+        return 36;
+    }
+    QApplication::processEvents();
+    const QSize implantTreatmentPlanSize = treatmentPlanWidget->size();
+    if (!Check(normalTreatmentPlanSize.isValid()
+                   && normalTreatmentPlanSize == implantTreatmentPlanSize,
+               "选择种植体前后牙弓控件尺寸保持不变")) {
+        return 37;
+    }
+
+    // 恢复初始上下文，保证后续已有断言仍从两颗牙位的标准状态开始，测试之间互不污染。
+    if (!Check(orderCreate->SetOrderContextJson(contextBytes.constData()), "种植体布局测试后恢复初始上下文成功")) {
+        return 38;
+    }
+    QApplication::processEvents();
 
     // 设置上下文后，默认示例牙位应被上下文里的 11/36 两颗牙覆盖。
     if (!Check(nameEdit->text() == "Context Patient", "上下文患者姓名已填充到界面")) {

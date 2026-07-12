@@ -187,28 +187,48 @@ QToolButton[typeButton="true"] {
     font-weight: 600;
 }
 
+/* 前四种修复类型由按钮类在图标画布内合成彩色圆底，QToolButton 外框必须继续透明。 */
 QToolButton[typeButton="true"]:hover,
-QToolButton[typeSelected="true"] {
-    background: #007d68;
-    border-color: #007d68;
-    color: #ffffff;
+QToolButton[typeButton="true"][typeSelected="true"] {
+    background: transparent;
+    border-color: transparent;
+}
+
+QToolButton[typeButton="true"][treatmentCode="crown"]:hover,
+QToolButton[typeButton="true"][treatmentCode="crown"][typeSelected="true"] {
+    color: #568bd3;
+}
+
+QToolButton[typeButton="true"][treatmentCode="missing"]:hover,
+QToolButton[typeButton="true"][treatmentCode="missing"][typeSelected="true"] {
+    color: #ed6f78;
+}
+
+QToolButton[typeButton="true"][treatmentCode="inlay"]:hover,
+QToolButton[typeButton="true"][treatmentCode="inlay"][typeSelected="true"] {
+    color: #e8a72e;
+}
+
+QToolButton[typeButton="true"][treatmentCode="veneer"]:hover,
+QToolButton[typeButton="true"][treatmentCode="veneer"][typeSelected="true"] {
+    color: #2daec7;
 }
 
 QToolButton[typeButton="true"][wideTypeButton="true"] {
     min-height: 44px;
     max-height: 50px;
-    background: #ffffff;
-    border: 1px solid #cfd8dc;
+    background: #edf8f5;
+    border: 1px solid #008f69;
     border-radius: 6px;
-    color: #23313f;
+    color: #008765;
     font-size: 13px;
     padding: 4px 14px;
 }
 
 QToolButton[typeButton="true"][wideTypeButton="true"]:hover,
 QToolButton[typeButton="true"][wideTypeButton="true"][typeSelected="true"] {
-    background: #007d68;
-    border-color: #007d68;
+    background: #008f69;
+    border-color: #008f69;
     color: #ffffff;
 }
 

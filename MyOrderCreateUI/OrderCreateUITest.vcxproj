@@ -56,7 +56,8 @@ xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
 if not exist "$(OutDir)platforms" mkdir "$(OutDir)platforms"
 xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
-xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll" "$(OutDir)"</Command>
+xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyUIResources\bin\$(Configuration)\MeyerScan_UIResources.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="test\main.cpp" /></ItemGroup>

@@ -12,7 +12,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIResources";
 
 // 代码版本必须与 Version.rc 的 FILEVERSION/PRODUCTVERSION 同步修改。
-const char* Version = "MeyerScan_UIResources v0.1.2 (2026-07-12)";
+const char* Version = "MeyerScan_UIResources v0.1.3 (2026-07-12)";
 }
 
 // Version.rc 中 RCDATA 资源的固定编号。
