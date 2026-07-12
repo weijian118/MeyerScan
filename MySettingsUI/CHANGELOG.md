@@ -1,5 +1,11 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.2.1`；三维校准和颜色校准 DLL 懒加载后必须检查 `Init()`，失败时调用子模块 `Shutdown()`、清空接口并写 Warning，设置其它页面继续可用。
+- 保持设置页只读 RuntimeDataCenter、校准能力按来源禁用和子 DLL 可选降级边界，不把校准算法、设备资源或配置持久化实现放进 SettingsUI。
+- VS2015/CMake Release、`SettingsUITest.exe --smoke` 和 MainExe 集成 smoke 通过。
+
 ## 2026-07-10
 
 - 设置页样式迁入 `Resources/qss/settings.qss`，源码通过公共资源/QSS/日志辅助函数加载；CMake/VS2015 工程补齐模块资源复制。

@@ -1,5 +1,11 @@
 ﻿# MeyerScan CaseUI 变更记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.3.2`；UIComponents 初始化失败时清空共享接口并走 CaseUI 本地控件/QSS 降级，不保留半初始化对象。
+- `CaseUITest` 现在检查 CaseUI Init/CreateWidget 返回值并在失败时显式 Shutdown；继续只允许测试宿主经 DatabaseQtAdapter 造数，正式 UI 仍只读 RuntimeDataCenter。
+- 补充初始化、控件定位、动作回调和退出清理的中文实现注释，未把 SQL、患者订单写入或云端/截图业务引入 CaseUI。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.3.1`，浏览页切换为中英组合品牌 Logo，右上角补齐云端和截图入口；两项只上报稳定动作 ID，不在 UI 内实现业务。

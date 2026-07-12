@@ -962,6 +962,25 @@ MainExe 只拥有顶层窗口和单内容区，不绘制所有页面共享的可
 5. 根 `MeyerScan.exe` 已在最终资源 DLL 生成后再次强制重新链接，生成时间为 2026-07-12 17:00:15；`--smoke`、`--smoke-main`、外部 JSON 建单 smoke 均返回 0。最新 versionList 为 24 项、0 缺失、0 文件/代码版本不一致、0 代码版本读取错误。
 6. OrderCreateUI v0.5.2 和 UIResources v0.1.3 已完成 VS2015 根方案 Rebuild、CMake 全量构建、模块/根 smoke 和三档截图复核；截图采用离屏固定画布并校验 PNG 真正为 1366x768、1920x1080、2560x1440，2K Scan Plan 最大高度为 1060px；测试显式依赖同批资源 DLL，禁止旧资源包遮盖当前 QSS。
 
+## 十四、2026-07-12 全模块代码审查与失败合同
+
+1. 模块可用状态不能只看 DLL 是否加载成功。动态模块必须依次检查“加载 DLL -> 解析工厂 -> 获取接口 -> Init -> 写入上下文 -> 创建页面”，任一步失败都要记录模块名和阶段，并停止使用该接口或进入文档允许的降级路径。
+2. 所有返回 bool 的初始化和上下文接口都必须由调用方检查。测试项目遵守同一规则；Init/CreateWidget 失败时先清理已取得资源，再返回可区分阶段的非 0 退出码，禁止继续解引用空 QWidget。
+3. JSON 上下文采用事务式更新：先在临时对象中完整解析和校验，成功后替换缓存并刷新 UI；失败返回 false、保留上一份有效状态。MainExe 收到拒绝后记录 `ContextRejected`，不能继续切换到目标步骤。
+4. Qt 重页面生命周期固定为 `Init -> SetContext -> CreateWidget -> 宿主挂载 -> Activate -> DeactivateAndRelease -> 删除 QWidget -> Shutdown`。CreateWidget 不隐式 Activate；Scan/Process 目标页创建失败时工作台和 ScanReconstructStudio 不更新当前步骤。
+5. Logger、UIComponents 和设置内校准模块的失败处理必须明确：Logger 可无日志降级；UIComponents 可回退本模块 Qt 控件/QSS；校准子模块失败只禁用对应校准页。任何降级都要清空半初始化接口，不能把可选依赖失败扩散成主流程崩溃。
+6. 本轮边界复核未发现 UI 直接访问 Database、SendUI 实现真实发送业务、运行路径依赖 `QDir::currentPath()` 或业务源码直接调用 `setStyleSheet()`。样式调用仍只允许公共 `MeyerQtModuleUtils::ApplyModuleQss()` 入口。
+7. 当前版本基线：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.1、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
+8. 验证基线：VS2015 根方案 Rebuild 和 CMake Release 全量构建通过；24 项自研测试/主链路及 MainExe 登录前 smoke 均返回 0；最新 versionList 为 24 项、0 缺失、0 版本不一致、0 `codeVersionError`；源码注释安全检查为 0 错误、0 警告。
+
+## 十五、2026-07-13 生产数据与测试数据隔离
+
+1. 正式 UI、MainExe 手工创建入口和生产服务不得内置患者、订单、医生、技工所、牙位或治疗方案示例值。无外部上下文时，建单页必须显示空白业务状态和可翻译的选择提示，不能把演示数据误保存为真实订单。
+2. 练习模式允许生成脱离数据库的默认上下文，但患者号、订单号等可追踪字段必须使用 `PRACTICE_*` 前缀；测试宿主数据只存在于测试进程和测试数据库，不得进入生产模块默认值。
+3. 外部拉起和恢复订单提供的 JSON 先写入候选对象，完成解析、字段类型和 schema 校验后再整体替换缓存。解析失败时返回 `false`、保留上一份有效上下文，并由宿主记录 `ContextRejected`。
+4. OrderCreateUI smoke 必须覆盖“无上下文为空白”“有效上下文可显示”“随后写入非法 JSON 不覆盖缓存”“Shutdown 后可重新 Init”四类状态，避免生产默认值和生命周期回归。
+5. 2026-07-13 验证基线：VS2015 根方案和 CMake Release 构建通过；MainExe `--smoke`、`--smoke-main`、`--smoke-external-order` 通过；`versionList_20260713_072234_645.json` 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。
+
 ---
 
-> **文档版本**：v3.30（2026-07-12，收口文档权威源、注释安全、资源依赖、建单 hover/布局修复和 MainExe 重新验证）
+> **文档版本**：v3.32（2026-07-13，补齐生产/测试数据隔离、空白建单初态和最新验证基线）

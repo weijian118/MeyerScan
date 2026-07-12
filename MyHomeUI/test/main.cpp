@@ -111,11 +111,22 @@ int main(int argc, char* argv[]) {
     // 公共接口使用 const char*，这里把 QString 转成 UTF-8 并保持到 Init 调用结束。
     const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
     const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
-    home->Init(databaseConfigBytes.constData(), logDirBytes.constData());
+    // Init 返回 false 表示数据库、日志或模块内部状态没有准备完成。
+    // 测试宿主必须在这里停止，不能继续 CreateWidget 后把初始化错误误报成界面错误。
+    if (!home->Init(databaseConfigBytes.constData(), logDirBytes.constData())) {
+        // 即使初始化只完成了一部分，也调用 Shutdown 让模块释放已经取得的资源。
+        home->Shutdown();
+        return 2;
+    }
     home->SetEntryCallback(&OnHomeAction, nullptr);
 
     // 创建首页并用模块版本做窗口标题，便于人工测试时确认加载的是当前 DLL。
     QWidget* widget = home->CreateWidget();
+    if (!widget) {
+        // CreateWidget 返回空指针时不能继续 findChildren，否则会发生空指针崩溃。
+        home->Shutdown();
+        return 3;
+    }
     // 通过动态属性定位帮助按钮，避免测试依赖按钮在布局中的具体下标。
     const QList<QToolButton*> topButtons = widget->findChildren<QToolButton*>("HomePageToolButton");
     QToolButton* helpButton = nullptr;

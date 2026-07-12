@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_CaseUI VERSION 0.3.1 LANGUAGES CXX)
+project(MeyerScan_CaseUI VERSION 0.3.2 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)

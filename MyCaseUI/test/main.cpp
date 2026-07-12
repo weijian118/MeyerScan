@@ -433,11 +433,22 @@ int main(int argc, char* argv[]) {
     const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
     const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
     // Init 不接管 QByteArray 内存，只在调用期间读取 constData()。
-    caseUi->Init(databaseConfigBytes.constData(), logDirBytes.constData());
+    // Init 可能因为数据库配置、日志目录或下游服务初始化失败而返回 false。
+    // 失败后立即结束，避免后续界面检查掩盖真正的初始化问题。
+    if (!caseUi->Init(databaseConfigBytes.constData(), logDirBytes.constData())) {
+        // Shutdown 允许模块清理“初始化到一半”时已经取得的资源。
+        caseUi->Shutdown();
+        return 3;
+    }
     caseUi->SetActionCallback(&OnCaseAction, nullptr);
 
     // 创建案例管理界面并显示。窗口标题使用模块版本，便于人工确认 DLL 版本。
     QWidget* widget = caseUi->CreateWidget();
+    if (!widget) {
+        // 空界面不能继续查找子控件；用独立退出码区分创建失败与按钮行为失败。
+        caseUi->Shutdown();
+        return 4;
+    }
     // 通过动态属性定位关闭按钮，避免测试依赖顶部按钮的排列顺序。
     const QList<QToolButton*> topButtons = widget->findChildren<QToolButton*>("CaseTopToolButton");
     QToolButton* cloudButton = nullptr;
@@ -481,7 +492,6 @@ int main(int argc, char* argv[]) {
         caseUi->Shutdown();
         return 7;
     }
-    // CreateWidget 当前应总是返回有效 QWidget；如果后续改成可失败，测试宿主应补空指针判断。
     // 测试宿主没有 MainExe 标题栏上下文，所以直接展示模块版本。
     widget->setWindowTitle(caseUi->GetModuleVersion());
     if (captureMode) {

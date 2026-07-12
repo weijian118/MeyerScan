@@ -11,8 +11,11 @@
 - 本模块不直接保存数据库，不加载订单规则，不启动扫描；但会根据建单页输入生成当前订单的扫描流程 JSON，供 MainExe 转发给 Scan/Process 页面。
 - 对外动作通过 `OrderCreateActionId` 回调抛出，避免外部模块直接绑定内部按钮对象。
 - 支持 `SetOrderContextJson(const char*)` 接收标准建单上下文；第三方拉起、HIS/Worklist 和手工建单补全后都应收敛到同一套上下文结构。
+- `SetOrderContextJson()` 先解析候选 UTF-8 JSON，成功后才替换预创建缓存；非法 JSON 返回 false 并保留上一份有效上下文，CreateWidget 重新应用缓存时也必须检查返回值。
+- 无上下文时显示空白患者、订单和牙位状态。测试患者、订单、医生、技工所和示例牙位只能由测试宿主显式传入，禁止硬编码在生产 DLL。
 - 通用按钮、字段标签、输入框、下拉框、日期框、多行备注框和已选牙位表格优先通过 `MeyerScan_UIComponents.dll` 创建；所有视觉样式来自模块 QSS，牙位、治疗方案和扫描方案联动等业务控件留在本模块内部。
 - `MeyerScan_UIComponents.dll` 通过 `QLibrary` 动态加载，工程只保留头文件依赖和 DLL 复制，不强制链接 `MeyerScan_UIComponents.lib`；共享 UI 缺失时建单界面使用本地降级样式继续运行。
+- UIComponents 按 `Init(appDirUtf8, ...)` 的应用目录绝对定位并检查 Init 返回值；第三方启动器改变工作目录时也不能从 currentPath 加载同名 DLL。
 - 当前会调用 UIComponents v0.4.0 新增的表格接口，因此加载成功后还会检查 `GetModuleVersion()`；运行目录里如果残留旧版 UIComponents，会主动降级到本地样式，避免旧 DLL vtable 不包含新接口导致崩溃。
 - 分辨率适配优先依赖 Qt Layout、滚动区、伸缩策略、控件最小尺寸和多语言自动换行；不再按 1920x1080 到实际分辨率的比例直接缩放所有坐标和控件。
 - 治疗方案选择区按当前软件视频复刻：左侧独立治疗类型卡片，中间大牙弓主视觉，右侧明细卡；上下颌使用 `maxilla.png` / `mandible.png` 显示，点击坐标反算到原始 600x400 mask；牙位叠加图和桥连接点叠加图按资源文件绘制。
@@ -121,7 +124,7 @@
 - 右侧：基本摘要、已选牙位明细、标信息占位、订单备注、上一步/取消/确认/下一步；普通操作按钮和表格基础样式走 UIComponents，牙位明细数据和列含义仍由本模块维护。
 - 当前根界面最小尺寸为 960x600；左栏至少 380px，四个常用类型在首行完整显示，种植体使用第二行宽按钮；中间分栏可以扩展，但 Scan Plan 内容最大 980px 并保持居中，避免 2K/4K 下横向拉空；低高度屏幕下左侧表单通过滚动区访问完整字段。
 - Scan Plan 整体最大高度为 1060px，并在高分辨率宿主中垂直居中；2K/4K 的额外高度不得拉大上下颌间距。
-- 当前模块版本为 `v0.5.2`；smoke 会验证五类型资源映射、hover 视觉边界、mask/桥规则以及种植体前后牙弓尺寸稳定性。
+- 当前模块版本为 `v0.5.3`；smoke 会验证五类型资源映射、hover 视觉边界、mask/桥规则以及种植体前后牙弓尺寸稳定性。
 - `OrderCreateUITest` 必须依赖并加载同批次 `MeyerScan_UIResources.dll`；只更新业务 DLL 而沿用旧资源 DLL 的测试结果无效。
 - 视觉验收可使用 `OrderCreateUITest --capture-screenshot <png> --capture-size <WxH> --capture-hover-type <crown|missing|inlay|veneer|implant>`，固定复现指定类型的 hover 状态。
 - 截图使用不显示到桌面的固定画布，输出 PNG 像素尺寸必须与 `--capture-size` 完全一致；2560x1440 画布会通过测试属性选择 2x 图源，不修改用户桌面分辨率。

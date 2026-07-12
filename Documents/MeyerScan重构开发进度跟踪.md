@@ -13,14 +13,16 @@
 
 ---
 
-## 2026-07-12 最新验证基线
+## 2026-07-13 最新验证基线
 
-- 四份核心文档已迁入 `F:\MeyerScan\Documents` 并作为权威源，D 盘同名文件改为同步镜像。
-- OrderCreateUI 升级到 v0.5.2，UIResources 升级到 v0.1.3；修复普通类型 hover 矩形背景、1x/2x 白色 h 图不可见、种植体流程文字挤压牙弓和测试加载旧资源 DLL。
-- VS2015 单模块方案、根 `MeyerScan_AllModules.sln /t:Rebuild` 和 CMake 全量 Release 构建通过；只保留外部登录头文件既有 C4819/C4091 警告。
-- 根 `MeyerScan.exe` 在最终资源 DLL 之后重新生成，时间更新为 2026-07-12 17:00:15；根/单模块 `--smoke-main`、根 `--smoke`、外部 JSON 建单 smoke、OrderCreateUI smoke、UIResources smoke 均返回 0。
-- 本轮最终最新 versionList：schemaVersion=2、24 项、0 缺失、0 版本不一致、0 `codeVersionError`；OrderCreateUI 为 0.5.2.0，UIResources 为 0.1.3.0。文件名按每次启动时间生成，以 `logs/versionList` 中时间最新者为准。
-- 注释安全脚本全仓运行结果为 0 错误、0 警告；离屏 PNG 已核对为真实 1366x768、1920x1080、2560x1440，hover 和 2K Scan Plan 垂直收敛已人工复核。
+- 四份核心文档已迁入 `F:\MeyerScan\Documents` 并作为权威源，D 盘同名文件作为同步镜像。
+- 当前审查版本：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.1、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
+- 全模块复核补齐 Init/上下文/CreateWidget 返回值检查、JSON 事务式更新、CreateWidget/Activate 分离、全部流程禁用状态和可选依赖显式降级；近期模块公开接口、内部实现和测试宿主已补充中文实现技巧注释。
+- 清理 OrderCreateUI、SendUI 和 MainExe 正式路径中的示例患者、订单、医生、技工所和牙位；手工创建恢复空白初态，练习数据使用明确的 `PRACTICE_*` 标识。
+- VS2015 根 `MeyerScan_AllModules.sln` Release x64 和 CMake 全量 Release 构建通过；只保留外部登录头文件既有 C4819/C4091 警告。
+- 根 `MeyerScan.exe --smoke`、`--smoke-main` 和 `--smoke-external-order` 均返回 0；OrderCreateUI smoke 已覆盖空白生产状态、有效/非法 JSON 事务更新和重新初始化。
+- 自研模块测试覆盖 Logger、Database、DatabaseQtAdapter、ConfigCenter、Permission、VersionManager、RuntimeDataCenter、CaseOrderService、UIComponents、UIResources、两校准 UI、Home/Case/Settings/Order/Workspace/Scan/Process/Send、ExternalLaunchAdapter 和 ScanReconstructStudio，全部返回 0。
+- 本轮最新 versionList 为 `versionList_20260713_072234_645.json`：schemaVersion=2、24 项、0 缺失、0 版本不一致、0 `codeVersionError`。源码注释安全脚本为 0 错误、0 警告；静态边界扫描未发现新增直接数据库访问、`currentPath` 或业务源码内联样式。
 
 ## 总进度概览
 
@@ -871,7 +873,7 @@
 
 ## 当前任务
 
-> **当前在做的任务**：🟡 UI/工程边界收口完成，转入真实病例订单主链路 — 已确认 MainExe 无边框全屏单内容区、页面语义顶部、WorkspaceShell 唯一步骤导航、UIResources 统一资源 DLL、ScanReconstructStudio DLL/EXE 双形态和 24 文件版本清单；下一步不继续增加占位壳。
+> **当前在做的任务**：🟡 UI/工程边界和失败合同复核完成，转入真实病例订单主链路 — 已确认 MainExe 无边框全屏单内容区、WorkspaceShell 唯一步骤导航、UIResources 统一资源 DLL、ScanReconstructStudio DLL/EXE 双形态、Init/上下文返回值检查和 24 文件版本清单；下一步不继续增加占位壳。
 > **接下来的任务**：
 > 1. 抽出 `LoginAdapter`，隔离既有登录头文件和参数结构变化风险
 > 2. 完善 CaseOrderService / ScanSchemaService，让 OrderCreateUI 保存、CaseUI 搜索分页/删除/打开订单正式走 Service/Workflow；患者订单合同继续使用服务 DTO + 版本化 JSON
@@ -1013,3 +1015,5 @@
 | 2026-07-10 | **统一资源 DLL、首页/浏览/建单最终复核与版本测试隔离**：新增 MyUIResources v0.1.1，自动聚合 608 个 UI 资源；MainExe/HomeUI/CaseUI/OrderCreateUI 升级到 v0.1.6/v0.3.1/v0.3.1/v0.5.0；修复 VersionManagerTest 覆盖根 Release 正式清单的问题；修复 Scan/Process/Scan 往返时 QVTK/VTK 释放顺序和延迟析构重入风险。 | VS2015 根方案、CMake 根构建通过；24 项模块/主链路测试全部返回 0；正式 manifest 在 VersionManagerTest 前后 SHA-256 不变；最新 versionList 为 24 项、0 缺失、0 版本不一致、0 codeVersionError；首页、浏览、建单 1920x1080 与 1366x768 共 6 张截图复核通过。 |
 | 2026-07-12 | **OrderCreateUI 五类型、牙位/桥映射和多分辨率修正**：OrderCreateUI 升级到 v0.5.1，修复类型收口为全冠/缺失牙/嵌体/贴面/种植体，图片序号为 `1/3/4/5/7`；按实际 mask 校正上下颌牙位和桥顺序；相邻已选牙显示空心桥点，点击后变实心；类型按钮按 b/h 和 1x/2x 资源切换；中间 Scan Plan 最大 980px 居中。UIResources 升级到 v0.1.2。 | VS2015 单模块和根方案构建通过；模块目录与根目录 OrderCreateUI smoke、UIResources smoke 返回 0；1366x768、1920x1080、2560x1440 截图复核无文字裁切、控件重叠或中栏过度拉伸。 |
 | 2026-07-12 | **文档权威源、注释安全、建单 hover/布局与 MainExe 强制重建**：四文档迁入仓库 Documents；新增注释换行/BOM 检查；OrderCreateUI v0.5.2 对 h 图合成局部圆底、固定扫描流程预览高度、限制 Scan Plan 最大高度并锁定资源 DLL 批次；UIResources v0.1.3；配置根/本地仓库为 trusted。 | VS2015 根方案 Rebuild、CMake 全量 Release 通过；根和单模块 MainExe smoke-main、根 startup/external smoke、OrderCreateUI/UIResources smoke 均返回 0；三张 PNG 实际尺寸为 1366x768/1920x1080/2560x1440；versionList 24 项 0 缺失/不一致/代码错误；根 EXE 已于 7 月 12 日重新生成。 |
+| 2026-07-12 | **全模块代码、注释和架构偏移复核**：近期 Scan/Process/Send/ScanReconstructStudio、工作台、建单、首页、浏览、设置和 MainExe 补齐中文实现注释；统一检查 Init/上下文/CreateWidget 返回值；非法 JSON 保留上一份有效上下文；重页面改为宿主挂载后显式 Activate；可选依赖失败清空接口并按模块降级。 | VS2015 根 Rebuild 与 CMake Release 全量构建通过；24 项自研测试/集成链路及 MainExe 登录前 smoke 返回 0；最新 versionList 24 项 0 缺失/不一致/代码错误；注释安全 0 错误 0 警告；未发现 UI 直连 Database、SendUI 越界实现业务、currentPath 或业务源码直接 setStyleSheet。 |
+| 2026-07-13 | **生产/测试数据隔离复核**：OrderCreateUI、SendUI 和 MainExe 清理正式路径中的示例患者、订单、医生、技工所和牙位；手工创建使用空白上下文，练习数据统一使用 `PRACTICE_*`；OrderCreateUI 在候选 JSON 完整解析成功后才提交缓存，非法 JSON 保留上一份有效状态。 | VS2015 根 Release x64 与 CMake Release 构建通过；OrderCreateUI 增强 smoke、MainExe 三类 smoke 返回 0；`versionList_20260713_072234_645.json` 为 24 项、0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。 |

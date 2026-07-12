@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.2.3`；`SetSessionContextJson()` 对非法 JSON 返回 false 并保留上一份有效上下文，避免缓存状态与已显示按钮分裂。
+- `CreateWidget()` 只创建页面，不再隐式 `Activate()`；宿主完成挂载后显式激活，避免双重激活。当前步骤被禁用时选择第一个 enabled 步骤，全部禁用时保持无活动步骤。
+- Logger 初始化失败时无日志降级；公开接口、内部状态、QVTK 释放、流程解析和测试宿主补充中文实现注释。
+- `ScanWorkflowUITest.exe` 新增有效/非法上下文事务性、显式 Activate、流程按钮 tooltip/手型光标/动作回调验证并通过。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.2.2`；释放 QVTK 时先移除 renderer、清空 Viewer 的 renderer 指针并断开 render window/interactor，再延迟销毁原生窗口。

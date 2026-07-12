@@ -27,6 +27,6 @@
 
 - VS2015：打开 `MeyerScan_UIResources.sln`，构建 `Release|x64`。
 - CMake：由根 `F:\MeyerScan\CMakeLists.txt` 聚合构建。
-- 测试：运行 `bin\Release\UIResourcesTest.exe`，验证注册、QSS/PNG 读取、版本接口和注销生命周期。
+- 测试：运行 `bin\Release\UIResourcesTest.exe`，验证重复初始化幂等、QSS/PNG 读取、版本接口、注销、重新注册和重注册后资源可读生命周期。
 
 脚本必须保存为带 BOM 的 UTF-8，并使用 Windows PowerShell 5.1 兼容语法。

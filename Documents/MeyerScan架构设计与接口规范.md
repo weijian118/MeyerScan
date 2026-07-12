@@ -3368,4 +3368,36 @@ Windows PowerShell 5.1、VS2015 构建事件和命令行脚本统一遵循 `Powe
 5. 当前 `minMain` 验证口径为根/单模块 `MeyerScan.exe --smoke-main`，不再维护独立测试项目。主 EXE 源码未变但依赖 DLL 变化时，发布验收仍应强制 Rebuild 主 EXE 并核对时间戳和 versionList。
 6. 截图测试必须验证输出 PNG 的实际像素尺寸，不只相信命令行参数。Qt 顶层测试窗口使用 `WA_DontShowOnScreen + setFixedSize` 离屏渲染，避免被当前桌面可用区域自动压缩；目标视口尺寸只通过测试属性影响 1x/2x 选图，不进入生产路径。
 
-> **当前文档版本**：v1.30（2026-07-12，补齐文档权威源、注释换行安全、资源批次、动态布局和三档 UI 验收合同）
+### 14.8 模块可用状态、上下文事务与页面生命周期
+
+动态模块的“可用”必须由完整状态链决定：
+
+```text
+DLL loaded
+  -> factory resolved
+  -> interface acquired
+  -> Init succeeded
+  -> context accepted
+  -> QWidget created
+  -> attached by host
+  -> explicitly activated
+```
+
+1. 每个返回 bool 的接口都是合同，不是提示。调用方不得忽略 `Init()`、`Set*ContextJson()`、页面确保函数或服务结果；失败必须写结构化日志并阻止后续依赖动作。
+2. `Set*ContextJson()` 使用临时解析结果完成 schema/类型检查，成功后一次替换缓存；失败不得清空或部分修改上一份有效状态。跨 DLL 仍传 UTF-8 `const char*`，接口实现不得保存调用方临时缓冲区指针。
+3. 重 UI 固定采用 `CreateWidget -> attach -> Activate`，离开采用 `DeactivateAndRelease -> remove/delete QWidget -> Shutdown`。CreateWidget 内不得隐式激活 QVTK/VTK/OpenGL；宿主只有在目标页创建成功后才能更新步骤导航。
+4. 禁用流程步骤不得被回退逻辑绕过。当前步骤失效时选择第一个 enabled 步骤；全部 disabled 时保持无活动步骤、清理旧 actor 并显示不可用状态。
+5. 降级矩阵固定：Logger 失败允许无日志运行；UIComponents 失败回退本模块原生 Qt 控件和模块 QSS；SettingsUI 的单个校准 DLL 失败只禁用对应校准能力。失败接口必须清空，不能继续调用半初始化对象。
+6. 测试宿主与正式程序使用同一合同。测试不能只断言 DLL 工厂非空，还要验证非法 JSON、Init/CreateWidget 失败保护、显式 Activate、动作回调和 Shutdown/资源释放。
+7. 2026-07-12 静态复核结论：近期 UI 模块未直接依赖数据库/配置/权限/网络业务；SendUI 只上报动作；样式入口集中；运行路径来自 appDir/applicationDirPath；当前模块拆分无新增架构偏移。
+
+### 14.9 生产数据与测试数据隔离
+
+1. 正式模块不得用硬编码示例值伪造患者、订单、医生、技工所、牙位或治疗方案。手工创建入口不携带业务上下文时，OrderCreateUI 必须保持空白；下拉框可以显示 `tr("Select doctor")`、`tr("Select lab")` 等非业务占位文本。
+2. 练习模式不创建正式病例，可以使用默认扫描上下文；所有可追踪标识必须使用 `PRACTICE_*` 前缀，使日志、数据库和问题现场能够立即区分练习数据。单元/smoke 测试数据只允许在测试宿主或隔离测试数据库内创建。
+3. MainExe 只负责识别入口来源并组装标准上下文。手工创建使用空的 `patientId` / `orderId`；第三方拉起保留外部提供值及标准 `source` 对象；字段名统一使用合同定义的 `patientId`、`orderId`，不得退回含义不清的 `id`。
+4. OrderCreateUI 的 pending context 采用事务提交：先将 UTF-8 JSON 解析到局部候选对象，成功后再整体替换成员缓存。非法 JSON 返回 `false`，不得覆盖上一份有效内容，也不得触发页面切换。
+5. 生产模块默认值检查纳入代码审查和 smoke：至少断言无上下文时患者/订单字段为空、无预选牙位；随后验证有效 JSON、非法 JSON 保留旧状态以及 Shutdown 后重新 Init。
+6. 2026-07-13 架构复核仍未发现 UI 直连 Database、SendUI 越界实现发送业务、运行路径使用 `QDir::currentPath()` 或业务源码直接调用 `setStyleSheet()`。最新运行清单为 `versionList_20260713_072234_645.json`，24 项均存在且文件版本与代码版本一致。
+
+> **当前文档版本**：v1.32（2026-07-13，补齐生产/测试数据隔离、标准建单上下文和事务式缓存规则）

@@ -51,7 +51,8 @@ private:
     QWidget* CreateWindowToolBar(QWidget* parent);
 
     // 切换到目标阶段，并释放上一个阶段的资源。
-    void SwitchToStep(StudioStep step);
+    // 返回 false 表示目标页面创建失败，调用方不能把壳初始化视为成功。
+    bool SwitchToStep(StudioStep step);
 
     // 动态加载 MeyerScan_ScanWorkflowUI.dll。
     bool LoadScanModule();

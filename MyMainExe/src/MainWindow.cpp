@@ -35,7 +35,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.6 (2026-07-10)";
+const char* Version = "MeyerScan_MainExe v0.1.7 (2026-07-13)";
 }
 
 struct VersionModuleEntry {
@@ -397,19 +397,37 @@ void MainWindow::InitInfrastructure() {
     // ConfigCenter 管产品默认配置，例如某些入口默认是否显示、数据库类型默认值等。
     m_config = ConfigCenterModule();
     if (m_config) {
-        m_config->Init(m_appDirUtf8.constData());
+        // ConfigCenter 失败时仍允许使用代码默认值启动，但必须留下可检索日志。
+        const bool configInitOk = m_config->Init(m_appDirUtf8.constData());
+        if (!configInitOk) {
+            WriteUserAction("ModuleInitFailed", "ConfigCenter Init returned false; use fallback defaults");
+            // 清空接口可确保后续分支使用显式代码默认值，不调用半初始化模块。
+            m_config = nullptr;
+        }
     }
 
     // Permission 在配置默认值之上做授权过滤，例如客户版本功能阉割。
     m_permission = PermissionModule();
     if (m_permission) {
-        m_permission->Init(m_appDirUtf8.constData());
+        // Permission 失败由各 Apply*Rules 的保守默认策略接管，不能静默忽略。
+        const bool permissionInitOk = m_permission->Init(m_appDirUtf8.constData());
+        if (!permissionInitOk) {
+            WriteUserAction("ModuleInitFailed", "Permission Init returned false; use conservative rules");
+            // 权限模块不可用时由 Apply*Rules 的保守默认值接管。
+            m_permission = nullptr;
+        }
     }
 
     // UIComponents 负责等待页、通用控件和后续统一缩放/样式能力。
     m_uiComponents = UIComponentsModule();
     if (m_uiComponents) {
-        m_uiComponents->Init(m_appDirUtf8.constData());
+        // UIComponents 是可降级依赖，失败时业务页面继续使用 Qt 原生控件和模块 QSS。
+        const bool uiComponentsInitOk = m_uiComponents->Init(m_appDirUtf8.constData());
+        if (!uiComponentsInitOk) {
+            WriteUserAction("ModuleInitFailed", "UIComponents Init returned false; use local controls");
+            // 页面模块会使用自身 Qt 控件和 QSS 降级，不调用半初始化共享工厂。
+            m_uiComponents = nullptr;
+        }
     }
 
     // Database 仍由 MainExe 统一初始化和连接，但 Qt 侧只通过 DatabaseQtAdapter 访问。
@@ -498,12 +516,18 @@ void MainWindow::ShowWaitPage(const QString& message) {
         m_uiComponents = UIComponentsModule();
         if (m_uiComponents) {
             const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
-            m_uiComponents->Init(appDirBytes.constData());
-            const QByteArray messageBytes = message.toUtf8();
-            const QByteArray titleBytes = tr("MeyerScan").toUtf8();
-            // CreateWaitWidget 返回 QWidget*，父对象设为 MainWindow，最终由 ReleaseWaitPage 释放。
-            m_waitWidget = m_uiComponents->CreateWaitWidget(titleBytes.constData(), messageBytes.constData(), this);
-        } else {
+            if (m_uiComponents->Init(appDirBytes.constData())) {
+                const QByteArray messageBytes = message.toUtf8();
+                const QByteArray titleBytes = tr("MeyerScan").toUtf8();
+                // CreateWaitWidget 返回 QWidget*，父对象设为 MainWindow，最终由 ReleaseWaitPage 释放。
+                m_waitWidget = m_uiComponents->CreateWaitWidget(titleBytes.constData(), messageBytes.constData(), this);
+            } else {
+                // 共享组件初始化失败时不调用其控件工厂，等待页直接走 QLabel 降级。
+                WriteUserAction("ModuleInitFailed", "UIComponents Init failed while creating wait page");
+                m_uiComponents = nullptr;
+            }
+        }
+        if (!m_waitWidget) {
             // UIComponents 不可用时使用 QLabel 降级，保证启动流程仍有可见反馈。
             m_waitWidget = new QLabel(message, this);
         }
@@ -880,8 +904,10 @@ void MainWindow::HandleScanWorkflowAction(int actionId) {
     case ScanWorkflowActionNext:
     case ScanWorkflowActionComplete:
         if (m_orderWorkspace) {
-            EnsureDataProcessPage();
-            m_orderWorkspace->SetStep(WorkspaceStepProcess);
+            // 目标页面创建成功后才能推进步骤，避免把工作台切到空占位页。
+            if (EnsureDataProcessPage()) {
+                m_orderWorkspace->SetStep(WorkspaceStepProcess);
+            }
         }
         break;
     default:
@@ -897,14 +923,16 @@ void MainWindow::HandleDataProcessAction(int actionId) {
     switch (actionId) {
     case DataProcessActionPrevious:
         if (m_orderWorkspace) {
-            EnsureScanWorkflowPage();
-            m_orderWorkspace->SetStep(WorkspaceStepScan);
+            if (EnsureScanWorkflowPage()) {
+                m_orderWorkspace->SetStep(WorkspaceStepScan);
+            }
         }
         break;
     case DataProcessActionNext:
         if (m_orderWorkspace && m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
-            EnsureSendPage();
-            m_orderWorkspace->SetStep(WorkspaceStepSend);
+            if (EnsureSendPage()) {
+                m_orderWorkspace->SetStep(WorkspaceStepSend);
+            }
         } else {
             WriteStatus(tr("Practice process completed"));
         }
@@ -940,6 +968,10 @@ void MainWindow::HandleSendAction(int actionId) {
         break;
     case SendUIActionFinish:
         ShowHome();
+        break;
+    case SendUIActionDataFormatChanged:
+        // 发送页只上报选择变化；后续保存/导出服务再读取并持久化真实格式。
+        WriteStatus(tr("Data format updated"));
         break;
     default:
         WriteStatus(tr("Send action %1 recorded").arg(actionId));
@@ -1086,6 +1118,12 @@ bool MainWindow::EnsureHomePage() {
         // HomeUI 内部不拥有数据库和日志，只保存路径/接口引用。
         m_homeInitialized = m_home->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_homeInitialized) {
+        // Init 失败后不能继续 CreateWidget，否则模块可能在未初始化路径上访问空资源。
+        WriteStatus(tr("HomeUI initialize failed"));
+        WriteUserAction("ModuleInitFailed", "HomeUI Init returned false");
+        return false;
+    }
     // 设置回调后，HomeUI 按钮点击才能回到 MainExe 分发。
     m_home->SetEntryCallback(&MainWindow::OnHomeEntryClicked, this);
     // 入口规则集中下发，避免多个按钮权限判断散落在页面创建逻辑里。
@@ -1122,6 +1160,11 @@ bool MainWindow::EnsureCasePage() {
         // 即使数据库暂不可用，CaseUI 也应能创建空列表页面。
         m_caseInitialized = m_case->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_caseInitialized) {
+        WriteStatus(tr("CaseUI initialize failed"));
+        WriteUserAction("ModuleInitFailed", "CaseUI Init returned false");
+        return false;
+    }
     // CaseUI 的所有按钮动作都回调给 MainExe 分发。
     m_case->SetActionCallback(&MainWindow::OnCaseAction, this);
     // 动作规则集中下发，避免权限读取/判断/设置分散在多个点击流程里。
@@ -1157,6 +1200,11 @@ bool MainWindow::EnsureSettingsPage() {
         // SettingsUI 初始化会加载 Logger 和 RuntimeDataCenter，但校准模块仍然懒加载。
         m_settingsInitialized = m_settings->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_settingsInitialized) {
+        WriteStatus(tr("SettingsUI initialize failed"));
+        WriteUserAction("ModuleInitFailed", "SettingsUI Init returned false");
+        return false;
+    }
     m_settings->SetActionCallback(&MainWindow::OnSettingsAction, this);
     // CreateWidget 前先传一次来源上下文，确保校准页首次创建时状态正确。
     m_settings->SetOpenContext(m_settingsOpenSource,
@@ -1180,7 +1228,12 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
         // 当前 ShowOrderWorkspace 每次离开都会释放页面，所以这里主要是防御重复调用。
         m_currentWorkspaceMode = WorkspaceModeOrderCreate;
         if (!orderContextJson.isEmpty() && m_orderCreate) {
-            m_orderCreate->SetOrderContextJson(orderContextJson.toUtf8().constData());
+            const QByteArray contextBytes = orderContextJson.toUtf8();
+            if (!m_orderCreate->SetOrderContextJson(contextBytes.constData())) {
+                WriteStatus(tr("Order context is invalid"));
+                WriteUserAction("ContextRejected", "OrderCreateUI rejected refreshed order context");
+                return false;
+            }
             m_workspaceContextJson = orderContextJson;
         }
         if (m_orderWorkspace) {
@@ -1209,8 +1262,18 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
     if (!m_orderWorkspaceInitialized) {
         m_orderWorkspaceInitialized = m_orderWorkspace->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_orderWorkspaceInitialized) {
+        WriteStatus(tr("Order workspace initialize failed"));
+        WriteUserAction("ModuleInitFailed", "OrderScanWorkspaceShell Init returned false");
+        return false;
+    }
     if (!m_orderCreateInitialized) {
         m_orderCreateInitialized = m_orderCreate->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
+    }
+    if (!m_orderCreateInitialized) {
+        WriteStatus(tr("OrderCreateUI initialize failed"));
+        WriteUserAction("ModuleInitFailed", "OrderCreateUI Init returned false");
+        return false;
     }
 
     // CreateWidget 前先设置模式，避免壳子创建出错误的步骤按钮集合。
@@ -1221,7 +1284,12 @@ bool MainWindow::EnsureOrderWorkspacePage(const QString& orderContextJson) {
     m_orderCreate->SetActionCallback(&MainWindow::OnOrderCreateAction, this);
     if (!m_workspaceContextJson.isEmpty()) {
         // 在 QWidget 创建前先传上下文，让 OrderCreateUI 能缓存并在 CreateWidget 后立即应用。
-        m_orderCreate->SetOrderContextJson(m_workspaceContextJson.toUtf8().constData());
+        const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+        if (!m_orderCreate->SetOrderContextJson(contextBytes.constData())) {
+            WriteStatus(tr("Order context is invalid"));
+            WriteUserAction("ContextRejected", "OrderCreateUI rejected initial order context");
+            return false;
+        }
     }
 
     m_orderWorkspaceWidget = m_orderWorkspace->CreateWidget(this);
@@ -1269,6 +1337,11 @@ bool MainWindow::EnsurePracticeWorkspacePage() {
     if (!m_orderWorkspaceInitialized) {
         m_orderWorkspaceInitialized = m_orderWorkspace->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_orderWorkspaceInitialized) {
+        WriteStatus(tr("Practice workspace initialize failed"));
+        WriteUserAction("ModuleInitFailed", "OrderScanWorkspaceShell practice Init returned false");
+        return false;
+    }
 
     // 练习模式只显示 Scan/Process，因此必须在 CreateWidget 前设置。
     m_orderWorkspace->SetWorkspaceMode(WorkspaceModePractice);
@@ -1308,9 +1381,19 @@ bool MainWindow::EnsureScanWorkflowPage() {
     if (!m_scanWorkflowInitialized) {
         m_scanWorkflowInitialized = m_scanWorkflow->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_scanWorkflowInitialized) {
+        WriteStatus(tr("Scan workflow initialize failed"));
+        WriteUserAction("ModuleInitFailed", "ScanWorkflowUI Init returned false");
+        return false;
+    }
 
     m_scanWorkflow->SetActionCallback(&MainWindow::OnScanWorkflowAction, this);
-    m_scanWorkflow->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+    if (!m_scanWorkflow->SetSessionContextJson(contextBytes.constData())) {
+        WriteStatus(tr("Scan workflow context is invalid"));
+        WriteUserAction("ContextRejected", "ScanWorkflowUI rejected workspace context");
+        return false;
+    }
     m_scanWorkflowWidget = m_scanWorkflow->CreateWidget(m_orderWorkspaceWidget);
     if (!m_scanWorkflowWidget) {
         WriteStatus(tr("Scan workflow widget create failed"));
@@ -1339,9 +1422,19 @@ bool MainWindow::EnsureDataProcessPage() {
     if (!m_dataProcessInitialized) {
         m_dataProcessInitialized = m_dataProcess->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_dataProcessInitialized) {
+        WriteStatus(tr("Data process initialize failed"));
+        WriteUserAction("ModuleInitFailed", "DataProcessUI Init returned false");
+        return false;
+    }
 
     m_dataProcess->SetActionCallback(&MainWindow::OnDataProcessAction, this);
-    m_dataProcess->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+    if (!m_dataProcess->SetSessionContextJson(contextBytes.constData())) {
+        WriteStatus(tr("Data process context is invalid"));
+        WriteUserAction("ContextRejected", "DataProcessUI rejected workspace context");
+        return false;
+    }
     m_dataProcessWidget = m_dataProcess->CreateWidget(m_orderWorkspaceWidget);
     if (!m_dataProcessWidget) {
         WriteStatus(tr("Data process widget create failed"));
@@ -1370,9 +1463,19 @@ bool MainWindow::EnsureSendPage() {
     if (!m_sendInitialized) {
         m_sendInitialized = m_send->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
+    if (!m_sendInitialized) {
+        WriteStatus(tr("SendUI initialize failed"));
+        WriteUserAction("ModuleInitFailed", "SendUI Init returned false");
+        return false;
+    }
 
     m_send->SetActionCallback(&MainWindow::OnSendAction, this);
-    m_send->SetSessionContextJson(m_workspaceContextJson.toUtf8().constData());
+    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+    if (!m_send->SetSessionContextJson(contextBytes.constData())) {
+        WriteStatus(tr("Send context is invalid"));
+        WriteUserAction("ContextRejected", "SendUI rejected workspace context");
+        return false;
+    }
     m_sendWidget = m_send->CreateWidget(m_orderWorkspaceWidget);
     if (!m_sendWidget) {
         WriteStatus(tr("Send widget create failed"));
@@ -1607,6 +1710,11 @@ bool MainWindow::NormalizeExternalOrderContext(const QString& inputJsonPath,
     if (!m_externalLaunchAdapterInitialized) {
         m_externalLaunchAdapterInitialized = m_externalLaunchAdapter->Init(m_appDirUtf8.constData(),
                                                                            m_logDirUtf8.constData());
+    }
+    if (!m_externalLaunchAdapterInitialized) {
+        WriteUserAction("ExternalOrderFailed", "ExternalLaunchAdapter Init returned false");
+        WriteStatus(tr("External launch adapter initialize failed"));
+        return false;
     }
 
     // 先给 64KB 缓冲区。患者/订单/扫描方案字段正常远小于这个尺寸；
@@ -2308,21 +2416,30 @@ IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
 // 构造工作台默认上下文。
 // 这里用 JSON 作为跨模块轻量载体：模块只读取需要的字段，新增字段不会破坏旧模块。
 QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const {
+    const bool practiceMode = mode == "practice";
+
+    // source 说明上下文来自软件内部入口；手工建单和练习仍使用同一标准 JSON 结构。
+    QJsonObject source;
+    source.insert("launchType", "internal");
+    source.insert("thirdPartyType", practiceMode ? "practice" : "manual");
+    source.insert("sourceSystem", "MeyerScan");
+
     QJsonObject patient;
-    patient.insert("id", "PRACTICE_PATIENT");
-    patient.insert("name", mode == "practice" ? "Practice Patient" : "Test Patient");
+    // 练习模式允许明确的非真实占位信息；手工创建必须从空白表单开始。
+    patient.insert("patientId", practiceMode ? "PRACTICE_PATIENT" : "");
+    patient.insert("name", practiceMode ? tr("Practice Patient") : "");
     patient.insert("gender", "unknown");
-    patient.insert("age", 0);
 
     QJsonObject order;
-    order.insert("id", mode == "practice" ? "PRACTICE_ORDER" : "LOCAL_ORDER");
+    order.insert("orderId", practiceMode ? "PRACTICE_ORDER" : "");
     order.insert("source", mode);
-    order.insert("doctor", "Default Doctor");
-    order.insert("lab", "Default Lab");
+    order.insert("doctor", practiceMode ? tr("Practice Doctor") : "");
+    order.insert("lab", practiceMode ? tr("Practice Lab") : "");
 
     QJsonObject context;
     context.insert("schemaVersion", 1);
     context.insert("mode", mode);
+    context.insert("source", source);
     context.insert("patient", patient);
     context.insert("order", order);
     context.insert("scanProcess", BuildDefaultScanProcessObject());
@@ -2405,13 +2522,19 @@ void MainWindow::SetWorkspaceScanProcess(const QJsonObject& scanProcessObject) {
 
     const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
     if (m_scanWorkflow) {
-        m_scanWorkflow->SetSessionContextJson(contextBytes.constData());
+        if (!m_scanWorkflow->SetSessionContextJson(contextBytes.constData())) {
+            WriteUserAction("ContextRejected", "ScanWorkflowUI rejected refreshed scan process");
+        }
     }
     if (m_dataProcess) {
-        m_dataProcess->SetSessionContextJson(contextBytes.constData());
+        if (!m_dataProcess->SetSessionContextJson(contextBytes.constData())) {
+            WriteUserAction("ContextRejected", "DataProcessUI rejected refreshed scan process");
+        }
     }
     if (m_send) {
-        m_send->SetSessionContextJson(contextBytes.constData());
+        if (!m_send->SetSessionContextJson(contextBytes.constData())) {
+            WriteUserAction("ContextRejected", "SendUI rejected refreshed workspace context");
+        }
     }
 }
 

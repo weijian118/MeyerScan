@@ -1,6 +1,7 @@
 ﻿#include "OrderScanWorkspaceShell.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QLabel>
@@ -46,6 +47,9 @@ int main(int argc, char* argv[]) {
     const QString logDir = QDir(appDir).filePath("logs");
     // 目录不存在时先创建，避免 Init 内部初始化日志失败。
     QDir().mkpath(logDir);
+    // DLL 接口使用 UTF-8 字节；两个命名缓冲区可在首次和重复 Init 时安全复用。
+    const QByteArray appDirBytes = appDir.toUtf8();
+    const QByteArray logDirBytes = logDir.toUtf8();
 
     // 工厂函数验证 DLL 导出和链接关系是否正确。
     IOrderScanWorkspaceShell* shell = GetOrderScanWorkspaceShell();
@@ -53,7 +57,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 保存应用目录和日志目录，后续真实建单/扫描模块挂载时继续复用。
-    if (!Check(shell->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(shell->Init(appDirBytes.constData(), logDirBytes.constData()),
                "OrderScanWorkspaceShell 初始化成功")) {
         return 2;
     }
@@ -119,7 +123,7 @@ int main(int argc, char* argv[]) {
     delete widget;
     shell->Shutdown();
 
-    if (!Check(shell->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(shell->Init(appDirBytes.constData(), logDirBytes.constData()),
                "OrderScanWorkspaceShell 重新初始化成功")) {
         return 11;
     }

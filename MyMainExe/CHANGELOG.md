@@ -1,7 +1,17 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-13
+
+- `v0.1.7` 最终代码日期更新为 2026-07-13；手工创建默认上下文改为空白患者/订单，不再注入 `Test Patient`、`LOCAL_ORDER`、默认医生或默认技工所。
+- 默认上下文补齐标准 `source` 对象，并把历史 `id` 字段修正为 OrderCreateUI 实际合同使用的 `patientId` / `orderId`；练习模式继续保留明确标识的 `PRACTICE_*` 非真实数据。
+- VS2015 根方案、CMake Release、`--smoke`、`--smoke-main` 和外部 JSON 建单 smoke 通过；最新 versionList 24 项无缺失、无版本不一致、无代码版本错误。
+
 ## 2026-07-12
 
+- 版本升级为 `v0.1.7`；MainExe 现在检查 ConfigCenter、Permission、UIComponents、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、WorkspaceShell、ScanWorkflowUI、DataProcessUI、SendUI 和 ExternalLaunchAdapter 的初始化/上下文返回值，失败时停止对应页面创建或进入明确降级路径。
+- Scan/Process/Send 的页面推进只在目标页成功创建后执行；刷新工作台 JSON 被子模块拒绝时记录 `ContextRejected`，不再把无效上下文静默带入下一阶段。
+- 接入 `SendUIActionDataFormatChanged`，只记录格式选择变化，不把真实导出、压缩、邮件或上传业务塞入 MainExe/SendUI。
+- `--smoke-main` 与第三方 JSON 建单链路复验通过；最新 versionList 为 24 项、0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。
 - 本轮未修改 MainExe 业务代码，版本保持 `v0.1.6`；因 OrderCreateUI/UIResources 依赖更新，强制 Rebuild 根输出和单模块输出，避免增量构建让 `MeyerScan.exe` 时间戳停留在 7 月 10 日。
 - 历史称谓 `minMain` 统一解释为 `MeyerScan.exe --smoke-main` 最小集成链路，不再维护独立 minMain 项目；根输出和单模块输出均返回 0。
 - 根输出同时通过 `--smoke` 和外部 JSON 建单 smoke；最新 versionList 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。

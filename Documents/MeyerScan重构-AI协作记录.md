@@ -8,6 +8,70 @@
 
 ---
 
+## 2026-07-13 - 生产测试数据隔离与最终复核
+
+### 用户要求
+
+用户要求继续检查近期新增模块注释，并依据重构方案复核全部模块的职责、依赖和交互是否偏移。
+
+### 代码处理
+
+1. 在上一轮全模块失败路径和中文实现注释复核基础上，继续搜索生产代码中的固定患者、订单、医生、技工所、牙位和治疗方案示例值。
+2. OrderCreateUI 无上下文时不再预填固定患者号、姓名、年龄、生日、医生、技工所、订单号和示例牙位；医生、技工所和生日仅显示 `tr()` 包裹的选择提示。
+3. `SetOrderContextJson()` 先解析局部候选 JSON，成功后再替换 pending context；非法 JSON 返回 `false` 并保留上一份有效上下文。smoke 新增空白生产状态、非法 JSON 不污染缓存、Shutdown 后重新 Init 等断言。
+4. MainExe 手工创建改为空白患者/订单上下文，字段统一为 `patientId` / `orderId` 并补充标准 `source`；练习模式保留独立默认数据，但统一使用 `PRACTICE_*` 标识。SendUI 同步删除生产界面的测试患者、默认医生和 `LOCAL_ORDER`。
+5. MainExe 保持 v0.1.7，OrderCreateUI 升级到 v0.5.3；CMake、代码版本和 Windows `Version.rc` 已一致。
+
+### 架构结论
+
+- 未发现 UI 模块直接访问 Database；CaseUI/SettingsUI 继续只读 RuntimeDataCenter，SendUI 继续只上报动作而不实现网络、压缩、上传或真实导出。
+- WorkspaceShell 仍是 Order/Scan/Process/Send 唯一步骤导航所有者；Scan/Process 离开时释放 QVTK/VTK/OpenGL，MainExe 进入扫描前释放 CaseUI。
+- 未发现运行路径使用 `QDir::currentPath()`；业务源码样式仍只通过 `MeyerQtModuleUtils::ApplyModuleQss()` 公共入口加载。
+- 当前没有新增模块边界偏移。下一步应优先完成真实建单保存/查询、ScanSchema/Workflow 服务和设备算法链路。
+
+### 验证结果
+
+- VS2015 根 `MeyerScan_AllModules.sln` Release x64 与 `cmake --build F:\MeyerScan\build --config Release --parallel 4` 均通过；仅保留外部登录头文件原有 C4819/C4091 警告。
+- OrderCreateUI 增强 smoke、MainExe `--smoke`、`--smoke-main`、`--smoke-external-order` 均返回 0。
+- 最新 `versionList_20260713_072234_645.json` 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`；MainExe 为文件/代码版本 0.1.7，OrderCreateUI 为 0.5.3。
+- 本轮代码、模块文档和四份权威文档在验证通过后统一提交 GitHub，并通过整体备份脚本同步到 `F:\MeyerScan-Reposit` 本地仓库；提交信息使用中文并详细描述变更和验证结果。
+
+---
+
+## 2026-07-12 - 全模块代码注释、失败路径与架构偏移复核
+
+### 用户要求
+
+用户要求检查全部模块代码，重点补充近期新增模块的中文注释，并对照重构方案检查职责、依赖和交互是否发生偏移。
+
+### 代码处理
+
+1. 重点补充 SendUI、ScanWorkflowUI、DataProcessUI、ScanReconstructStudio、OrderCreateUI、WorkspaceShell、UIResources 及其测试宿主的函数说明和函数内部“如何实现”注释；同步补充 MainExe、HomeUI、CaseUI、SettingsUI 的失败路径说明。
+2. Send/Scan/Process 的非法 JSON 改为返回 false 并保留上一份有效上下文；测试先写有效上下文再写非法 JSON，验证 UI 字段/流程没有被破坏。
+3. Scan/Process 的 CreateWidget 不再隐式 Activate，由 MainExe 或 ScanReconstructStudio 完成挂载后显式激活；当前步骤禁用时选择首个 enabled 步骤，全部禁用时保持无活动步骤并清理旧显示数据。
+4. MainExe 检查 ConfigCenter、Permission、UIComponents、RuntimeDataCenter、各 UI、WorkspaceShell 和 ExternalLaunchAdapter 的 Init/上下文返回值；目标页创建失败时不推进步骤，刷新上下文失败记录 `ContextRejected`。
+5. SettingsUI 检查两个校准子模块 Init；失败时 Shutdown、清空接口并只降级对应校准能力。Home/Case/Order 的 UIComponents 初始化失败、Workspace/Order/Scan/Process/Send/Studio 的 Logger 初始化失败均清空半初始化接口并走规定降级。
+6. SendUI 删除测试患者、默认医生和 `LOCAL_ORDER` 生产伪数据，新增末尾动作 `SendUIActionDataFormatChanged = 7`；程序填充使用信号阻断，真实客户选择才上报。真实导出、压缩、邮件和上传仍未进入 UI 模块。
+7. HomeUITest/CaseUITest 补齐 Init/CreateWidget 空值保护；ScanReconstructStudio 的 `SwitchToStep()` 返回 bool，子模块 Init/上下文/页面创建失败向 Initialize/RunSmoke 传播。
+
+### 架构复核结论
+
+- 未发现近期 UI 模块直接访问 MyDatabase、配置文件或权限文件；CaseUI/SettingsUI 继续只读 RuntimeDataCenter，写操作仍归服务层。
+- 未发现 SendUI 内实现网络、压缩、邮件、上传或真实导出；页面只展示上下文并上报稳定动作 ID。
+- 源码实际 `setStyleSheet()` 仍只有 `Common/include/MeyerQtModuleUtils.h` 公共入口；未发现运行路径使用 `QDir::currentPath()`。
+- WorkspaceShell 继续只拥有唯一步骤导航和页面容器；Order/Scan/Process/Send 只提供内容页。Scan/Process 离开时释放 QVTK/VTK/OpenGL，MainExe 进入扫描前释放 CaseUI。
+- 当前拆分无新增架构偏移。下一优先项仍是真实患者/订单保存查询、ScanSchema/Workflow 服务和扫描设备/算法链路，不继续增加只有占位接口的模块。
+
+### 版本与验证
+
+- 版本同步为 MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.1、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2；UIResources 因资源内容未变保持 v0.1.3。
+- VS2015 根 `MeyerScan_AllModules.sln /t:Rebuild` 和 `cmake --build F:\MeyerScan\build --config Release --parallel 4` 均通过；只保留外部登录模块头文件既有 C4819/C4091 警告。
+- 24 项自研测试/集成链路及 `MeyerScan.exe --smoke` 全部返回 0；`--smoke-main` 日志覆盖 Home -> Practice -> Scan -> Process -> Home -> Case -> 释放 Case，外部 JSON smoke 覆盖 ExternalLaunchAdapter -> 后台首页创建入口 -> WorkspaceShell/OrderCreateUI。
+- 最后一轮源码调整后重新执行 VS2015/CMake 增量构建、五个受影响模块测试和 MainExe 集成 smoke；最新清单 `versionList_20260712_184237_111.json` 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。`CheckSourceCommentSafety.ps1` 结果为 0 错误、0 警告，`git diff --check` 无空白错误。
+- 本轮按用户当前要求只修改代码和文档，未提交 GitHub 或本地仓库。
+
+---
+
 ## 2026-07-12 - 文档迁移、注释安全、治疗类型 hover 与 MainExe 重验证
 
 ### 用户要求

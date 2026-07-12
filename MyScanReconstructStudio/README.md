@@ -9,6 +9,8 @@
 - 统一承载“扫描”和“数据处理”两个大阶段。嵌入 OrderScanWorkspaceShell 时外层壳拥有品牌和步骤导航，模块必须避免重复顶部；独立 EXE 才使用自己的独立窗口显示形态。
 - 切换阶段前调用离开模块的 `DeactivateAndRelease()`，释放 `QVTKWidget`、VTK renderer、OpenGL/显存等重资源。
 - 当前通过 UTF-8 JSON 上下文接收订单/会话信息；后续再接 IPC 状态同步。
+- 子 DLL 的加载、工厂解析、Init、上下文校验和 QWidget 创建均为独立失败点；任一步失败都向 Initialize/RunSmoke 返回 false，不能显示空壳后报告成功。
+- `SwitchToStep()` 只有在目标重页面成功创建后才更新当前步骤；切换前仍先释放离开页 QVTK/VTK/OpenGL 资源。
 
 ## 边界
 

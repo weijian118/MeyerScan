@@ -1,5 +1,12 @@
 # MySendUI 修改记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.1.2`；非法 session JSON 返回 false 并保留上一份有效上下文，删除生产界面中的测试患者、默认医生和 `LOCAL_ORDER` 伪数据。
+- 新增末尾动作 `SendUIActionDataFormatChanged = 7`；程序填充上下文时用 `QSignalBlocker` 避免伪造客户操作，真实下拉选择才上报动作。
+- Logger/UIComponents 初始化失败时清空接口并走显式降级；发送页仍只展示字段、记录日志和上报意图，不直接导出、压缩、发邮件或上传。
+- 公开接口、内部控件状态、JSON 应用和测试宿主补充中文实现注释；`SendUITest.exe` 全部断言通过。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.1.1`，同步代码版本、CMake 和 `Version.rc`。

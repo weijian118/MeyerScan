@@ -24,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_HomeUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_HomeUI v0.3.1 (2026-07-10)";
+const char* Version = "MeyerScan_HomeUI v0.3.2 (2026-07-12)";
 }
 
 // 首页背景控件负责按窗口尺寸绘制产品视觉图。
@@ -194,7 +194,13 @@ void HomeUIImpl::LoadUIComponents() {
         // applicationDirPath 用于传安装目录，不能用 currentPath。
         const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
         // appDirBytes 必须作为局部变量保存到 Init 调用结束，避免临时 QByteArray 指针悬空。
-        m_uiComponents->Init(appDirBytes.constData());
+        if (!m_uiComponents->Init(appDirBytes.constData())) {
+            // 初始化失败时不能继续使用工厂接口，清空后让 CreateWidget 走本地 Qt 控件降级分支。
+            WriteLog(LogLevel::Warning,
+                     "LoadUIComponents",
+                     "UIComponents Init returned false; fallback to local styles");
+            m_uiComponents = nullptr;
+        }
     }
 }
 

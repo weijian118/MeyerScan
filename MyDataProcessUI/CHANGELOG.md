@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.2.3`；非法 session JSON 返回 false 且不覆盖上一份有效上下文，CreateWidget 与 Activate 生命周期分离。
+- 当前步骤禁用时选择第一个 enabled 步骤；全部禁用时显示无可用步骤并清空旧 actor，不再越权强制选择索引 0。
+- Logger 初始化失败时显式降级；补充公开接口、QVTK/VTK 生命周期、流程按钮、占位数据和测试代码的中文实现注释。
+- `DataProcessUITest.exe` 覆盖上下文事务性、显式 Activate、流程切换和“不出现 Scan Start/Pause”规则并通过。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.2.2`；QVTK 释放顺序改为“移除 renderer -> 清内部 renderer 指针 -> 断开 render window/interactor -> 延迟删除控件 -> 删除 renderer”。

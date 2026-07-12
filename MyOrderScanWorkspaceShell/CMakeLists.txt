@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderScanWorkspaceShell VERSION 0.1.2 LANGUAGES CXX)
+project(MeyerScan_OrderScanWorkspaceShell VERSION 0.1.3 LANGUAGES CXX)
 
 
 

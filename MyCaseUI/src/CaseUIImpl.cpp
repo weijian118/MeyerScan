@@ -34,7 +34,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CaseUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_CaseUI v0.3.1 (2026-07-10)";
+const char* Version = "MeyerScan_CaseUI v0.3.2 (2026-07-12)";
 }
 }
 
@@ -181,7 +181,13 @@ void CaseUIImpl::LoadUIComponents() {
         // QByteArray 必须保存到局部变量，不能直接写 applicationDirPath().toUtf8().constData() 后跨语句使用。
         // 这里 Init 在当前语句内同步完成，所以局部 QByteArray 生命周期足够。
         const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
-        m_uiComponents->Init(appDirBytes.constData());
+        if (!m_uiComponents->Init(appDirBytes.constData())) {
+            // 初始化失败后清空接口，后续控件工厂会自动走 CaseUI 本地降级实现。
+            WriteLog(LogLevel::Warning,
+                     "LoadUIComponents",
+                     "UIComponents Init returned false; fallback to local styles");
+            m_uiComponents = nullptr;
+        }
     }
 }
 

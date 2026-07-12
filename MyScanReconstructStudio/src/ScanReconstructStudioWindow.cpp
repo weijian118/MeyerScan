@@ -19,7 +19,7 @@ namespace ModuleInfo {
 const char* Name = "ScanReconstructStudio";
 
 // GetMeyerModuleVersion() 返回的代码版本，必须与 Version.rc 保持同步。
-const char* Version = "ScanReconstructStudio v0.1.2 (2026-07-10)";
+const char* Version = "ScanReconstructStudio v0.1.3 (2026-07-12)";
 }
 
 // 从子 DLL 解析出来的 C ABI 工厂函数类型。
@@ -65,7 +65,11 @@ bool ScanReconstructStudioWindow::Initialize() {
     // 日志必须最早初始化，这样后续 DLL 加载失败也能落盘。
     m_logger = GetLogger();
     if (m_logger) {
-        m_logger->Init(m_logDir.toUtf8().constData(), LogLevel::Info);
+        const QByteArray logDirBytes = m_logDir.toUtf8();
+        if (!m_logger->Init(logDirBytes.constData(), LogLevel::Info)) {
+            // 壳子允许无日志降级，但不保留半初始化接口。
+            m_logger = nullptr;
+        }
     }
     WriteLog(LogLevel::Info, "Initialize", "ScanReconstructStudio initializing");
 
@@ -77,9 +81,12 @@ bool ScanReconstructStudioWindow::Initialize() {
         return false;
     }
 
-    // 创建壳子 UI，并进入扫描阶段。
+    // 创建壳子 UI，并进入扫描阶段；页面创建失败必须向上传播，不能显示空壳后仍返回成功。
     BuildShellUi();
-    SwitchToStep(StepScan);
+    if (!SwitchToStep(StepScan)) {
+        WriteLog(LogLevel::Error, "Initialize", "Initial scan page create failed");
+        return false;
+    }
     WriteLog(LogLevel::Info, "Initialize", "ScanReconstructStudio initialized");
     return true;
 }
@@ -92,7 +99,9 @@ bool ScanReconstructStudioWindow::RunSmoke() {
     }
 
     // 前后切换一次，验证页面释放和重建链路。
-    SwitchToStep(StepDataProcess);
+    if (!SwitchToStep(StepDataProcess)) {
+        return false;
+    }
     if (!m_pages.contains(StepDataProcess)) {
         WriteLog(LogLevel::Error, "RunSmoke", "Data process page was not created");
         return false;
@@ -101,7 +110,9 @@ bool ScanReconstructStudioWindow::RunSmoke() {
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QCoreApplication::processEvents();
 
-    SwitchToStep(StepScan);
+    if (!SwitchToStep(StepScan)) {
+        return false;
+    }
     if (!m_pages.contains(StepScan)) {
         WriteLog(LogLevel::Error, "RunSmoke", "Scan page was not recreated");
         return false;
@@ -155,6 +166,7 @@ QWidget* ScanReconstructStudioWindow::CreateTopStepBar(QWidget* parent) {
     m_stepLabel = new QLabel(tr("Scan"), widget);
 
     QObject::connect(scanButton, &QPushButton::clicked, [this]() {
+        // SwitchToStep 内部记录失败原因；按钮回调不在 UI 层弹业务错误框。
         SwitchToStep(StepScan);
     });
     QObject::connect(processButton, &QPushButton::clicked, [this]() {
@@ -200,13 +212,13 @@ QWidget* ScanReconstructStudioWindow::CreateWindowToolBar(QWidget* parent) {
 }
 
 // 切换扫描/数据处理阶段，并释放上一个阶段的重资源。
-void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
+bool ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
     // 请求的页面已经处于活动状态时，只刷新标题，不重复创建页面。
     if (m_currentStep == step && m_pages.contains(step)) {
         if (m_stepLabel) {
             m_stepLabel->setText(step == StepScan ? tr("Scan") : tr("Data Processing"));
         }
-        return;
+        return true;
     }
 
     // 创建新页面前先释放上一个 QVTK/OpenGL 页面，避免显存累积。
@@ -222,10 +234,10 @@ void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
 
     if (!page || !m_stack) {
         WriteLog(LogLevel::Error, "SwitchToStep", "Failed to create step page");
-        return;
+        return false;
     }
 
-    // The stack only contains the active heavy page after ReleaseCurrentStepResources().
+    // ReleaseCurrentStepResources 后 stack 只保留当前重页面，避免 Scan/Process 同时占用显存。
     m_stack->addWidget(page);
     m_stack->setCurrentWidget(page);
     m_pages.insert(step, page);
@@ -236,6 +248,7 @@ void ScanReconstructStudioWindow::SwitchToStep(StudioStep step) {
 
     WriteLog(LogLevel::Info, "SwitchToStep",
              QString("Current step: %1").arg(step == StepScan ? "scan" : "data-process"));
+    return true;
 }
 
 // 动态加载扫描 UI DLL。
@@ -261,12 +274,18 @@ bool ScanReconstructStudioWindow::LoadScanModule() {
         return false;
     }
 
-    const bool initOk = m_scanModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    // QByteArray 局部变量保证两个 constData 指针在整个跨 DLL 调用期间有效。
+    const QByteArray appDirBytes = m_appDir.toUtf8();
+    const QByteArray logDirBytes = m_logDir.toUtf8();
+    const bool initOk = m_scanModule->Init(appDirBytes.constData(), logDirBytes.constData());
     if (!initOk) {
         WriteLog(LogLevel::Error, "LoadScanModule", "Scan module Init returned false");
         return false;
     }
-    m_scanModule->SetSessionContextJson(m_contextJson.constData());
+    if (!m_scanModule->SetSessionContextJson(m_contextJson.constData())) {
+        WriteLog(LogLevel::Error, "LoadScanModule", "Scan module rejected session context");
+        return false;
+    }
     m_scanModule->SetActionCallback(&ScanReconstructStudioWindow::OnChildAction, this);
     WriteLog(LogLevel::Info, "LoadScanModule", m_scanModule->GetModuleVersion());
     return true;
@@ -295,12 +314,18 @@ bool ScanReconstructStudioWindow::LoadDataProcessModule() {
         return false;
     }
 
-    const bool initOk = m_processModule->Init(m_appDir.toUtf8().constData(), m_logDir.toUtf8().constData());
+    // 显式 UTF-8 缓冲区避免把临时 toUtf8().constData() 指针误保存到子模块。
+    const QByteArray appDirBytes = m_appDir.toUtf8();
+    const QByteArray logDirBytes = m_logDir.toUtf8();
+    const bool initOk = m_processModule->Init(appDirBytes.constData(), logDirBytes.constData());
     if (!initOk) {
         WriteLog(LogLevel::Error, "LoadDataProcessModule", "Data process module Init returned false");
         return false;
     }
-    m_processModule->SetSessionContextJson(m_contextJson.constData());
+    if (!m_processModule->SetSessionContextJson(m_contextJson.constData())) {
+        WriteLog(LogLevel::Error, "LoadDataProcessModule", "Data process module rejected session context");
+        return false;
+    }
     m_processModule->SetActionCallback(&ScanReconstructStudioWindow::OnChildAction, this);
     WriteLog(LogLevel::Info, "LoadDataProcessModule", m_processModule->GetModuleVersion());
     return true;
@@ -399,6 +424,7 @@ void ScanReconstructStudioWindow::HandleChildAction(int actionId) {
     // 初版只接通阶段流转：扫描完成进入数据处理。
     if (m_currentStep == StepScan &&
         (actionId == ScanWorkflowActionComplete || actionId == ScanWorkflowActionNext)) {
+        // SwitchToStep 会记录目标页创建失败，壳子继续保留可诊断状态。
         SwitchToStep(StepDataProcess);
         return;
     }

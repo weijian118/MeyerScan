@@ -55,7 +55,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.2.0 (2026-06-25)";
+const char* Version = "MeyerScan_SettingsUI v0.2.1 (2026-07-12)";
 }
 
 // 根据安装目录解析数据库配置路径。
@@ -346,8 +346,15 @@ void SettingsUIImpl::LoadCalibrationModules() {
                     const QByteArray appDirBytes = m_appDir.toUtf8();
                     const QByteArray logDirBytes = m_logDir.toUtf8();
                     // 校准模块初始化失败不阻断设置页，因为设置页还包含大量非校准功能。
-                    // 后续可以在校准卡片上显示更明确的失败原因。
-                    m_calibration3D->Init(appDirBytes.constData(), logDirBytes.constData());
+                    // Init 只说明接口指针是否真正可用，不能把“DLL 已加载”当成初始化成功。
+                    if (!m_calibration3D->Init(appDirBytes.constData(), logDirBytes.constData())) {
+                        // 先让子模块清理可能已经创建的半初始化资源，再清空本模块保存的接口。
+                        m_calibration3D->Shutdown();
+                        m_calibration3D = nullptr;
+                        WriteLog(LogLevel::Warning,
+                                 "LoadCalibrationModules",
+                                 "Calibration3DUI init failed");
+                    }
                 }
             }
         }
@@ -365,7 +372,14 @@ void SettingsUIImpl::LoadCalibrationModules() {
                     const QByteArray appDirBytes = m_appDir.toUtf8();
                     const QByteArray logDirBytes = m_logDir.toUtf8();
                     // 与 3D 校准相同，颜色校准是可选子能力，加载失败时设置页继续可用。
-                    m_calibrationColor->Init(appDirBytes.constData(), logDirBytes.constData());
+                    if (!m_calibrationColor->Init(appDirBytes.constData(), logDirBytes.constData())) {
+                        // Shutdown 处理部分初始化状态；清空指针后 UI 会显示不可用占位内容。
+                        m_calibrationColor->Shutdown();
+                        m_calibrationColor = nullptr;
+                        WriteLog(LogLevel::Warning,
+                                 "LoadCalibrationModules",
+                                 "CalibrationColorUI init failed");
+                    }
                 }
             }
         }

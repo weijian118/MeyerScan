@@ -57,7 +57,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.5.2 (2026-07-12)";
+const char* Version = "MeyerScan_OrderCreateUI v0.5.3 (2026-07-13)";
 }
 
 const char* kOcclusionNatural = "natural";
@@ -66,8 +66,8 @@ const char* kOcclusionMandibleTemporary = "mandible_temporary";
 const char* kOcclusionFullTemporary = "full_temporary";
 const char* kOcclusionRecord = "record";
 
-// 治疗方案资源在运行总目录下的标准位置。
-// 规则：源码放在模块 Resources 下，构建后复制到 MeyerScan.exe 同级 Resources/Modules/<ModuleName>/ 下。
+// 旧安装包把治疗方案散文件放在运行目录下，本常量只用于兼容回退。
+// 当前正式方案优先从 MeyerScan_UIResources.dll 注册的 qrc 路径读取，不再发布这些散文件。
 const char* kTreatmentPlanRuntimeRelativePath = "Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan";
 
 // 治疗方案资源在模块源码目录下的位置，用于测试宿主和开发期 fallback。
@@ -80,6 +80,7 @@ const char* kTreatmentPlanLegacyRelativePath = "icon/createModule/sacanPlan";
 // QSS 负责按钮背景/边框，子类负责切换资源，并把白色 h 图合成到仅限图标区域的彩色圆底上。
 class TreatmentTypeButton : public QToolButton {
 public:
+    // 只扩展图标状态切换，按钮几何、字体、边框和背景继续由 QSS 管理。
     explicit TreatmentTypeButton(QWidget* parent = nullptr)
         : QToolButton(parent) {
     }
@@ -193,9 +194,12 @@ private:
 
     QString m_normalPath;
     QString m_highlightedPath;
+    // QIcon 在设置资源路径时一次构建并缓存，hover 时不重复解码/逐像素合成 PNG。
     QIcon m_normalIcon;
     QIcon m_highlightedIcon;
+    // 前四种类型需要局部圆底，种植体使用 QSS 整行高亮。
     bool m_useCircularHighlight = false;
+    // selected 和 hovered 分开保存，保证选中按钮移出鼠标后仍保持高亮。
     bool m_selected = false;
     bool m_hovered = false;
 };
@@ -325,7 +329,10 @@ bool OrderCreateUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // 初始化时缓存日志接口。后续所有日志都通过 m_logger 输出，符合"每模块一份日志变量"的规则。
     m_logger = GetLogger();
     if (m_logger && !m_logDir.isEmpty()) {
-        m_logger->Init(m_logDir.constData(), LogLevel::Info);
+        if (!m_logger->Init(m_logDir.constData(), LogLevel::Info)) {
+            // 建单主流程允许无日志降级，但不能保留半初始化日志接口。
+            m_logger = nullptr;
+        }
     }
 
     // UIComponents 只负责通用控件的视觉统一；建单字段、牙位状态和动作回调仍留在本模块。
@@ -421,16 +428,17 @@ QWidget* OrderCreateUIImpl::CreateWidget(QWidget* parent) {
         // 如果 MainExe 或第三方流程在页面创建前已经传入标准上下文，
         // 页面创建完成后立即应用，避免客户看到默认数据再跳变成第三方数据。
         const QByteArray pendingContextCopy = m_pendingContextJson;
-        SetOrderContextJson(pendingContextCopy.constData());
+        if (!SetOrderContextJson(pendingContextCopy.constData())) {
+            // pendingContext 正常情况下已经验证过；这里仍检查返回值，防止以后增加 schema 校验时漏掉失败。
+            WriteLog(LogLevel::Error,
+                     "CreateWidget",
+                     "Validated pending order context could not be applied");
+        }
     } else {
-        // 没有外部上下文时才使用截图中的示例牙位，
-        // 便于人工双击测试宿主时马上看到右侧明细联动。
-        m_selectedTeeth.insert(15);
-        m_selectedTeeth.insert(16);
-        m_selectedTeeth.insert(47);
-        m_toothTypeCodes.insert(15, "crown");
-        m_toothTypeCodes.insert(16, "crown");
-        m_toothTypeCodes.insert(47, "implant");
+        // 生产 DLL 没有上下文时必须显示空白建单状态；演示患者和牙位只允许由测试宿主传入。
+        m_selectedTeeth.clear();
+        m_toothTypeCodes.clear();
+        m_selectedBridgeKeys.clear();
         RefreshSelectionTable();
         RefreshBasicSummary();
         RefreshTreatmentPlanWidget();
@@ -462,20 +470,23 @@ bool OrderCreateUIImpl::SetOrderContextJson(const char* contextJsonUtf8) {
         return false;
     }
 
-    // 保存一份原始 UTF-8 文本，保证"先设置上下文、后创建界面"的调用顺序可用。
-    m_pendingContextJson = QByteArray(contextJsonUtf8);
-    m_hasPendingContext = true;
-
+    // 先把调用方字节复制到候选缓冲区，但此时不覆盖上一份有效 pendingContext。
+    // 这样非法 JSON 失败后，CreateWidget 仍会应用此前已经验证的标准上下文。
+    const QByteArray candidateContextJson(contextJsonUtf8);
     QJsonParseError parseError;
     // Qt JSON 解析器直接消费 UTF-8 QByteArray。
     // 返回的 QJsonDocument 拥有自己的内部数据，不依赖 contextJsonUtf8 指针生命周期。
-    const QJsonDocument document = QJsonDocument::fromJson(m_pendingContextJson, &parseError);
+    const QJsonDocument document = QJsonDocument::fromJson(candidateContextJson, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         WriteLog(LogLevel::Warning,
                  "SetOrderContextJson",
                  QString("Invalid context json: %1").arg(parseError.errorString()));
         return false;
     }
+
+    // 只有完整 JSON 解析成功后才提交候选缓存，形成“校验成功后一次替换”的事务式更新。
+    m_pendingContextJson = candidateContextJson;
+    m_hasPendingContext = true;
 
     const QJsonObject rootObject = document.object();
     const QJsonObject sourceObject = rootObject.value("source").toObject();
@@ -538,7 +549,7 @@ bool OrderCreateUIImpl::SetOrderContextJson(const char* contextJsonUtf8) {
         m_orderNoteEdit->setPlainText(ReadString(orderObject, "note", m_orderNoteEdit->toPlainText()));
     }
 
-    // 扫描方案中的 items 会覆盖默认牙位示例。
+    // 扫描方案中的 items 会更新当前牙位选择。
     // 如果 items 为空，保留当前牙位状态，方便第三方只传患者/订单基础信息。
     ApplyScanPlanItems(scanPlanObject);
     // scanProcess 是新增的流程控制输入，第三方或后续 HIS 也可以直接给出统一配置。
@@ -611,7 +622,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     outerLayout->setSpacing(8);
 
     // 患者编号由上层建单流程生成，初版设为只读，避免用户误改主键类字段。
-    m_patientIdEdit = CreateStandardLineEdit(parent, "20260704103001");
+    m_patientIdEdit = CreateStandardLineEdit(parent);
     m_patientIdEdit->setReadOnly(true);
     m_patientIdEdit->setObjectName("OrderCreatePatientIdEdit");
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Patient ID")));
@@ -620,7 +631,6 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     // 患者姓名是建单核心字段。textChanged 信号用于立即刷新右侧摘要。
     m_patientNameEdit = CreateStandardLineEdit(parent);
     m_patientNameEdit->setObjectName("OrderCreatePatientNameEdit");
-    m_patientNameEdit->setText(tr("Test Patient"));
     QObject::connect(m_patientNameEdit, &QLineEdit::textChanged, [this]() {
         // 用户每次修改姓名时只刷新摘要，不做保存，避免 UI 层越界写数据库。
         RefreshBasicSummary();
@@ -632,7 +642,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     // 年龄和出生日期横向排列，减少左栏纵向空间占用。
     auto* ageBirthLayout = new QHBoxLayout();
     auto* ageBox = new QVBoxLayout();
-    m_ageEdit = CreateStandardLineEdit(parent, "23");
+    m_ageEdit = CreateStandardLineEdit(parent);
     m_ageEdit->setObjectName("OrderCreateAgeEdit");
     ageBox->addWidget(CreateStandardFieldLabel(parent, tr("Age")));
     ageBox->addWidget(m_ageEdit);
@@ -641,7 +651,10 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     m_birthDateEdit = CreateStandardDateEdit(parent);
     m_birthDateEdit->setObjectName("OrderCreateBirthDateEdit");
     m_birthDateEdit->setDisplayFormat("yyyy/MM/dd");
-    m_birthDateEdit->setDate(QDate(2003, 6, 29));
+    // QDateEdit 没有真正的空值；把最小日期作为占位哨兵，并用可翻译文字显示“尚未选择”。
+    m_birthDateEdit->setMinimumDate(QDate(1900, 1, 1));
+    m_birthDateEdit->setSpecialValueText(tr("Select date"));
+    m_birthDateEdit->setDate(m_birthDateEdit->minimumDate());
     birthBox->addWidget(CreateStandardFieldLabel(parent, tr("Birth Date")));
     birthBox->addWidget(m_birthDateEdit);
 
@@ -671,9 +684,8 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     // 主治医生和技工所使用下拉框，后续由 RuntimeDataCenter 提供真实列表。
     m_doctorCombo = CreateStandardComboBox(parent);
     m_doctorCombo->setObjectName("OrderCreateDoctorCombo");
-    m_doctorCombo->addItem(tr("Doctor"));
-    m_doctorCombo->addItem(tr("Dr. Wang"));
-    m_doctorCombo->addItem(tr("Dr. Li"));
+    // 当前只放一个无业务 ID 的占位项；真实医生列表后续由 RuntimeDataCenter 注入。
+    m_doctorCombo->addItem(tr("Select doctor"));
     QObject::connect(m_doctorCombo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), [this](int) {
         // 医生变化会影响右侧摘要，但不会在 UI 层直接写库。
         RefreshBasicSummary();
@@ -682,7 +694,7 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Doctor *")));
     outerLayout->addWidget(m_doctorCombo);
 
-    m_orderIdEdit = CreateStandardLineEdit(parent, "20260704103001-1");
+    m_orderIdEdit = CreateStandardLineEdit(parent);
     m_orderIdEdit->setObjectName("OrderCreateOrderIdEdit");
     m_orderIdEdit->setReadOnly(true);
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Order ID")));
@@ -690,8 +702,8 @@ QWidget* OrderCreateUIImpl::CreateBasicInfoPanel(QWidget* parent) {
 
     m_labCombo = CreateStandardComboBox(parent);
     m_labCombo->setObjectName("OrderCreateLabCombo");
-    m_labCombo->addItem(tr("Default Lab"));
-    m_labCombo->addItem(tr("Partner Lab"));
+    // 不在生产 UI 硬编码技工所测试名称，避免客户误把演示项当成真实合作方。
+    m_labCombo->addItem(tr("Select lab"));
     outerLayout->addWidget(CreateStandardFieldLabel(parent, tr("Lab")));
     outerLayout->addWidget(m_labCombo);
 
@@ -1676,8 +1688,12 @@ void OrderCreateUIImpl::LoadUIComponents() {
 
     // UIComponents 是视觉增强依赖，加载失败时必须允许建单页面用本地样式继续运行。
     // 这能避免发布目录漏复制共享 UI DLL 时，建单主流程直接不可用。
+    // 使用应用目录下的绝对路径，第三方拉起时即使 currentPath 改变也不会加载错误 DLL。
+    const QString appDir = m_appDir.isEmpty()
+        ? QCoreApplication::applicationDirPath()
+        : QString::fromUtf8(m_appDir);
     m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
+    m_uiComponentsLibrary.setFileName(QDir(appDir).filePath("MeyerScan_UIComponents.dll"));
     if (!m_uiComponentsLibrary.load()) {
         WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local order styles");
         return;
@@ -1710,7 +1726,14 @@ void OrderCreateUIImpl::LoadUIComponents() {
         const QByteArray appDirBytes = !m_appDir.isEmpty()
             ? m_appDir
             : QCoreApplication::applicationDirPath().toUtf8();
-        m_uiComponents->Init(appDirBytes.constData());
+        if (!m_uiComponents->Init(appDirBytes.constData())) {
+            // 共享组件初始化失败时主动退回本地 Qt 控件，不能继续使用半初始化接口。
+            WriteLog(LogLevel::Warning,
+                     "LoadUIComponents",
+                     "UIComponents Init returned false; fallback to local order controls");
+            m_uiComponents = nullptr;
+            return;
+        }
         WriteLog(LogLevel::Info, "LoadUIComponents", "UIComponents loaded for order create UI");
     }
 }

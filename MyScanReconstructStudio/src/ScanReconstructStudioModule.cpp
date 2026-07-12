@@ -11,7 +11,7 @@
 namespace {
 namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanReconstructStudio";
-const char* Version = "MeyerScan_ScanReconstructStudio v0.1.2 (2026-07-10)";
+const char* Version = "MeyerScan_ScanReconstructStudio v0.1.3 (2026-07-12)";
 }
 
 class ScanReconstructStudioModule : public IScanReconstructStudio {
@@ -103,9 +103,11 @@ private:
 } // namespace
 
 extern "C" MEYERSCAN_SCANRECONSTRUCTSTUDIO_API IScanReconstructStudio* GetScanReconstructStudio() {
+    // 工厂只返回 DLL 内单例地址，调用方不能 delete。
     return &ScanReconstructStudioModule::Instance();
 }
 
 extern "C" MEYERSCAN_SCANRECONSTRUCTSTUDIO_API const char* GetMeyerModuleVersion() {
+    // 静态字符串由 DLL 持有，versionList 只读使用。
     return ModuleInfo::Version;
 }

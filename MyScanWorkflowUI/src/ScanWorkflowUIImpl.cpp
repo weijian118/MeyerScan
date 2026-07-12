@@ -43,11 +43,11 @@ VTK_MODULE_INIT(vtkRenderingFreeType);
 
 namespace {
 namespace ModuleInfo {
-// This value is written into the structured log module field.
+// 结构化日志的 module 字段使用稳定英文名，不随界面语言变化。
 const char* Name = "MeyerScan_ScanWorkflowUI";
 
-// Code version returned by GetModuleVersion(). Keep it in sync with Version.rc.
-const char* Version = "MeyerScan_ScanWorkflowUI v0.2.2 (2026-07-10)";
+// GetModuleVersion 返回此代码版本，必须与 CMakeLists.txt 和 Version.rc 同步。
+const char* Version = "MeyerScan_ScanWorkflowUI v0.2.3 (2026-07-12)";
 }
 }
 
@@ -158,27 +158,36 @@ private:
     double m_zoomFactor = 1.0;
 };
 
-// Returns the scan UI singleton owned by this DLL.
+// 返回 DLL 持有的扫描 UI 单例。
 ScanWorkflowUIImpl& ScanWorkflowUIImpl::Instance() {
-    // A local static avoids cross-DLL ownership and is constructed once per process.
+    // C++11 保证函数内静态对象只构造一次，且对象不会跨 DLL 交给调用方 delete。
     static ScanWorkflowUIImpl instance;
     return instance;
 }
 
-// Initializes scan-stage paths and logger.
+// 初始化扫描阶段路径和 Logger。
 bool ScanWorkflowUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
-    // Copy incoming UTF-8 buffers so the caller can release temporary values safely.
+    // 立即复制 UTF-8 参数，调用方传入的 QByteArray 临时缓冲区在函数返回后可以安全释放。
     m_appDir = QByteArray(appDirUtf8 ? appDirUtf8 : "");
     m_logDir = QByteArray(logDirUtf8 ? logDirUtf8 : "");
 
-    // Cache the logger pointer once; later writes reuse this member.
-    m_logger = GetLogger();
-    if (m_logger && !m_logDir.isEmpty()) {
-        // Logger writes into the log directory passed by the shell.
-        m_logger->Init(m_logDir.constData(), LogLevel::Info);
+    // 应用目录为空时回退到 Qt 记录的 EXE 目录，禁止使用第三方启动器可改变的 currentPath。
+    if (m_appDir.isEmpty()) {
+        m_appDir = QCoreApplication::applicationDirPath().toUtf8();
     }
 
-    // This lightweight object proves that OpenCV 3.3 include/link paths work.
+    // Logger 指针只获取一次并缓存；后续日志不重复调用 GetLogger。
+    m_logger = GetLogger();
+    if (m_logger && !m_logDir.isEmpty()) {
+        // Logger::Init 是幂等接口，目录必须由 MainExe/扫描壳统一传入。
+        if (!m_logger->Init(m_logDir.constData(), LogLevel::Info)) {
+            // 日志不可用时扫描框架仍可运行，但不能继续调用半初始化接口。
+            m_logger = nullptr;
+        }
+    }
+
+    // 当前初版尚未接入图像算法；轻量 cv::Size 只验证 OpenCV 3.3 头文件和链接配置可用。
+    // 真正算法不得继续堆入本 UI 文件，后续应进入独立算法/扫描业务 DLL。
     cv::Size buildProbe(1920, 1080);
     WriteLog(LogLevel::Info, "Init",
              QString("Scan workflow UI initialized, OpenCV probe %1x%2")
@@ -187,27 +196,27 @@ bool ScanWorkflowUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     return true;
 }
 
-// Creates the root widget for the scan stage.
+// 创建扫描阶段根页面。
 QWidget* ScanWorkflowUIImpl::CreateWidget(QWidget* parent) {
-    // Release any previous QVTKWidget before creating a new page.
+    // 单例一次只允许持有一套 QVTK 资源；创建新页面前先释放上一套显示资源。
     DeactivateAndRelease();
 
-    // The shell/test host owns the returned QWidget through the Qt parent tree.
+    // 返回对象由 shell/test host 的 Qt 父子树持有，本模块只缓存非 owning 指针。
     auto* root = new QWidget(parent);
     root->setObjectName("MeyerScanScanWorkflowUIRoot");
     root->setMinimumSize(960, 600);
     root->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     MeyerQtModule::ApplyModuleQss(root, "MyScanWorkflowUI", "scan_workflow.qss", m_logger);
 
-    // Main layout: mode bar, central VTK area, and bottom controls.
+    // 页面使用纵向 Layout 组合流程栏、中央 VTK 区和扫描控制栏，不按分辨率写绝对坐标。
     auto* mainLayout = new QVBoxLayout(root);
     mainLayout->setContentsMargins(16, 16, 16, 16);
     mainLayout->setSpacing(12);
 
-    // The mode bar matches the scan-object selector in the reference product.
+    // 顶部流程栏由 session JSON 驱动，Scan 页面不自行生成建单规则。
     mainLayout->addWidget(CreateScanModeBar(root), 0, Qt::AlignHCenter);
 
-    // Central area: hint panel, expandable VTK viewer, and right-side tools.
+    // 中央区由 Scan 专属提示、可伸缩 VTK 视图和右侧工具组成。
     auto* centerLayout = new QHBoxLayout();
     centerLayout->setContentsMargins(0, 0, 0, 0);
     centerLayout->setSpacing(12);
@@ -216,43 +225,55 @@ QWidget* ScanWorkflowUIImpl::CreateWidget(QWidget* parent) {
     centerLayout->addWidget(CreateRightToolBar(root), 0, Qt::AlignVCenter);
     mainLayout->addLayout(centerLayout, 1);
 
-    // Bottom controls expose stage-level actions only.
+    // 底部按钮只上报扫描阶段动作，不在 UI 线程直接控制设备或算法。
     mainLayout->addWidget(CreateBottomControlBar(root), 0, Qt::AlignHCenter);
 
-    // Keep a non-owning pointer; Qt parent ownership destroys the actual widget.
+    // 只保存弱引用。Activate 必须由宿主在页面真正成为当前步骤后调用，避免重复激活日志。
     m_root = root;
-    Activate();
     WriteLog(LogLevel::Info, "CreateWidget", "Scan workflow widget created");
     return root;
 }
 
-// Stores lightweight session context as UTF-8 JSON.
+// 校验并保存轻量会话 JSON。
 bool ScanWorkflowUIImpl::SetSessionContextJson(const char* contextJsonUtf8) {
-    // Keep JSON opaque here; the real scanner can later resolve order/session IDs.
-    m_contextJson = QByteArray(contextJsonUtf8 ? contextJsonUtf8 : "");
+    // 先解析局部候选值。非法输入不能覆盖上一份有效流程，否则 Scan/Process 两页会显示不同状态。
+    const QByteArray candidateJson(contextJsonUtf8 ? contextJsonUtf8 : "");
+    if (!candidateJson.isEmpty()) {
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(candidateJson, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            WriteLog(LogLevel::Warning,
+                     "SetSessionContextJson",
+                     QString("Invalid session context: %1").arg(parseError.errorString()));
+            return false;
+        }
+    }
+
+    // 空字符串表示清空上下文并回退默认练习流程；未知 JSON 字段由 ResolveScanProcessSteps 忽略。
+    m_contextJson = candidateJson;
     RefreshScanProcessButtons();
     WriteLog(LogLevel::Info, "SetSessionContextJson",
              QString("Session context bytes: %1").arg(m_contextJson.size()));
     return true;
 }
 
-// Registers the shell callback.
+// 保存宿主动作回调。
 void ScanWorkflowUIImpl::SetActionCallback(void (*callback)(void* context, int actionId), void* context) {
-    // Store a plain C callback to avoid exposing QObject or signal types across DLLs.
+    // 纯 C 回调避免跨 DLL 暴露 QObject、Qt signal 或 std::function 的编译器 ABI。
     m_actionCallback = callback;
     m_actionContext = context;
 }
 
-// Activates the scan stage.
+// 激活扫描阶段。
 void ScanWorkflowUIImpl::Activate() {
-    // Real implementation will restore device/session state here.
+    // 当前只刷新显示；真实设备会话恢复应由后续扫描业务服务执行，不能写进 UI。
     UpdateDisplayedScanData();
     WriteLog(LogLevel::Info, "Activate", "Scan workflow activated");
 }
 
-// Releases heavy VTK/OpenGL resources before leaving the scan stage.
+// 离开 Scan 页面前释放 VTK/OpenGL 重资源。
 void ScanWorkflowUIImpl::DeactivateAndRelease() {
-    // QVTKWidget owns native OpenGL resources, so hiding it is not enough.
+    // QVTKWidget 持有原生 OpenGL 上下文，只 hide 不会归还显存。
     if (m_vtkWidget) {
         // 先从 render window 移除 renderer，再清空 QVTKWidget 子类保存的 renderer 指针。
         // 如果只 Delete vtkRenderer，滚轮或析构路径仍可能访问已经释放的地址。
@@ -270,7 +291,7 @@ void ScanWorkflowUIImpl::DeactivateAndRelease() {
         m_vtkWidget = nullptr;
     }
 
-    // vtkRenderer::New() uses reference counting and must be paired with Delete().
+    // vtkRenderer::New 使用 VTK 引用计数，必须与 Delete 成对，不能使用 C++ delete。
     if (m_renderer) {
         m_renderer->Delete();
         m_renderer = nullptr;
@@ -285,17 +306,17 @@ void ScanWorkflowUIImpl::DeactivateAndRelease() {
     WriteLog(LogLevel::Info, "DeactivateAndRelease", "Scan VTK resources released");
 }
 
-// Returns the module code version.
+// 返回模块代码版本。
 const char* ScanWorkflowUIImpl::GetModuleVersion() const {
     return ModuleInfo::Version;
 }
 
-// Shuts down the module and clears cached state.
+// 关闭模块并清空缓存状态。
 void ScanWorkflowUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "Scan workflow shutdown");
     DeactivateAndRelease();
     if (m_logger) {
-        // Flush is currently a compatibility no-op, but keeping it documents intent.
+        // Flush 当前是兼容空操作，保留调用用于表达退出前完成日志的生命周期意图。
         m_logger->Flush();
     }
     m_root = nullptr;
@@ -312,7 +333,7 @@ void ScanWorkflowUIImpl::Shutdown() {
     m_logDir.clear();
 }
 
-// Creates the scan-object selector bar.
+// 创建扫描流程按钮宿主栏。
 QWidget* ScanWorkflowUIImpl::CreateScanModeBar(QWidget* parent) {
     auto* frame = new QFrame(parent);
     m_scanModeBar = frame;
@@ -326,7 +347,7 @@ QWidget* ScanWorkflowUIImpl::CreateScanModeBar(QWidget* parent) {
     return frame;
 }
 
-// Rebuilds the scan-process button bar from session context.
+// 根据会话上下文重建扫描流程按钮。
 void ScanWorkflowUIImpl::RefreshScanProcessButtons() {
     if (!m_scanModeBar) {
         return;
@@ -338,7 +359,6 @@ void ScanWorkflowUIImpl::RefreshScanProcessButtons() {
     }
 
     // 清空旧按钮，避免重新进入扫描页时继续显示上一单流程。
-    // Clear old process buttons before rebuilding the bar.
     while (QLayoutItem* item = layout->takeAt(0)) {
         if (item->widget()) {
             item->widget()->deleteLater();
@@ -350,8 +370,17 @@ void ScanWorkflowUIImpl::RefreshScanProcessButtons() {
     // 重新解析完整步骤，而不是只解析 label。
     // code/part 后续用于真实模型加载，enabled/exchange 用于按钮状态和提示。
     m_scanProcessSteps = ResolveScanProcessSteps();
-    if (m_currentStepIndex < 0 || m_currentStepIndex >= m_scanProcessSteps.size()) {
-        m_currentStepIndex = 0;
+    if (m_currentStepIndex < 0
+        || m_currentStepIndex >= m_scanProcessSteps.size()
+        || !m_scanProcessSteps.at(m_currentStepIndex).enabled) {
+        // 当前索引失效或被禁用时选择第一个可用步骤；全禁用则保持 -1，不伪装成可进入状态。
+        m_currentStepIndex = -1;
+        for (int i = 0; i < m_scanProcessSteps.size(); ++i) {
+            if (m_scanProcessSteps.at(i).enabled) {
+                m_currentStepIndex = i;
+                break;
+            }
+        }
     }
 
     for (int i = 0; i < m_scanProcessSteps.size(); ++i) {
@@ -376,7 +405,7 @@ void ScanWorkflowUIImpl::RefreshScanProcessButtons() {
     UpdateDisplayedScanData();
 }
 
-// Resolves scan-process steps from JSON context.
+// 从 JSON 上下文解析扫描流程。
 QVector<ScanWorkflowUIImpl::ScanProcessStepInfo> ScanWorkflowUIImpl::ResolveScanProcessSteps() const {
     QVector<ScanProcessStepInfo> steps;
     QJsonParseError parseError;
@@ -402,6 +431,7 @@ QVector<ScanWorkflowUIImpl::ScanProcessStepInfo> ScanWorkflowUIImpl::ResolveScan
     }
 
     if (steps.isEmpty()) {
+        // 没有有效步骤时使用练习模式默认流程，不把规则复制到 Process 之外的其它调用方。
         ScanProcessStepInfo maxilla;
         maxilla.part = "maxilla";
         maxilla.code = "maxilla_natural";
@@ -430,7 +460,7 @@ QVector<ScanWorkflowUIImpl::ScanProcessStepInfo> ScanWorkflowUIImpl::ResolveScan
     return steps;
 }
 
-// Switches the active scan-process step.
+// 切换当前扫描流程步骤。
 void ScanWorkflowUIImpl::SelectScanProcessStep(int index, const QString& reason) {
     if (index < 0 || index >= m_scanProcessSteps.size()) {
         WriteLog(LogLevel::Warning, "SelectScanProcessStep", QString("Invalid scan step index: %1").arg(index));
@@ -448,7 +478,7 @@ void ScanWorkflowUIImpl::SelectScanProcessStep(int index, const QString& reason)
                QString("ScanStepChanged:%1:%2").arg(reason, m_scanProcessSteps.at(index).code));
 }
 
-// Refreshes selected state and style for scan-process buttons.
+// 刷新流程按钮选中状态和 QSS。
 void ScanWorkflowUIImpl::RefreshScanProcessButtonStates() {
     for (int i = 0; i < m_scanProcessButtons.size(); ++i) {
         QPushButton* button = m_scanProcessButtons.at(i);
@@ -465,13 +495,22 @@ void ScanWorkflowUIImpl::RefreshScanProcessButtonStates() {
     }
 }
 
-// Updates the visible placeholder data for the current scan step.
+// 更新当前扫描部位的提示和占位数据。
 void ScanWorkflowUIImpl::UpdateDisplayedScanData() {
     if (m_scanProcessSteps.isEmpty()) {
         m_scanProcessSteps = ResolveScanProcessSteps();
     }
     if (m_currentStepIndex < 0 || m_currentStepIndex >= m_scanProcessSteps.size()) {
-        m_currentStepIndex = 0;
+        // 全部步骤被禁用时不越权选择索引 0；清空 actor 并给出明确状态。
+        if (m_statusLabel) {
+            m_statusLabel->setText(tr("No enabled scan step"));
+            m_statusLabel->setToolTip(QString());
+        }
+        if (m_renderer && m_vtkWidget && m_vtkWidget->GetRenderWindow()) {
+            m_renderer->RemoveAllViewProps();
+            m_vtkWidget->GetRenderWindow()->Render();
+        }
+        return;
     }
 
     const ScanProcessStepInfo step = m_scanProcessSteps.value(m_currentStepIndex);
@@ -483,7 +522,7 @@ void ScanWorkflowUIImpl::UpdateDisplayedScanData() {
     RebuildStepPlaceholderScene();
 }
 
-// Creates the right-side scan toolbar.
+// 创建右侧扫描工具栏。
 QWidget* ScanWorkflowUIImpl::CreateRightToolBar(QWidget* parent) {
     auto* frame = new QFrame(parent);
     frame->setProperty("toolPanel", true);
@@ -493,19 +532,27 @@ QWidget* ScanWorkflowUIImpl::CreateRightToolBar(QWidget* parent) {
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(8);
 
-    const QStringList tools = {
-        tr("True Color"),
-        tr("Model"),
-        tr("Color"),
-        tr("Edit"),
+    // 显示文字可翻译，日志/回调操作名必须使用稳定英文 code。
+    struct ToolEntry {
+        QString text;
+        const char* code;
+    };
+    const QList<ToolEntry> tools = {
+        {tr("True Color"), "true_color"},
+        {tr("Model"), "model"},
+        {tr("Color"), "color"},
+        {tr("Edit"), "edit"},
     };
 
-    for (const QString& tool : tools) {
-        auto* button = new QPushButton(tool, frame);
+    for (const ToolEntry& tool : tools) {
+        auto* button = new QPushButton(tool.text, frame);
+        button->setObjectName(QString("ScanTool_%1_Button").arg(QString::fromLatin1(tool.code)));
         button->setMinimumHeight(54);
+        button->setCursor(Qt::PointingHandCursor);
         QObject::connect(button, &QPushButton::clicked, [this, tool]() {
-            // Tool switching changes scan-page state only; algorithms remain outside UI.
-            EmitAction(ScanWorkflowActionToolChanged, QString("ToolChanged:%1").arg(tool));
+            // 工具点击只改变扫描页意图，算法执行继续位于 UI 边界之外。
+            EmitAction(ScanWorkflowActionToolChanged,
+                       QString("ToolChanged:%1").arg(QString::fromLatin1(tool.code)));
         });
         layout->addWidget(button);
     }
@@ -513,7 +560,7 @@ QWidget* ScanWorkflowUIImpl::CreateRightToolBar(QWidget* parent) {
     return frame;
 }
 
-// Creates the bottom scan control bar.
+// 创建扫描页底部控制栏。
 QWidget* ScanWorkflowUIImpl::CreateBottomControlBar(QWidget* parent) {
     auto* frame = new QFrame(parent);
     frame->setProperty("panel", true);
@@ -523,8 +570,14 @@ QWidget* ScanWorkflowUIImpl::CreateBottomControlBar(QWidget* parent) {
     layout->setSpacing(18);
 
     auto* playButton = new QPushButton(tr("Start / Pause"), frame);
+    playButton->setObjectName("ScanStartPauseButton");
     auto* completeButton = new QPushButton(tr("Complete"), frame);
+    completeButton->setObjectName("ScanCompleteButton");
     auto* deleteButton = new QPushButton(tr("Delete"), frame);
+    deleteButton->setObjectName("ScanDeleteButton");
+    playButton->setCursor(Qt::PointingHandCursor);
+    completeButton->setCursor(Qt::PointingHandCursor);
+    deleteButton->setCursor(Qt::PointingHandCursor);
     completeButton->setProperty("primary", true);
 
     QObject::connect(playButton, &QPushButton::clicked, [this]() {
@@ -543,7 +596,7 @@ QWidget* ScanWorkflowUIImpl::CreateBottomControlBar(QWidget* parent) {
     return frame;
 }
 
-// Creates the lower-left hint/status panel.
+// 创建 Scan 专属左下提示区。
 QWidget* ScanWorkflowUIImpl::CreateHintPanel(QWidget* parent) {
     auto* frame = new QFrame(parent);
     frame->setProperty("panel", true);
@@ -570,9 +623,9 @@ QWidget* ScanWorkflowUIImpl::CreateHintPanel(QWidget* parent) {
     return frame;
 }
 
-// Creates the embedded VTK viewer.
+// 创建嵌入式 VTK 视图。
 QWidget* ScanWorkflowUIImpl::CreateViewerArea(QWidget* parent) {
-    // QVTKWidget is the Qt 5.6 / VTK 8 bridge widget used by the legacy stack.
+    // QVTKWidget 是当前 Qt 5.6 与 VTK 8 的桥接控件，父对象负责 QWidget 生命周期。
     m_vtkWidget = new ScanWorkflowViewerWidget(parent);
     m_vtkWidget->setObjectName("ScanWorkflowVTKWidget");
     m_vtkWidget->setMinimumSize(520, 340);
@@ -581,23 +634,23 @@ QWidget* ScanWorkflowUIImpl::CreateViewerArea(QWidget* parent) {
     return m_vtkWidget;
 }
 
-// Builds a placeholder VTK scene.
+// 创建初始 VTK 占位场景。
 void ScanWorkflowUIImpl::BuildPlaceholderScene() {
     if (!m_vtkWidget) {
         return;
     }
 
-    // The renderer owns the camera, background, and the actor list for this page.
+    // renderer 管理本页 camera、背景和 actor 列表；初始引用由 New 返回。
     m_renderer = vtkRenderer::New();
     m_renderer->SetBackground(0.87, 0.89, 0.92);
     m_vtkWidget->SetRenderer(m_renderer);
 
-    // QVTKWidget exposes the vtkRenderWindow that actually owns OpenGL rendering.
+    // QVTKWidget 暴露的 vtkRenderWindow 真正持有 OpenGL 渲染上下文。
     m_vtkWidget->GetRenderWindow()->AddRenderer(m_renderer);
     RebuildStepPlaceholderScene();
 }
 
-// Rebuilds lightweight placeholder geometry for the active scan step.
+// 根据当前扫描步骤重建轻量占位几何。
 void ScanWorkflowUIImpl::RebuildStepPlaceholderScene() {
     if (!m_vtkWidget || !m_renderer) {
         return;
@@ -648,29 +701,33 @@ void ScanWorkflowUIImpl::RebuildStepPlaceholderScene() {
     m_vtkWidget->GetRenderWindow()->Render();
 }
 
-// Emits a user action to the shell and writes a log line.
+// 写客户操作日志并向宿主上报动作。
 void ScanWorkflowUIImpl::EmitAction(int actionId, const QString& operation) {
-    WriteLog(LogLevel::Info, operation.toUtf8().constData(),
+    // 命名 QByteArray 让 UTF-8 字节在整个 WriteLog 调用期间保持有效，
+    // 也明确说明 Logger 的公共边界接收 char*，并不接收 QString 对象。
+    const QByteArray operationBytes = operation.toUtf8();
+    WriteLog(LogLevel::Info, operationBytes.constData(),
              QString("Scan workflow action: %1").arg(actionId));
     if (m_actionCallback) {
-        // Only a stable integer crosses the DLL boundary.
+        // DLL 边界只穿过稳定整数和宿主原样传入的 context 指针。
         m_actionCallback(m_actionContext, actionId);
     }
 }
 
-// Writes a structured log entry if logger is initialized.
+// Logger 可用时写结构化日志。
 void ScanWorkflowUIImpl::WriteLog(LogLevel level, const char* operation, const QString& content) const {
     // MeyerQtModule::WriteQtLog 会自动补充 MEYER_MODULE_NAME，
     // 并把 QString 在跨 DLL 前转换成 UTF-8 const char*。
     MeyerQtModule::WriteQtLog(m_logger, level, operation, content);
 }
 
-// C ABI factory used by the shell through QLibrary/GetProcAddress.
+// 壳子通过 QLibrary/GetProcAddress 动态解析的 C ABI 工厂。
 extern "C" MEYERSCAN_SCANWORKFLOWUI_API IScanWorkflowUI* GetScanWorkflowUI() {
     return &ScanWorkflowUIImpl::Instance();
 }
 
-// Unified version export used by runtime version-list collection.
+// 运行时 versionList 使用的统一代码版本导出。
 extern "C" MEYERSCAN_SCANWORKFLOWUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
 }
+        // 只读取约定的 scanProcess.steps，患者/订单其它字段在本 UI 中保持不透明。

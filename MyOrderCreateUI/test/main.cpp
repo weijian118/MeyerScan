@@ -3,6 +3,7 @@
 #include "TreatmentPlanResourceRules.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QEvent>
@@ -126,6 +127,9 @@ int main(int argc, char* argv[]) {
     const QString logDir = QDir(appDir).filePath("logs");
     // mkpath 在目录已存在时返回 true，适合测试启动前防御性创建日志目录。
     QDir().mkpath(logDir);
+    // Init 是跨 DLL 调用，显式 UTF-8 缓冲区让参数生命周期一目了然。
+    const QByteArray appDirBytes = appDir.toUtf8();
+    const QByteArray logDirBytes = logDir.toUtf8();
 
     // 工厂函数返回 DLL 内部单例，是验证导出符号和链接关系的第一步。
     IOrderCreateUI* orderCreate = GetOrderCreateUI();
@@ -138,7 +142,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Init 传入应用目录和日志目录，后续真实资源查找也应通过这两个根路径实现。
-    const bool initOk = orderCreate->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData());
+    const bool initOk = orderCreate->Init(appDirBytes.constData(), logDirBytes.constData());
     if (smokeMode && !Check(initOk, "OrderCreateUI 初始化成功")) {
         return 2;
     }
@@ -230,6 +234,12 @@ int main(int argc, char* argv[]) {
     const QByteArray contextBytes = QJsonDocument(contextRoot).toJson(QJsonDocument::Compact);
     if (!Check(orderCreate->SetOrderContextJson(contextBytes.constData()), "CreateWidget 前设置标准建单上下文成功")) {
         return 15;
+    }
+    // 非法 JSON 必须返回 false，同时保留刚写入的有效 pendingContext。
+    // CreateWidget 后的患者姓名和牙位断言会继续证明有效上下文没有被破坏。
+    if (!Check(!orderCreate->SetOrderContextJson("{invalid-json"),
+               "CreateWidget 前非法上下文被拒绝且保留有效缓存")) {
+        return 33;
     }
 
     // CreateWidget 只创建根界面，不主动 show，由调用方决定嵌入方式。
@@ -674,6 +684,36 @@ int main(int argc, char* argv[]) {
     // 自动化模式下删除根控件，验证模块不依赖父对象才可退出。
     delete widget;
     // Shutdown 清理单例状态，便于后续测试在同一进程中重复初始化。
+    orderCreate->Shutdown();
+
+    // 再次初始化但不传任何上下文，验证生产 DLL 不会自行填入测试患者、订单或牙位。
+    if (!Check(orderCreate->Init(appDirBytes.constData(), logDirBytes.constData()),
+               "OrderCreateUI 清理后可重新初始化")) {
+        return 34;
+    }
+    QWidget* blankWidget = orderCreate->CreateWidget();
+    if (!Check(blankWidget != nullptr, "无上下文时能创建空白建单界面")) {
+        orderCreate->Shutdown();
+        return 35;
+    }
+    QLineEdit* blankNameEdit = blankWidget->findChild<QLineEdit*>("OrderCreatePatientNameEdit");
+    QLineEdit* blankOrderIdEdit = blankWidget->findChild<QLineEdit*>("OrderCreateOrderIdEdit");
+    QTableWidget* blankSelectionTable = blankWidget->findChild<QTableWidget*>("OrderCreateSelectionTable");
+    if (!Check(blankNameEdit && blankNameEdit->text().isEmpty()
+                   && blankOrderIdEdit && blankOrderIdEdit->text().isEmpty(),
+               "无上下文时患者和订单字段不包含测试数据")) {
+        delete blankWidget;
+        orderCreate->Shutdown();
+        return 36;
+    }
+    if (!Check(blankSelectionTable && blankSelectionTable->rowCount() == 0,
+               "无上下文时不预选测试牙位")) {
+        delete blankWidget;
+        orderCreate->Shutdown();
+        return 37;
+    }
+    // 第二个根控件同样由测试宿主释放，随后清理模块单例状态。
+    delete blankWidget;
     orderCreate->Shutdown();
     std::printf("OrderCreateUITest passed.\n");
     return 0;

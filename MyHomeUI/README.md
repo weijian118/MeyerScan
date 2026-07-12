@@ -8,6 +8,7 @@ HomeUI 是 MeyerScan 的 Qt Widgets 首页入口模块。
 - 通过 `SetEntryVisible()` / `SetEntryEnabled()` 接收 MainExe 计算后的入口显隐和启用态；HomeUI 不直接读取权限文件。
 - `visible=false` 时入口隐藏，`enabled=false` 时入口保留但不可点击；真正动作执行前仍由 MainExe / Workflow / Service 复核权限。
 - 首页入口按钮优先使用 `MeyerScan_UIComponents.dll` 的 Entry 标准按钮语义；UIComponents 不可用时仍由首页根 QSS 提供降级样式，源码不拼接局部样式。
+- UIComponents DLL 即使加载成功也必须检查 `Init()`；返回 false 时清空接口并走本地控件降级，禁止继续调用半初始化工厂。
 - 首页背景、品牌、入口图标和 QSS 的源码仍归 `MyHomeUI/Resources` 管理；正式发布由 `MeyerScan_UIResources.dll` 注册为 `:/MeyerScan/Modules/MyHomeUI/...`，客户目录不再散放 PNG/QSS。
 - `HomeUITest.exe --capture-screenshot <png> --capture-size <WxH>` 可生成固定尺寸模块截图；当前至少复查 1920x1080 和 1366x768。
 - 点击入口时写入结构化日志，MainExe 再记录跨模块导航和页面切换日志。
@@ -18,6 +19,7 @@ HomeUI 是 MeyerScan 的 Qt Widgets 首页入口模块。
 - 界面可见文字统一使用 `tr("English source text")` 包装；即使需求写中文按钮名，源码 source text 也写英文，中文显示由 `.qm` 翻译文件提供。
 - 业务规则保留在 Permission 和 OrderWorkflowService；HomeUI 不执行 SQL、不判断加载订单流程。
 - 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
+- 测试宿主必须检查 HomeUI 的 Init/CreateWidget 返回值，失败时 Shutdown 并返回独立错误码，不能对空 QWidget 继续查找控件。
 - 模块变更记录维护在 `CHANGELOG.md`。
 
 Build:

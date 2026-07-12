@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-07-12
+
+- EXE/DLL 双形态版本升级为 `v0.1.3`；`SwitchToStep()` 改为返回 bool，初始 Scan 页或目标页创建失败会向 Initialize/RunSmoke 传播，不再显示空壳后报告成功。
+- 动态加载 ScanWorkflowUI/DataProcessUI 后检查子模块 `Init()` 和 `SetSessionContextJson()`；UTF-8 QByteArray 在跨 DLL 调用期间显式保持生命周期。
+- Logger 初始化失败时无日志降级；窗口、DLL 单例、命令行上下文和 smoke 路径补充中文实现注释。
+- VS2015/CMake Release、`ScanReconstructStudio.exe --smoke` 及 Scan/Process 联合测试通过。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.1.2`，修复独立 EXE smoke 在 Scan -> Process -> Scan 第二次创建 QVTK 页面时访问冲突的问题。

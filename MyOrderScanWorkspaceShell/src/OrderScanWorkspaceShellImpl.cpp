@@ -21,7 +21,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderScanWorkspaceShell";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.2 (2026-07-10)";
+const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.3 (2026-07-12)";
 }
 }
 
@@ -43,7 +43,10 @@ bool OrderScanWorkspaceShellImpl::Init(const char* appDirUtf8, const char* logDi
     // 缓存日志接口，后续所有用户操作和步骤切换都复用这一个指针。
     m_logger = GetLogger();
     if (m_logger && !m_logDir.isEmpty()) {
-        m_logger->Init(m_logDir.constData(), LogLevel::Info);
+        if (!m_logger->Init(m_logDir.constData(), LogLevel::Info)) {
+            // 壳子仍可执行页面导航，但后续不能继续使用半初始化 Logger。
+            m_logger = nullptr;
+        }
     }
     WriteLog(LogLevel::Info, "Init", "Workspace shell initialized");
     return true;

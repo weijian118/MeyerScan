@@ -25,6 +25,7 @@
 - 不负责把 Qt 对象跨进程传给 ScanReconstructStudio；扫描进程只接收订单 ID、上下文 JSON/文件路径和状态命令。
 - 不知道第三方来源字段含义；第三方字段只在 ExternalLaunchAdapter 和 OrderCreateUI 标准上下文中处理。
 - 是否允许进入某一步后续由 OrderWorkflowService / Permission 输出禁用策略；当前初版先保证按钮点击和页面切换链路可用。
+- Logger 是可降级支撑能力；Init 失败时壳子清空日志接口但继续导航，不能保留半初始化 Logger，也不能因日志失败接管或中断业务页面生命周期。
 
 ## 构建
 

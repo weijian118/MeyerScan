@@ -2,6 +2,8 @@
 
 ## 2026-07-12
 
+- 本轮资源内容未变化，版本保持 `v0.1.3`；`UIResourcesTest` 增加重复初始化幂等、注销、重新注册和重注册后资源仍可读验证，并补充生命周期实现注释。
+- `UIResourcesTest.exe --smoke` 通过，确认测试不会把资源 DLL 的进程级注册状态误判为一次性状态。
 - 版本升级为 `v0.1.3`，重新打包 MyOrderCreateUI v0.5.2 的五类型 hover QSS 和扫描流程稳定布局样式。
 - 普通四种修复类型不再出现整块绿色 hover，种植体继续使用独立宽按钮状态；资源 DLL 与业务 DLL 同批更新，便于 versionList 定位现场样式版本。
 - 版本升级为 `v0.1.2`，重新打包 MyOrderCreateUI v0.5.1 的治疗类型 hover/选中 QSS 和多分辨率布局样式。

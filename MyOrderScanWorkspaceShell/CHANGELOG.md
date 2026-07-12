@@ -1,5 +1,11 @@
 ﻿# MeyerScan OrderScanWorkspaceShell 变更记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.1.3`；Logger 初始化失败时清空日志接口，壳子仍可执行步骤导航和页面挂载，不再连续使用半初始化 Logger。
+- 补充日志生命周期和测试宿主实现注释；模块继续只拥有唯一步骤导航、页面容器和动作回调，不创建 Scan/Process/Send 业务页面。
+- `OrderScanWorkspaceShellTest.exe` 覆盖创建/练习模式、真实按钮切换、返回动作和重复 Init/Shutdown，全部通过。
+
 ## 2026-07-10
 
 - 测试宿主可见占位文本补充 `tr("English source text")`，测试项目同样遵守多语言源码规则。

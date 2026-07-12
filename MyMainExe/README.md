@@ -16,6 +16,7 @@
 11. HomeUI 的“Practice”入口进入 `OrderScanWorkspaceShell` 练习模式，只显示 Scan / Process，并挂载 `ScanWorkflowUI` / `DataProcessUI`。
 12. 创建模式进入 Scan/Process 前，MainExe 从 OrderCreateUI 读取 `scanProcess` JSON 并合并到工作台上下文；练习模式固定生成 Natural maxilla / Exchange / Natural mandible / Natural occlusion。
 13. 创建模式在 DataProcess 点击 Next 后进入 Send 步骤，MainExe 懒加载 `MeyerScan_SendUI.dll` 并转发同一份订单上下文；练习模式不进入 Send。
+14. 手工创建的默认标准上下文必须为空白患者/订单，只携带 schema、source 和默认扫描流程；练习模式才允许使用带 `PRACTICE_*` 标识的非真实数据。生产主链路禁止内置 `Test Patient`、`LOCAL_ORDER` 等测试业务值。
 14. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
 15. 第三方拉起时可通过 `--external-order <json> --external-order-type <type>` 进入建单链路，客户视觉上只看到建单工作区。
 
@@ -25,6 +26,7 @@
 - MainExe 使用无边框全屏顶层窗口和单内容区，但不绘制所有页面共享的可见标题栏；HomeUI、CaseUI、OrderScanWorkspaceShell 各自提供页面语义顶部区域，窗口动作仍由 MainExe 执行。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
 - MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ScanWorkflowUI、DataProcessUI、SendUI、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
+- 动态加载成功不等于模块可用：所有返回 bool 的 `Init()`、上下文写入和目标页创建都必须检查。基础设施失败只能进入文档规定的显式降级；业务页面失败不得继续切换步骤或调用半初始化接口。
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
@@ -46,6 +48,7 @@
 - `scanProcess` 是建单流程传给 Scan/Process 的轻量 JSON 合同：OrderCreateUI 生成，MainExe 合并/转发，ScanWorkflowUI/DataProcessUI 渲染 `steps`。MainExe 不解析具体临床规则，Scan/Process 不反向读取建单控件。
 - 工作台 Scan / Process 页面由 MainExe 按步骤懒加载；切换离开时主动调用对应模块释放 QVTK/VTK/OpenGL 重资源，并用占位页替换旧步骤，避免壳子继续持有等待删除的 QWidget。
 - 工作台 Send 页面由 MainExe 按步骤懒加载并注入订单上下文；SendUI 只上报导出、压缩、邮件发送、上传、上一步、完成等动作，真实发送能力后续走 DataExport / Network 等服务模块。
+- 工作台上下文更新采用“先校验、成功后替换”语义；ScanWorkflowUI、DataProcessUI、SendUI 拒绝非法 JSON 时保留上一份有效状态，MainExe 记录 `ContextRejected` 并停止对应跳转。
 - UI 显隐和启用态统一由 MainExe 合并 ConfigCenter / Permission 后下发：`visible` 控制是否显示，`enabled` 控制是否可点击；MainExe 收到回调后还会按 `enabled` 二次复核。
 - 运行时版本清单只记录 `config/version_modules.json` 中声明的拆分模块 EXE/DLL，不再扫描第三方库；当前清单使用 `{ file, versionFunction }` 格式，自研模块通过统一导出函数 `GetMeyerModuleVersion()` 记录 `fileVersion`、`codeVersion` 和 `versionMatch`；字段说明见同目录 `config/version_modules.md`。
 - `version_modules.json` 中声明的模块必须同步进入 MainExe Release 目录或后续安装包；缺失模块会在 `logs/versionList` 中记录为 `exists=false`，用于发现 PostBuild/打包漏复制。
