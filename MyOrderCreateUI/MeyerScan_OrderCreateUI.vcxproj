@@ -58,7 +58,7 @@ xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\Release\MeyerScan_UIComponents.d
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="src\OrderCreateUIImpl.cpp" /><ClCompile Include="src\ToothTreatmentPlanWidget.cpp" /></ItemGroup>
-  <ItemGroup><ClInclude Include="include\OrderCreateUI.h" /><ClInclude Include="src\OrderCreateUIImpl.h" /><ClInclude Include="src\ToothTreatmentPlanWidget.h" /></ItemGroup>
+  <ItemGroup><ClInclude Include="include\OrderCreateUI.h" /><ClInclude Include="src\OrderCreateUIImpl.h" /><ClInclude Include="src\ToothTreatmentPlanWidget.h" /><ClInclude Include="src\TreatmentPlanResourceRules.h" /></ItemGroup>
   <ItemGroup><ResourceCompile Include="src\Version.rc" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

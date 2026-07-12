@@ -133,14 +133,11 @@ private:
     // 用桥 mask 读取桥连接点 key；命中失败返回空字符串。
     QString HitBridge(Jaw jaw, const QPoint& imagePoint) const;
 
-    // 判断某个桥连接点是否满足显示条件：相邻两颗牙都被设置为 bridge。
+    // 判断某个桥连接点是否满足显示条件：相邻两颗牙都已经设置治疗方案。
     bool IsBridgeCandidate(const QString& bridgeKey) const;
 
     // 判断某颗牙是否属于指定颌。
     bool IsToothInJaw(int toothNumber, Jaw jaw) const;
-
-    // 返回治疗类型对应的资源序号，例如 implant -> 1、crown -> 2。
-    int TreatmentTypeImageIndex(const QString& typeCode) const;
 
     // 返回某个牙位治疗叠加图路径。
     QString ToothOverlayPath(Jaw jaw, int toothNumber, const QString& typeCode) const;

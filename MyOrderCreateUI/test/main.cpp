@@ -1,8 +1,12 @@
 ﻿#include "OrderCreateUI.h"
 
+#include "TreatmentPlanResourceRules.h"
+
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -17,6 +21,7 @@
 #include <QStringList>
 #include <QTableWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QWidget>
 #include <windows.h>
 #include <cstdio>
@@ -286,6 +291,77 @@ int main(int argc, char* argv[]) {
         return 8;
     }
 
+    // 锁定当前软件的五种修复类型，防止 Inner Crown/Bridge 再次被误加成修复类型按钮。
+    auto* crownButton = widget->findChild<QToolButton*>("OrderCreateType_crown_Button");
+    auto* missingButton = widget->findChild<QToolButton*>("OrderCreateType_missing_Button");
+    auto* inlayButton = widget->findChild<QToolButton*>("OrderCreateType_inlay_Button");
+    auto* veneerButton = widget->findChild<QToolButton*>("OrderCreateType_veneer_Button");
+    auto* implantButton = widget->findChild<QToolButton*>("OrderCreateType_implant_Button");
+    if (!Check(crownButton && missingButton && inlayButton && veneerButton && implantButton,
+               "全冠、缺失牙、嵌体、贴面和种植体五个按钮均存在")) {
+        return 25;
+    }
+    if (!Check(widget->findChild<QToolButton*>("OrderCreateType_inner_crown_Button") == nullptr
+                   && widget->findChild<QToolButton*>("OrderCreateType_bridge_Button") == nullptr,
+               "内冠和桥不再作为修复类型按钮")) {
+        return 26;
+    }
+
+    // 资源序号直接决定加载 12_1.png、12_3.png 等叠加图，必须逐项锁定。
+    if (!Check(MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex("crown") == 1
+                   && MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex("missing") == 3
+                   && MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex("inlay") == 4
+                   && MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex("veneer") == 5
+                   && MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex("implant") == 7,
+               "五种修复类型映射到正确牙位叠加图序号")) {
+        return 27;
+    }
+
+    // mask 灰度值来自实际 PNG；检查四个象限的首尾值，覆盖本次左右方向错误。
+    if (!Check(MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(true, 30) == 11
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(true, 135) == 18
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(true, 150) == 21
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(true, 255) == 28
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(false, 30) == 31
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(false, 135) == 38
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(false, 150) == 41
+                   && MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(false, 255) == 48,
+               "上下颌 mask 灰度值映射到正确 FDI 牙位")) {
+        return 28;
+    }
+
+    // 桥 mask 前半段曾与牙位方向一起写反，这里同时验证左右区和跨中线连接点。
+    if (!Check(MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(true, 35) == "11-12"
+                   && MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(true, 125) == "17-18"
+                   && MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(true, 140) == "11-21"
+                   && MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(false, 35) == "31-32"
+                   && MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(false, 125) == "37-38"
+                   && MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(false, 140) == "31-41",
+               "上下颌桥 mask 映射顺序正确")) {
+        return 29;
+    }
+
+    // 1920x1080 使用 1x，常见 2K/4K 使用 2x；该测试不依赖当前测试机屏幕。
+    if (!Check(!MeyerScanTreatmentPlanRules::ShouldUseHighResolutionIcons(QSize(1920, 1080))
+                   && MeyerScanTreatmentPlanRules::ShouldUseHighResolutionIcons(QSize(2560, 1440))
+                   && MeyerScanTreatmentPlanRules::ShouldUseHighResolutionIcons(QSize(3840, 2160)),
+               "治疗类型图标按 2K 阈值选择 1x 或 2x 资源")) {
+        return 30;
+    }
+
+    // 未选中的缺失牙按钮进入 hover 后必须从 missing_b 切换到 missing_h。
+    const QImage missingNormalIcon = missingButton->icon().pixmap(QSize(48, 48)).toImage();
+    QEvent enterEvent(QEvent::Enter);
+    QApplication::sendEvent(missingButton, &enterEvent);
+    const QImage missingHoverIcon = missingButton->icon().pixmap(QSize(48, 48)).toImage();
+    QEvent leaveEvent(QEvent::Leave);
+    QApplication::sendEvent(missingButton, &leaveEvent);
+    if (!Check(!missingNormalIcon.isNull() && !missingHoverIcon.isNull()
+                   && missingNormalIcon != missingHoverIcon,
+               "治疗类型按钮 hover 会切换到 h 图标资源")) {
+        return 31;
+    }
+
     // 设置上下文后，默认示例牙位应被上下文里的 11/36 两颗牙覆盖。
     if (!Check(nameEdit->text() == "Context Patient", "上下文患者姓名已填充到界面")) {
         return 9;
@@ -364,17 +440,37 @@ int main(int argc, char* argv[]) {
         return 17;
     }
 
-    // 验证外部脏数据：如果 bridgeConnectors 指向的两颗牙没有同时设置为 bridge 类型，
-    // UI 不应该显示桥记录，扫描流程 JSON 也不应该保存该桥区间。
+    // 任意两颗相邻已选牙都应先显示空心桥点，不需要额外选择一个名为 Bridge 的修复类型。
+    QJsonArray adjacentItems;
+    QJsonObject adjacentTooth16;
+    adjacentTooth16.insert("tooth", 16);
+    adjacentTooth16.insert("type", "crown");
+    adjacentItems.append(adjacentTooth16);
+    QJsonObject adjacentTooth17;
+    adjacentTooth17.insert("tooth", 17);
+    adjacentTooth17.insert("type", "veneer");
+    adjacentItems.append(adjacentTooth17);
+    QJsonObject adjacentScanPlan;
+    adjacentScanPlan.insert("items", adjacentItems);
+    QJsonObject adjacentContextRoot = contextRoot;
+    adjacentContextRoot.insert("scanPlan", adjacentScanPlan);
+    const QByteArray adjacentContextBytes = QJsonDocument(adjacentContextRoot).toJson(QJsonDocument::Compact);
+    if (!Check(orderCreate->SetOrderContextJson(adjacentContextBytes.constData()), "相邻牙治疗方案上下文设置成功")) {
+        return 32;
+    }
+    const QStringList bridgeCandidates = treatmentPlanWidget->property("bridgeCandidates").toStringList();
+    if (!Check(bridgeCandidates.contains("16-17")
+                   && !bridgeSummaryLabel->text().contains("16-17"),
+               "相邻已选牙显示空心桥候选，但未点击前不产生桥记录")) {
+        return 33;
+    }
+
+    // 验证外部脏数据：bridgeConnectors 缺少任一端已选牙时，不应进入桥记录。
     QJsonArray invalidBridgeItems;
     QJsonObject invalidBridgeTooth16;
     invalidBridgeTooth16.insert("tooth", 16);
     invalidBridgeTooth16.insert("type", "crown");
     invalidBridgeItems.append(invalidBridgeTooth16);
-    QJsonObject invalidBridgeTooth17;
-    invalidBridgeTooth17.insert("tooth", 17);
-    invalidBridgeTooth17.insert("type", "bridge");
-    invalidBridgeItems.append(invalidBridgeTooth17);
     QJsonArray invalidBridgeConnectors;
     invalidBridgeConnectors.append("16-17");
     QJsonObject invalidBridgeScanPlan;
@@ -386,7 +482,7 @@ int main(int argc, char* argv[]) {
     if (!Check(orderCreate->SetOrderContextJson(invalidBridgeContextBytes.constData()), "外部脏桥连接点上下文设置成功")) {
         return 18;
     }
-    if (!Check(!bridgeSummaryLabel->text().contains("16-17"), "非 bridge 牙位对应的桥连接点不会显示")) {
+    if (!Check(!bridgeSummaryLabel->text().contains("16-17"), "缺少端点牙位的桥连接点不会进入记录")) {
         return 19;
     }
 
@@ -394,15 +490,15 @@ int main(int argc, char* argv[]) {
     QJsonArray bridgeItems;
     QJsonObject bridgeTooth16;
     bridgeTooth16.insert("tooth", 16);
-    bridgeTooth16.insert("type", "bridge");
+    bridgeTooth16.insert("type", "crown");
     bridgeItems.append(bridgeTooth16);
     QJsonObject bridgeTooth17;
     bridgeTooth17.insert("tooth", 17);
-    bridgeTooth17.insert("type", "bridge");
+    bridgeTooth17.insert("type", "veneer");
     bridgeItems.append(bridgeTooth17);
     QJsonObject bridgeTooth18;
     bridgeTooth18.insert("tooth", 18);
-    bridgeTooth18.insert("type", "bridge");
+    bridgeTooth18.insert("type", "implant");
     bridgeItems.append(bridgeTooth18);
     QJsonArray bridgeConnectors;
     // 第一条故意使用反向 key，验证模块会归一化为稳定的 "16-17"。
@@ -414,7 +510,7 @@ int main(int argc, char* argv[]) {
     QJsonObject bridgeContextRoot = contextRoot;
     bridgeContextRoot.insert("scanPlan", bridgeScanPlan);
     const QByteArray bridgeContextBytes = QJsonDocument(bridgeContextRoot).toJson(QJsonDocument::Compact);
-    if (!Check(orderCreate->SetOrderContextJson(bridgeContextBytes.constData()), "桥治疗方案上下文设置成功")) {
+    if (!Check(orderCreate->SetOrderContextJson(bridgeContextBytes.constData()), "桥连接点上下文设置成功")) {
         return 20;
     }
     if (!Check(bridgeSummaryLabel->text().contains("16-18"), "连续桥连接点合并显示为 16-18")) {
@@ -437,15 +533,15 @@ int main(int argc, char* argv[]) {
     QJsonArray midlineBridgeItems;
     QJsonObject bridgeTooth11;
     bridgeTooth11.insert("tooth", 11);
-    bridgeTooth11.insert("type", "bridge");
+    bridgeTooth11.insert("type", "crown");
     midlineBridgeItems.append(bridgeTooth11);
     QJsonObject bridgeTooth12;
     bridgeTooth12.insert("tooth", 12);
-    bridgeTooth12.insert("type", "bridge");
+    bridgeTooth12.insert("type", "missing");
     midlineBridgeItems.append(bridgeTooth12);
     QJsonObject bridgeTooth21;
     bridgeTooth21.insert("tooth", 21);
-    bridgeTooth21.insert("type", "bridge");
+    bridgeTooth21.insert("type", "veneer");
     midlineBridgeItems.append(bridgeTooth21);
     QJsonArray midlineBridgeConnectors;
     midlineBridgeConnectors.append("11-12");
@@ -456,7 +552,7 @@ int main(int argc, char* argv[]) {
     QJsonObject midlineBridgeContextRoot = contextRoot;
     midlineBridgeContextRoot.insert("scanPlan", midlineBridgeScanPlan);
     const QByteArray midlineBridgeContextBytes = QJsonDocument(midlineBridgeContextRoot).toJson(QJsonDocument::Compact);
-    if (!Check(orderCreate->SetOrderContextJson(midlineBridgeContextBytes.constData()), "跨中线桥治疗方案上下文设置成功")) {
+    if (!Check(orderCreate->SetOrderContextJson(midlineBridgeContextBytes.constData()), "跨中线桥连接点上下文设置成功")) {
         return 23;
     }
     if (!Check(bridgeSummaryLabel->text().contains("11-22"), "跨中线桥连接点合并显示为 11-22")) {

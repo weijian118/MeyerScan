@@ -11,6 +11,7 @@
 - DLL 初始化后使用 `:/MeyerScan/Modules/<模块名>/...` 访问资源。
 - MainExe 正式发布目录不再需要散落的 `Resources/Modules/.../icon` 和 `qss` 文件。
 - 当前构建清单自动收集 608 个 PNG/QSS/qm 等允许类型资源；数量由生成脚本输出和测试确认，不在业务代码中硬编码。
+- 当前代码/文件版本为 `v0.1.2`；本次包含 MyOrderCreateUI 五种修复类型的普通态、高亮态及 1x/2x 图标和对应 QSS。
 
 ## 设计边界
 

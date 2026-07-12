@@ -1,5 +1,17 @@
 # MyOrderCreateUI 修改记录
 
+## 2026-07-12
+
+- 版本升级为 `v0.5.1`，治疗方案修复类型严格收口为全冠、缺失牙、嵌体、贴面、种植体五种，删除 `inner_crown` 和 `bridge` 类型按钮及旧编码入口。
+- 单颗牙叠加图映射修正为全冠 `1`、缺失牙 `3`、嵌体 `4`、贴面 `5`、种植体 `7`，与现有 `12_1.png`、`12_3.png`、`12_4.png`、`12_5.png`、`12_7.png` 资源一致。
+- 根据实际 mask 与叠加 PNG 的逐像素校验，修正上颌 `11..18,21..28`、下颌 `31..38,41..48` 牙位顺序及两颌桥 mask 顺序，解决左右牙位识别颠倒。
+- 桥不再作为修复类型；任意两颗同颌相邻且已设置治疗方案的牙位显示空心连接点，点击后显示实心连接点。外部桥数据增加格式、相邻关系和两端牙位存在性校验。
+- 修复类型按钮普通态使用 `*_b.png`，hover/选中态使用 `*_h.png`；2560x1440 及以上屏幕加载 `*_2x.png` 源图，高亮白色图标使用深绿色背景保证对比度。
+- 多分辨率布局进一步收敛：左栏最小 380px、类型按钮最小 82px，避免 1366x768 下 `Missing Tooth` 截断；Scan Plan 内容最大 980px 并在可伸缩中栏内居中，避免 2K/4K 下区域过宽空泛。
+- 新增 `TreatmentPlanResourceRules.h` 作为生产代码和测试共用的纯映射规则；测试不再直接链接 DLL 内部 C++ 类，桥候选通过 QWidget 只读动态属性验证，保持公共 C ABI 边界稳定。
+- `OrderCreateUITest --smoke` 新增五类型、叠加序号、牙位/桥 mask 顺序、hover 图切换、2K 阈值、相邻牙桥候选和无效桥过滤断言。
+- 验证：VS2015 单模块方案和根 `MeyerScan_AllModules.sln` Release x64 构建通过；模块目录与根目录 `OrderCreateUITest.exe --smoke`、`UIResourcesTest.exe --smoke` 返回 0；完成 1366x768、1920x1080、2560x1440 截图检查。
+
 ## 2026-07-10
 
 - 版本升级为 `v0.5.0`：左/中/右工作区改用不可折叠 `QSplitter`，中间牙弓获得主要伸缩空间，左右表单在 1366x768 下仍保持可读宽度。
@@ -28,7 +40,7 @@
 - 新增 `ToothTreatmentPlanWidget`，使用 `maxilla.png` / `mandible.png` 显示上下颌牙弓，并通过 `maskMaxilla.png` / `maskMandible.png` 反查 FDI 牙位号。
 - 治疗类型按钮改为图标在上、文字在下的轻量样式，并使用治疗方案资源中的普通态/高亮态图片。
 - 支持牙位叠加图绘制：根据牙位号和治疗类型加载 `maxilla/<tooth>_<type>.png` 或 `mandible/<tooth>_<type>.png`。
-- 支持桥连接点绘制和点击：相邻两颗牙均为 `bridge` 时显示空心连接点，点击后显示实心连接点。
+- 当时的阶段实现把 `bridge` 当作修复类型后显示连接点；该规则已在 v0.5.1 废止，当前 bridge 仅表示相邻已选牙之间的连接状态。
 - 桥记录按旧软件规则聚合：`16-17` + `17-18` 显示为 `16-18`；`11-12` + `11-21` 显示为 `11-22`。
 - “Clear All” 按钮从左侧类型面板迁移到上下颌之间，人工模式弹确认框，smoke 模式跳过确认框避免阻塞。
 - 治疗方案资源从历史 `bin/Release/icon/createModule/sacanPlan` 复制到源码目录 `Resources/icon/createModule/sacanPlan`，构建后复制到运行目录 `Resources/Modules/MyOrderCreateUI/icon/createModule/sacanPlan`。

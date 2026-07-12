@@ -2,8 +2,8 @@
 
 // Keep this test resource file ASCII-only for the VS2015 resource compiler.
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION     0,1,1,0
- PRODUCTVERSION  0,1,1,0
+ FILEVERSION     0,1,2,0
+ PRODUCTVERSION  0,1,2,0
  FILEFLAGSMASK   0x3fL
 #ifdef _DEBUG
  FILEFLAGS       VS_FF_DEBUG
@@ -21,11 +21,11 @@ BEGIN
             VALUE "CompanyName",      "Hefei Meyer Optoelectronic Technology Co., Ltd."
             VALUE "LegalCopyright",   "Copyright (C) 2026 HEFEI MEYER"
             VALUE "FileDescription",  "MeyerScan UI Resources Test Host"
-            VALUE "FileVersion",      "0.1.1"
+            VALUE "FileVersion",      "0.1.2"
             VALUE "InternalName",     "UIResourcesTest"
             VALUE "OriginalFilename", "UIResourcesTest.exe"
             VALUE "ProductName",      "MeyerScan Digital Dental Scanner"
-            VALUE "ProductVersion",   "0.1.1"
+            VALUE "ProductVersion",   "0.1.2"
         END
     END
     BLOCK "VarFileInfo"

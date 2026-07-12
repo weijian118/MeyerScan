@@ -1,5 +1,7 @@
 ﻿#include "ToothTreatmentPlanWidget.h"
 
+#include "TreatmentPlanResourceRules.h"
+
 #include <QCursor>
 #include <QDir>
 #include <QMouseEvent>
@@ -24,25 +26,6 @@ const int kSourceImageHeight = 400;
 
 // 上下颌之间保留的视觉间距。视频中两张牙弓上下分离，不能紧贴在一起。
 const int kJawGap = 18;
-
-// 牙位资源按 FDI 顺序排列。FDI 两位数中第一位是象限，第二位是从中线向后的序号。
-// 上颌图片左侧是 18->11，右侧是 21->28。
-const int kMaxillaTeeth[16] = {18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28};
-
-// 下颌图片左侧是 48->41，右侧是 31->38。
-const int kMandibleTeeth[16] = {48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38};
-
-// 上颌桥连接点顺序和 maskPonticMaxilla.png 的非零像素值顺序一致。
-const char* kMaxillaBridgeKeys[15] = {
-    "17-18", "16-17", "15-16", "14-15", "13-14", "12-13", "11-12",
-    "11-21", "21-22", "22-23", "23-24", "24-25", "25-26", "26-27", "27-28"
-};
-
-// 下颌桥连接点顺序和 maskPonticMandible.png 的非零像素值顺序一致。
-const char* kMandibleBridgeKeys[15] = {
-    "37-38", "36-37", "35-36", "34-35", "33-34", "32-33", "31-32",
-    "31-41", "41-42", "42-43", "43-44", "44-45", "45-46", "46-47", "47-48"
-};
 
 // 桥连接点 mask 的像素值从 35 开始，每个连接点递增 15。
 int BridgeMaskValueAt(int index) {
@@ -156,6 +139,17 @@ void ToothTreatmentPlanWidget::SetPlanState(const QMap<int, QString>& toothTypeC
     m_toothTypeCodes = toothTypeCodes;
     m_selectedBridgeKeys = selectedBridgeKeys;
 
+    // 把当前空心/实心桥点候选同步成只读诊断属性。
+    // 测试宿主只通过 QWidget::property 读取该值，不需要链接 DLL 内部 C++ 类方法。
+    QStringList bridgeCandidates;
+    for (auto it = m_bridgeConnectors.constBegin(); it != m_bridgeConnectors.constEnd(); ++it) {
+        if (IsBridgeCandidate(it.key())) {
+            bridgeCandidates.append(it.key());
+        }
+    }
+    bridgeCandidates.sort();
+    setProperty("bridgeCandidates", bridgeCandidates);
+
     // 状态变化后只需要重绘，不需要重新加载资源。
     update();
 }
@@ -187,14 +181,14 @@ void ToothTreatmentPlanWidget::SetClearClickedCallback(const ClearClickedCallbac
 
 // 返回推荐尺寸。
 QSize ToothTreatmentPlanWidget::sizeHint() const {
-    // 视频中的牙弓区域更偏竖向，所以推荐高度比宽度更大。
-    return QSize(620, 780);
+    // 牙弓保持主视觉，但较旧值适当收敛，减少大屏 Scan Plan 两侧空白。
+    return QSize(560, 720);
 }
 
 // 返回最小尺寸。
 QSize ToothTreatmentPlanWidget::minimumSizeHint() const {
     // 低分辨率下仍给上下颌各自保留可点击面积。
-    return QSize(360, 520);
+    return QSize(340, 500);
 }
 
 // 绘制治疗方案。
@@ -309,8 +303,12 @@ void ToothTreatmentPlanWidget::InitializeToothMaskMaps() {
     for (int index = 0; index < 16; ++index) {
         // 牙位 mask 的像素值从 30 开始，每个牙位递增 15。
         const int maskValue = 30 + index * 15;
-        m_maxillaMaskToTooth.insert(maskValue, kMaxillaTeeth[index]);
-        m_mandibleMaskToTooth.insert(maskValue, kMandibleTeeth[index]);
+        m_maxillaMaskToTooth.insert(
+            maskValue,
+            MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(true, maskValue));
+        m_mandibleMaskToTooth.insert(
+            maskValue,
+            MeyerScanTreatmentPlanRules::ToothNumberForMaskValue(false, maskValue));
     }
 }
 
@@ -323,7 +321,7 @@ void ToothTreatmentPlanWidget::InitializeBridgeMaskMaps() {
     for (int index = 0; index < 15; ++index) {
         const int maskValue = BridgeMaskValueAt(index);
 
-        const QString maxillaKey = QString::fromLatin1(kMaxillaBridgeKeys[index]);
+        const QString maxillaKey = MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(true, maskValue);
         m_maxillaMaskToBridge.insert(maskValue, maxillaKey);
 
         int firstTooth = 0;
@@ -337,7 +335,7 @@ void ToothTreatmentPlanWidget::InitializeBridgeMaskMaps() {
             m_bridgeConnectors.insert(maxillaKey, connector);
         }
 
-        const QString mandibleKey = QString::fromLatin1(kMandibleBridgeKeys[index]);
+        const QString mandibleKey = MeyerScanTreatmentPlanRules::BridgeKeyForMaskValue(false, maskValue);
         m_mandibleMaskToBridge.insert(maskValue, mandibleKey);
 
         if (ParseBridgeKey(mandibleKey, &firstTooth, &secondTooth)) {
@@ -431,7 +429,7 @@ void ToothTreatmentPlanWidget::DrawJaw(QPainter* painter, Jaw jaw, const QRect& 
     }
 
     // 绘制桥连接点。
-    // 只有相邻两颗牙都被设置为 Bridge 类型时，才显示空心圈；确认后显示实心圈。
+    // 任意相邻两颗牙都已选择时显示空心圈；用户点击确认后改画实心圈。
     const QMap<int, QString>& bridgeMap = (jaw == JawMaxilla) ? m_maxillaMaskToBridge : m_mandibleMaskToBridge;
     for (auto it = bridgeMap.begin(); it != bridgeMap.end(); ++it) {
         const QString bridgeKey = it.value();
@@ -523,9 +521,9 @@ bool ToothTreatmentPlanWidget::IsBridgeCandidate(const QString& bridgeKey) const
         return false;
     }
 
-    // 两颗相邻牙都必须是 bridge 类型，才显示可点击的小圆点。
-    return m_toothTypeCodes.value(connector.firstTooth) == "bridge"
-        && m_toothTypeCodes.value(connector.secondTooth) == "bridge";
+    // bridge 不是修复类型。只要两端牙位都存在治疗方案，就显示可点击连接点。
+    return m_toothTypeCodes.contains(connector.firstTooth)
+        && m_toothTypeCodes.contains(connector.secondTooth);
 }
 
 // 判断牙位是否属于指定颌。
@@ -537,38 +535,9 @@ bool ToothTreatmentPlanWidget::IsToothInJaw(int toothNumber, Jaw jaw) const {
     return toothNumber >= 31 && toothNumber <= 48;
 }
 
-// 治疗类型转换成资源序号。
-int ToothTreatmentPlanWidget::TreatmentTypeImageIndex(const QString& typeCode) const {
-    // 旧代码和第三方上下文使用 implant/crown/missing/inlay/veneer 等编码。
-    // 资源目录使用 1-7 编号，这里集中做兼容映射。
-    if (typeCode == "implant") {
-        return 1;
-    }
-    if (typeCode == "crown" || typeCode == "full_crown") {
-        return 2;
-    }
-    if (typeCode == "missing") {
-        return 3;
-    }
-    if (typeCode == "inlay") {
-        return 4;
-    }
-    if (typeCode == "veneer") {
-        return 5;
-    }
-    if (typeCode == "inner_crown") {
-        return 6;
-    }
-    if (typeCode == "bridge") {
-        return 7;
-    }
-
-    return 0;
-}
-
 // 返回牙位叠加图路径。
 QString ToothTreatmentPlanWidget::ToothOverlayPath(Jaw jaw, int toothNumber, const QString& typeCode) const {
-    const int imageIndex = TreatmentTypeImageIndex(typeCode);
+    const int imageIndex = MeyerScanTreatmentPlanRules::TreatmentTypeImageIndex(typeCode);
     if (imageIndex <= 0) {
         return QString();
     }

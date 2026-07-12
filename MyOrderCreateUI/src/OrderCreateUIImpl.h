@@ -93,9 +93,6 @@ private:
     // 创建扫描类型按钮。
     QToolButton* CreateTypeButton(QWidget* parent, const QString& text, const QString& code, bool checked);
 
-    // 当前扫描类型显示名。
-    QString CurrentTypeText() const;
-
     // 从标准建单上下文中读取字符串字段。
     QString ReadString(const QJsonObject& object, const QString& key, const QString& defaultValue = QString()) const;
 
@@ -120,8 +117,11 @@ private:
     // 指定扫描类型显示名。
     QString TypeText(const QString& typeCode) const;
 
-    // 返回治疗类型按钮图标路径；selected 用于区分普通态和高亮态资源。
-    QString TypeButtonIconPath(const QString& typeCode, bool selected) const;
+    // 返回治疗类型按钮图标路径；highlighted 区分 b/h，highResolution 区分 1x/2x。
+    QString TypeButtonIconPath(const QString& typeCode, bool highlighted, bool highResolution) const;
+
+    // 根据按钮所在显示器判断本次应使用 1x 还是 2x 图标。
+    bool UseHighResolutionTreatmentIcons(const QWidget* widget) const;
 
     // 切换当前扫描类型。
     void SetCurrentType(const QString& typeCode);
@@ -263,9 +263,6 @@ private:
 
     // typeCode -> button，用于刷新治疗类型按钮状态。
     QMap<QString, QToolButton*> m_typeButtons;
-
-    // 当前治疗类型摘要标签，放在左侧类型卡片下方。
-    QLabel* m_currentTypeSummaryLabel = nullptr;
 
     // 右侧已选牙位表格。
     QTableWidget* m_selectionTable = nullptr;
