@@ -1,5 +1,10 @@
 # 变更记录
 
+## 2026-07-13
+
+- 补充底部 Start/Pause、Complete、Delete 按钮如何通过 Qt 信号/lambda 转换为稳定 actionId 的内部注释，强调 UI 不保存流程业务状态。
+- 扫描页面行为和版本不变；`ScanWorkflowUITest` 已登记到根 CTest 清单。
+
 ## 2026-07-12
 
 - 版本升级为 `v0.2.3`；`SetSessionContextJson()` 对非法 JSON 返回 false 并保留上一份有效上下文，避免缓存状态与已显示按钮分裂。

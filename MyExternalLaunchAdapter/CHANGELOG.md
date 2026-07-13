@@ -1,5 +1,10 @@
 ﻿# MyExternalLaunchAdapter 修改记录
 
+## 2026-07-13
+
+- 补充单例工厂和 Init 的函数级中文注释，说明局部静态单例和输入路径复制技术；测试宿主改用命名 UTF-8 缓冲区传递应用目录、日志目录和第三方 JSON 路径。
+- 标准建单 JSON 映射和第三方类型分流行为不变；`ExternalLaunchAdapterTest` 已登记到根 CTest 清单。
+
 ## 2026-07-10
 
 - `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；第三方字段到标准建单 JSON 的映射边界保持不变。

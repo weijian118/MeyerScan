@@ -1,5 +1,10 @@
 ﻿# MeyerScan DatabaseQtAdapter 变更记录
 
+## 2026-07-13
+
+- 测试宿主改用 Logger QString 重载，并在打印数据库错误前保存命名 UTF-8 缓冲区；Adapter/Database 接口和数据库行为不变。
+- `DatabaseQtAdapterTest` 已登记到根 CTest 清单，用于统一验证 Qt 类型转换和 SQLite 链路。
+
 ## 2026-07-10
 
 - `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；Qt/C++ 类型转换、缓冲区扩容和 Database 单向依赖边界保持不变。

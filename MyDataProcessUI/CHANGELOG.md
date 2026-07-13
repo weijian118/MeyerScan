@@ -1,5 +1,10 @@
 # 变更记录
 
+## 2026-07-13
+
+- 补充 Previous/Next 按钮通过动作回调请求宿主切换、内容页不反向依赖 WorkspaceShell 的实现注释。
+- 处理页面行为和版本不变；`DataProcessUITest` 已登记到根 CTest 清单。
+
 ## 2026-07-12
 
 - 版本升级为 `v0.2.3`；非法 session JSON 返回 false 且不覆盖上一份有效上下文，CreateWidget 与 Activate 生命周期分离。

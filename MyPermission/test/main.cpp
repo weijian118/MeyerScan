@@ -1,5 +1,6 @@
 ﻿#include "Permission.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -71,7 +72,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 会读取 runtimeDir/config/permission_rules.json 并缓存规则。
-    if (!Check(permission->Init(runtimeDir.toUtf8().constData()), "Permission 初始化成功")) {
+    // 权限接口跨 DLL 使用 UTF-8 const char*，测试侧显式保存转换结果。
+    const QByteArray runtimeDirUtf8 = runtimeDir.toUtf8();
+    if (!Check(permission->Init(runtimeDirUtf8.constData()), "Permission 初始化成功")) {
         return 2;
     }
 

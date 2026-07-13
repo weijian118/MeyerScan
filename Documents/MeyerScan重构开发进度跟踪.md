@@ -16,13 +16,35 @@
 ## 2026-07-13 最新验证基线
 
 - 四份核心文档已迁入 `F:\MeyerScan\Documents` 并作为权威源，D 盘同名文件作为同步镜像。
-- 当前审查版本：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.1、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
+- 当前审查版本：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.2、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
 - 全模块复核补齐 Init/上下文/CreateWidget 返回值检查、JSON 事务式更新、CreateWidget/Activate 分离、全部流程禁用状态和可选依赖显式降级；近期模块公开接口、内部实现和测试宿主已补充中文实现技巧注释。
 - 清理 OrderCreateUI、SendUI 和 MainExe 正式路径中的示例患者、订单、医生、技工所和牙位；手工创建恢复空白初态，练习数据使用明确的 `PRACTICE_*` 标识。
 - VS2015 根 `MeyerScan_AllModules.sln` Release x64 和 CMake 全量 Release 构建通过；只保留外部登录头文件既有 C4819/C4091 警告。
 - 根 `MeyerScan.exe --smoke`、`--smoke-main` 和 `--smoke-external-order` 均返回 0；OrderCreateUI smoke 已覆盖空白生产状态、有效/非法 JSON 事务更新和重新初始化。
 - 自研模块测试覆盖 Logger、Database、DatabaseQtAdapter、ConfigCenter、Permission、VersionManager、RuntimeDataCenter、CaseOrderService、UIComponents、UIResources、两校准 UI、Home/Case/Settings/Order/Workspace/Scan/Process/Send、ExternalLaunchAdapter 和 ScanReconstructStudio，全部返回 0。
-- 本轮最新 versionList 为 `versionList_20260713_072234_645.json`：schemaVersion=2、24 项、0 缺失、0 版本不一致、0 `codeVersionError`。源码注释安全脚本为 0 错误、0 警告；静态边界扫描未发现新增直接数据库访问、`currentPath` 或业务源码内联样式。
+- 本轮最新 versionList 为 `versionList_20260713_222652_801.json`：schemaVersion=2、24 项、0 缺失、0 版本不一致、0 `codeVersionError`；SettingsUI 文件/代码版本为 0.2.2。源码注释安全脚本为 0 错误、0 警告；静态边界扫描未发现新增直接数据库访问、`currentPath` 或业务源码内联样式。
+
+## 当前未完成闭环
+
+| 功能链路 | 当前成熟度 | 尚缺内容 |
+|----------|------------|----------|
+| 首页/浏览/设置/建单导航 | 框架已接通 | 真实保存、编辑、删除、失败回显和权限服务端复核 |
+| 患者/订单 | 最小服务与只读快照 | OrderCreateUI 保存到 CaseOrderService、正式迁移、并发/事务和完整 CRUD |
+| 设置 | 页面与部分只读数据 | ConfigCenter 上下文注入、Apply/Confirm/Restore 持久化和来源页刷新 |
+| 扫描/处理 | QVTK 页面和步骤切换 | 设备采集、重建算法、真实模型状态、编辑/分析算法和异常恢复 |
+| 3D/颜色校准 | DLL/UI 占位框架 | 设备交互、采集、计算、结果保存和失败处理 |
+| 发送 | UI 动作上报 | 导出、压缩、邮件、云上传、重试和状态服务 |
+| 独立进程 | ScanReconstructStudio EXE/DLL 双形态 | MainExe 进程管理、版本化 IPC、状态同步和异常退出处理 |
+| 交付 | 运行时版本清单 | 自动更新、安装包、自定义安装流程、签名/哈希和升级回滚 |
+
+> 页面存在或 smoke 通过只表示相应框架可运行，不能把上表中的链路标记为业务完成。
+
+## 统一自动测试
+
+- 根 CMake 已登记 24 项 CTest：22 个模块测试，加 MainExe 内部导航和第三方建单两个集成 smoke；2026-07-13 实际执行结果为 24/24 通过，总耗时约 24 秒。
+- 标准命令：`ctest --test-dir F:\MeyerScan\build -C Release --output-on-failure`。
+- CTest 使用 `build/ctest_runtime/Release` 干净运行目录，统一串行并设置 120 秒超时；三档截图、真实数据库/设备/算法、长时间稳定性和安装包另行验收。
+- CTest 之外单独执行 `MyMainExe\bin\Release\MeyerScan.exe --smoke`，登录前启动链路返回 0。
 
 ## 总进度概览
 
@@ -716,7 +738,7 @@
 - **后续任务**：5.7 ScanReconstructStudio 壳和 5.8 真实流程集成
 - **备注**：便于扩展到不同设备机型
 
-### 5.3 开发扫描阶段 UI — 🟡 初版增强完成（v0.2.1）
+### 5.3 开发扫描阶段 UI — 🟡 初版增强完成（v0.2.3）
 
 - **模块**：`MeyerScan_ScanWorkflowUI.dll`
 - **代码位置**：`f:\MeyerScan\MyScanWorkflowUI\`
@@ -739,7 +761,7 @@
   - [x] MainExe `--smoke-main` 覆盖创建工作台、练习工作台、Scan 步骤懒加载/释放和后续 Send 链路
   - [x] CMake 根聚合 Release 构建通过，使用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 和 VS2015 x64 生成器验证
 
-### 5.4 开发数据处理阶段 UI — 🟡 初版增强完成（v0.2.1）
+### 5.4 开发数据处理阶段 UI — 🟡 初版增强完成（v0.2.3）
 
 - **模块**：`MeyerScan_DataProcessUI.dll`
 - **代码位置**：`f:\MeyerScan\MyDataProcessUI\`

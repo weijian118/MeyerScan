@@ -1,5 +1,6 @@
 ﻿#include "RuntimeDataCenter.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -54,7 +55,9 @@ bool ExecSql(DatabaseQtAdapter* adapter, const char* sql) {
     QString errorMessage;
     if (!adapter || !adapter->ExecuteUpdate(QString::fromUtf8(sql), &errorMessage)) {
         // stderr 让批量脚本能在失败日志里直接看到 SQL 错误。
-        std::fprintf(stderr, "SQL failed: %s\n", errorMessage.toUtf8().constData());
+        // fprintf 只接受窄字符；命名缓冲区保证输出期间 UTF-8 指针有效。
+        const QByteArray errorUtf8 = errorMessage.toUtf8();
+        std::fprintf(stderr, "SQL failed: %s\n", errorUtf8.constData());
         return false;
     }
     return true;
@@ -145,8 +148,8 @@ int main(int argc, char* argv[]) {
 
     ILogger* logger = GetLogger();
     if (logger) {
-        // Logger 接口接收 UTF-8 const char*；toUtf8 临时 QByteArray 在本函数调用期间有效。
-        logger->Init(logDir.toUtf8().constData(), LogLevel::Info);
+        // Qt 调用方使用 Logger 的 QString 重载，公共头文件负责生成稳定 UTF-8 缓冲区。
+        logger->Init(logDir, LogLevel::Info);
     }
 
     DatabaseQtAdapter* adapter = GetDatabaseQtAdapter();
@@ -156,7 +159,8 @@ int main(int argc, char* argv[]) {
     }
     QString databaseError;
     if (!Check(adapter->EnsureConnected(configPath, &databaseError), "SQLite database connects through adapter")) {
-        std::fprintf(stderr, "Database error: %s\n", databaseError.toUtf8().constData());
+        const QByteArray databaseErrorUtf8 = databaseError.toUtf8();
+        std::fprintf(stderr, "Database error: %s\n", databaseErrorUtf8.constData());
         return 1;
     }
     if (!Check(PrepareSchema(adapter), "Test schema prepared")) {
@@ -168,7 +172,10 @@ int main(int argc, char* argv[]) {
         // 工厂函数返回空通常说明 DLL 导出或依赖加载失败。
         return 1;
     }
-    if (!Check(dataCenter->Init(configPath.toUtf8().constData(), logDir.toUtf8().constData()), "RuntimeDataCenter init succeeds")) {
+    // RuntimeDataCenter 公共接口保持纯 C ABI，命名缓冲区确保两个路径指针稳定。
+    const QByteArray configPathUtf8 = configPath.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
+    if (!Check(dataCenter->Init(configPathUtf8.constData(), logDirUtf8.constData()), "RuntimeDataCenter init succeeds")) {
         return 1;
     }
     // ReloadAll 会遍历本地和云端 domain，本地从数据库读，云端生成 notLoaded 空快照。

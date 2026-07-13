@@ -1,5 +1,10 @@
 ﻿# MeyerScan UIComponents 变更记录
 
+## 2026-07-13
+
+- `UIComponentsTest` 使用命名 UTF-8 应用目录缓冲区初始化共享控件模块，继续覆盖按钮、输入框、表格、等待页和标题工厂。
+- 共享控件 ABI/QSS 规则不变；测试已登记到根 CTest 清单，默认不显示窗口。
+
 ## 2026-07-10
 
 - 共享控件视觉统一迁入 `Resources/qss/ui_components.qss`，模块初始化时通过公共 QSS 函数加载；控件工厂只设置 objectName/语义属性，不在源码拼接样式。

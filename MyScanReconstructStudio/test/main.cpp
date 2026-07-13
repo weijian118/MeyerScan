@@ -1,6 +1,7 @@
 ﻿#include "ScanReconstructStudioWindow.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -58,7 +59,9 @@ int main(int argc, char* argv[]) {
 
     if (contextJson.isEmpty()) {
         // 文件读取失败时不创建壳窗口，避免后续子模块收到空的来源不明上下文。
-        std::fprintf(stderr, "Failed to read context json: %s\n", contextPath.toLocal8Bit().constData());
+        // 测试输出统一使用 UTF-8，命名缓冲区覆盖整个 fprintf 调用。
+        const QByteArray contextPathUtf8 = contextPath.toUtf8();
+        std::fprintf(stderr, "Failed to read context json: %s\n", contextPathUtf8.constData());
         return 2;
     }
 

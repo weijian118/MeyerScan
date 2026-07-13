@@ -1,6 +1,7 @@
 ﻿#include "UIComponents.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateEdit>
@@ -45,7 +46,8 @@ int main(int argc, char* argv[]) {
     // applicationDirPath 始终指向测试 exe 所在目录，不依赖 currentPath。
     const QString appDir = QCoreApplication::applicationDirPath();
     // Init 会初始化缩放系数、样式入口等 UI 基础设施。
-    if (!Check(ui->Init(appDir.toUtf8().constData()), "UIComponents 初始化成功")) {
+    const QByteArray appDirUtf8 = appDir.toUtf8();
+    if (!Check(ui->Init(appDirUtf8.constData()), "UIComponents 初始化成功")) {
         return 2;
     }
     // 缩放系数必须为正数，否则控件尺寸计算会全部失效。

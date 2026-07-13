@@ -74,6 +74,9 @@ int main(int argc, char* argv[]) {
     const QString testAppDir = QDir(appDir).filePath("test_runtime/VersionManagerTest");
     const QString logDir = QDir(testAppDir).filePath("logs");
     QDir().mkpath(logDir);
+    // 版本模块是 C ABI，两个命名缓冲区让路径指针生命周期覆盖 Init 调用。
+    const QByteArray testAppDirUtf8 = testAppDir.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
 
     // VersionManager 按测试 appDir 查找清单中的 DLL，因此复制一份自研模块到隔离根目录。
     // QFile::remove 只删除明确的单个测试文件，不递归清理目录，重复执行也能得到同一结果。
@@ -95,7 +98,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 接收应用目录和日志目录，内部会保存这些路径供后续 WriteVersionList 使用。
-    if (!Check(manager->Init(testAppDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(manager->Init(testAppDirUtf8.constData(), logDirUtf8.constData()),
                "VersionManager 初始化成功")) {
         return 2;
     }

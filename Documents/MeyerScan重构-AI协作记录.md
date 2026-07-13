@@ -8,6 +8,31 @@
 
 ---
 
+## 2026-07-13 - 文档查缺补漏、CTest 统一入口与注释复核
+
+### 用户要求
+
+用户要求再次梳理优化重构方案等 Markdown 文档，检查全部模块和测试项目，并继续补充中文注释。
+
+### 采纳与修改
+
+1. 复核 23 个活跃模块、`MyCaseManager` 历史参考目录、根 CMake/VS2015 方案和模块 README/CHANGELOG；未发现 UI 直连 Database、SendUI 越界执行业务、`currentPath` 或业务源码内联样式等新增架构偏移。
+2. 发现根 CMake 只构建测试目标但未注册 CTest，导致 `ctest -N` 为 0。新增统一注册后形成 24 项清单：22 个模块测试和两个 MainExe 集成 smoke，统一串行和 120 秒超时。
+3. 补充文档阅读顺序和功能成熟度表，明确真实建单保存、设置持久化、设备/算法、校准、发送、IPC、自动更新和安装包仍未闭环；页面可显示或 smoke 通过不得写成业务完成。
+4. Logger QString 重载、CaseOrderService、ExternalLaunchAdapter 及多个测试宿主统一使用 QString 重载或命名 `QByteArray`，减少临时 `toUtf8().constData()` 示例；补充 Qt 信号/lambda、C 回调、页面切换和缓冲区生命周期实现注释。
+5. 受影响模块 CHANGELOG 同步记录本轮维护性调整；纯可读性/测试入口调整不升级业务版本。SettingsUI 因移除硬编码云端占位地址并明确配置注入边界，升级到 v0.2.2。
+
+### 验证与问题闭环
+
+- VS2015 根方案和 CMake Release 全量构建通过，仅保留外部登录 SDK 既有 C4819/C4091 警告。
+- CTest 首次执行 21/24 通过；CaseOrderService、RuntimeDataCenter、SettingsUI 暴露出模块输出目录残留旧兄弟 DLL 的运行环境问题。Windows 优先加载 EXE 同级 DLL，因此仅追加 PATH 不能可靠修复。
+- 根 CMake 新增 `MeyerScan_CTestRuntime`，每次重建 `build/ctest_runtime/<Config>`，复制 MainExe 完整依赖和同批次测试 EXE。修复后 24/24 CTest 通过，总耗时约 24 秒。
+- CTest 之外补跑 `MyMainExe\bin\Release\MeyerScan.exe --smoke`，登录前启动链路返回 0。
+- 最新 `versionList_20260713_222652_801.json` 为 schemaVersion=2、24 项、0 缺失、0 文件/代码版本不一致、0 `codeVersionError`；SettingsUI 为 0.2.2。
+- 注释安全和 `git diff --check` 通过；静态边界检索只命中“不得使用 currentPath”的说明性注释，未发现实际调用、UI 直连 Database 或业务源码直接 setStyleSheet。
+
+---
+
 ## 2026-07-13 - 生产测试数据隔离与最终复核
 
 ### 用户要求

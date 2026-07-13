@@ -91,11 +91,15 @@ int main(int argc, char* argv[]) {
     // 服务层会通过 Logger 记录关键步骤；测试也先初始化 Logger，方便排查失败。
     ILogger* logger = GetLogger();
     if (logger) {
-        logger->Init(logDir.toUtf8().constData(), LogLevel::Info);
+        // Qt 测试代码使用 Logger 的 QString 重载，转换细节由公共头文件统一维护。
+        logger->Init(logDir, LogLevel::Info);
     }
 
     // 写入 SQLite 配置后再初始化 CaseOrderService。
     const QString configPath = WriteTestConfig(appDir);
+    // 服务接口保持稳定 C ABI；两个命名缓冲区让路径指针生命周期覆盖 Init 调用。
+    const QByteArray configPathUtf8 = configPath.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
     // 获取服务层 DLL 接口，验证导出函数可用。
     ICaseOrderService* service = GetCaseOrderService();
     if (!Check(service != nullptr, "CaseOrderService 工厂函数返回有效实例")) {
@@ -103,7 +107,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Init 内部会初始化 DatabaseQtAdapter 和 MyDatabase。
-    if (!Check(service->Init(configPath.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(service->Init(configPathUtf8.constData(), logDirUtf8.constData()),
                "CaseOrderService 初始化成功")) {
         return 2;
     }
@@ -156,7 +160,9 @@ int main(int argc, char* argv[]) {
             "VALUES ('DOC-001', 'doctor', 'Dr Demo', '{}', 1, 1, '2026-07-03')",
             &errorMessage),
         "测试准备阶段能写入医生参考数据")) {
-        std::fprintf(stderr, "写入参考数据失败: %s\n", errorMessage.toUtf8().constData());
+        // 输出前保存 UTF-8 字节，避免示例代码依赖临时 constData 指针。
+        const QByteArray errorUtf8 = errorMessage.toUtf8();
+        std::fprintf(stderr, "写入参考数据失败: %s\n", errorUtf8.constData());
         return 8;
     }
 

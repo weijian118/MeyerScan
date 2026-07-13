@@ -580,13 +580,17 @@ QWidget* ScanWorkflowUIImpl::CreateBottomControlBar(QWidget* parent) {
     deleteButton->setCursor(Qt::PointingHandCursor);
     completeButton->setProperty("primary", true);
 
+    // 三个按钮都只把用户意图转换成稳定 actionId；宿主/流程服务决定是否真正开始、完成或删除扫描。
     QObject::connect(playButton, &QPushButton::clicked, [this]() {
+        // clicked 信号在 UI 线程同步进入 lambda，再通过 EmitAction 调用宿主登记的 C 回调。
         EmitAction(ScanWorkflowActionStartPause, "StartPause");
     });
     QObject::connect(completeButton, &QPushButton::clicked, [this]() {
+        // UI 不在回调中保存订单状态，防止页面层和后续 WorkflowService 形成两份状态源。
         EmitAction(ScanWorkflowActionComplete, "Complete");
     });
     QObject::connect(deleteButton, &QPushButton::clicked, [this]() {
+        // 删除同样只上报请求，确认策略和数据删除由业务层实现。
         EmitAction(ScanWorkflowActionDelete, "Delete");
     });
 

@@ -1,5 +1,10 @@
 ﻿# MeyerScan Calibration3DUI 变更记录
 
+## 2026-07-13
+
+- 测试宿主使用命名 `QByteArray` 向 DLL Init 传入路径，并补充“模块立即复制输入缓冲区”的实现注释；占位校准流程和 ABI 不变。
+- `Calibration3DUITest` 已登记到根 CTest 清单，默认自动退出，`--show` 继续用于人工界面验收。
+
 ## 2026-07-10
 
 - 界面样式迁入 `Resources/qss/calibration_3d.qss`，CMake/VS2015 构建后复制到模块运行目录；源码通过公共 QSS/日志辅助函数加载，不再维护局部样式字符串。

@@ -1,5 +1,12 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-13
+
+- 版本升级为 `v0.2.2`，同步 CMake、代码版本和 Windows `Version.rc`。
+- 清理“SettingsUI 直接读取 ConfigCenter”的旧 TODO，明确正式配置由 MainExe/设置服务读取后通过版本化上下文注入；云端地址改为空白可翻译提示，不再内置可能被误保存的占位 URL。
+- 信息管理表格注释改为“少量只读快照”，保持 `SettingsUI -> RuntimeDataCenter` 只读边界；`SettingsUITest --smoke` 已登记到根 CTest 清单。
+- VS2015/CMake Release 构建、隔离运行目录中的 24 项 CTest 和 MainExe 登录前 smoke 通过；运行时版本清单中文件/代码版本均为 0.2.2。
+
 ## 2026-07-12
 
 - 版本升级为 `v0.2.1`；三维校准和颜色校准 DLL 懒加载后必须检查 `Init()`，失败时调用子模块 `Shutdown()`、清空接口并写 Warning，设置其它页面继续可用。

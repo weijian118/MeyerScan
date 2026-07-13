@@ -170,9 +170,11 @@ QWidget* ScanReconstructStudioWindow::CreateTopStepBar(QWidget* parent) {
         SwitchToStep(StepScan);
     });
     QObject::connect(processButton, &QPushButton::clicked, [this]() {
+        // 切换函数先创建目标页，成功后才释放旧页并更新当前阶段，避免失败时出现空白窗口。
         SwitchToStep(StepDataProcess);
     });
     QObject::connect(backButton, &QPushButton::clicked, [this]() {
+        // close 触发 QMainWindow 正常关闭流程，析构函数负责释放当前 QVTK 页面和模块接口。
         close();
     });
 
@@ -204,6 +206,7 @@ QWidget* ScanReconstructStudioWindow::CreateWindowToolBar(QWidget* parent) {
         auto* button = new QPushButton(text, widget);
         button->setMinimumWidth(68);
         QObject::connect(button, &QPushButton::clicked, [this, text]() {
+            // 当前壳子阶段只记录工具入口；真实上传/裁剪/设置动作后续通过稳定动作合同接入。
             WriteLog(LogLevel::Info, "TopToolClicked", QString("Tool clicked: %1").arg(text));
         });
         layout->addWidget(button);

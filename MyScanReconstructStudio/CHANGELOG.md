@@ -1,5 +1,10 @@
 # 变更记录
 
+## 2026-07-13
+
+- 补充顶部 Scan/Process/Back/工具按钮信号到页面切换或日志动作的内部实现注释；测试读取上下文失败时使用命名 UTF-8 路径缓冲区。
+- EXE/DLL 行为和版本不变；`ScanReconstructStudio.exe --smoke` 已登记到根 CTest 清单。
+
 ## 2026-07-12
 
 - EXE/DLL 双形态版本升级为 `v0.1.3`；`SwitchToStep()` 改为返回 bool，初始 Scan 页或目标页创建失败会向 Initialize/RunSmoke 传播，不再显示空壳后报告成功。

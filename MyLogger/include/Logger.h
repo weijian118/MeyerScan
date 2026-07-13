@@ -81,6 +81,10 @@
 #  include <QString>
 #endif
 
+#if defined(QSTRING_H) || defined(QT_CORE_LIB)
+#  include <QByteArray>
+#endif
+
 // =========================================================================
 // DLL 导出/导入机制
 // =========================================================================
@@ -234,8 +238,8 @@ public:
 
     // ---- QString（仅在引入 Qt 时可用） -------------------------------
     // 激活条件: 在 #include "Logger.h" 之前 #include <QString>。
-    // QString 重载调用 toUtf8().constData() 来生成
-    // 主要接口所需的以 null 结尾的 UTF-8 缓冲区。
+    // QString 重载先把每个值保存为命名 QByteArray，再把 constData()
+    // 传给主要接口，保证 UTF-8 缓冲区生命周期清晰可见。
     //
     // 守卫宏: QSTRING_H 由 <QString> 的包含守卫定义；
     // QT_CORE_LIB 在构建任何 Qt 模块时全局定义。
@@ -244,9 +248,10 @@ public:
     // 使用 QString 初始化日志目录。
     // 该重载只存在于调用方编译单元中，真正跨 DLL 的仍是 const char* 主接口。
     bool Init(const QString& logDir, LogLevel level) {
-        // toUtf8() 返回 QByteArray；constData() 提供一个
-        // 在临时对象生命周期内有效的以 null 结尾的指针。
-        return Init(logDir.toUtf8().constData(), level);
+        // 显式保存 QByteArray，使 UTF-8 缓冲区的生命周期覆盖整个 DLL 调用。
+        // 这比在参数列表里直接写临时 toUtf8().constData() 更适合初学者阅读和调试。
+        const QByteArray logDirUtf8 = logDir.toUtf8();
+        return Init(logDirUtf8.constData(), level);
     }
 
     // 使用 QString 写日志。
@@ -258,13 +263,21 @@ public:
                const QString& caseId,
                const QString& operator_,
                const QString& content) {
+        // 每个命名 QByteArray 都持有一份独立 UTF-8 缓冲区；直到本函数返回前，
+        // 下面传入 const char* 主接口的六个指针始终有效。
+        const QByteArray moduleUtf8 = module.toUtf8();
+        const QByteArray operationUtf8 = operation.toUtf8();
+        const QByteArray deviceIdUtf8 = deviceId.toUtf8();
+        const QByteArray caseIdUtf8 = caseId.toUtf8();
+        const QByteArray operatorUtf8 = operator_.toUtf8();
+        const QByteArray contentUtf8 = content.toUtf8();
         Write(level,
-              module.toUtf8().constData(),
-              operation.toUtf8().constData(),
-              deviceId.toUtf8().constData(),
-              caseId.toUtf8().constData(),
-              operator_.toUtf8().constData(),
-              content.toUtf8().constData());
+              moduleUtf8.constData(),
+              operationUtf8.constData(),
+              deviceIdUtf8.constData(),
+              caseIdUtf8.constData(),
+              operatorUtf8.constData(),
+              contentUtf8.constData());
     }
 #endif // Qt
 };

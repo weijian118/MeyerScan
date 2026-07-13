@@ -1,5 +1,10 @@
 ﻿# MeyerScan ConfigCenter 变更记录
 
+## 2026-07-13
+
+- `ConfigCenterTest` 使用命名 UTF-8 目录缓冲区调用 Init，补充跨 DLL 指针生命周期注释；配置字段和模块 ABI 不变。
+- 测试已登记到根 CTest 清单，继续在独立测试目录验证默认配置生成。
+
 ## 2026-07-06
 
 - 复查补漏：同步修正 `ConfigCenterImpl::EnsureDefaultConfig()` 的首次生成逻辑和 `ConfigCenterTest` 断言，避免代码仍生成旧 `mysql` 默认值。

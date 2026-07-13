@@ -268,9 +268,11 @@ int main(int argc, char* argv[]) {
                     QString("OrderCreateType_%1_Button").arg(captureHoverType));
                 if (!hoverButton) {
                     captureExitCode = 31;
+                    // lambda 内先保存 UTF-8 字节，保证 fprintf 使用的指针在调用期间有效。
+                    const QByteArray hoverTypeUtf8 = captureHoverType.toUtf8();
                     std::fprintf(stderr,
                                  "[FAIL] hover treatment type not found: %s\n",
-                                 captureHoverType.toUtf8().constData());
+                                 hoverTypeUtf8.constData());
                 } else {
                     QEvent hoverEnterEvent(QEvent::Enter);
                     QApplication::sendEvent(hoverButton, &hoverEnterEvent);
@@ -290,11 +292,13 @@ int main(int argc, char* argv[]) {
 
             // QWidget::grab 只截取建单模块内容，不包含 Windows 桌面和窗口边框，便于和视频内容区对比。
             const QPixmap pixmap = widget->grab();
+            // 成功和失败分支复用同一份 UTF-8 路径，避免重复创建临时 QByteArray。
+            const QByteArray capturePathUtf8 = capturePath.toUtf8();
             if (!pixmap.save(capturePath)) {
                 captureExitCode = 30;
-                std::fprintf(stderr, "[FAIL] failed to save screenshot: %s\n", capturePath.toUtf8().constData());
+                std::fprintf(stderr, "[FAIL] failed to save screenshot: %s\n", capturePathUtf8.constData());
             } else {
-                std::printf("[PASS] screenshot saved: %s\n", capturePath.toUtf8().constData());
+                std::printf("[PASS] screenshot saved: %s\n", capturePathUtf8.constData());
             }
             app.quit();
         });

@@ -1,5 +1,10 @@
 # MeyerScan VersionManager 变更记录
 
+## 2026-07-13
+
+- `VersionManagerTest` 初始化隔离目录时改用命名 UTF-8 路径缓冲区，继续保证测试不覆盖 MainExe 正式版本清单。
+- 历史骨架功能和版本不变；测试已登记到根 CTest 清单，正式运行时版本清单仍由 MainExe 内置能力生成。
+
 ## 2026-07-10
 
 - `VersionManagerTest` 改为在 `test_runtime/VersionManagerTest` 中生成独立配置、模块副本和版本输出，禁止覆盖根 Release 的正式 `config/version_modules.json`。

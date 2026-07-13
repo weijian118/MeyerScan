@@ -1,5 +1,10 @@
 ﻿# MeyerScan Logger 变更记录
 
+## 2026-07-13
+
+- QString 便捷重载改为先保存命名 `QByteArray`，再调用 UTF-8 `const char*` 主接口；补充缓冲区生命周期实现注释，便于理解 Qt 调用方与无 Qt DLL ABI 的关系。
+- Logger DLL 本体、日志格式、同步落盘规则和版本号均不变；根 CMake 已把 `LoggerTest` 注册进统一 CTest 清单。
+
 ## 2026-07-12
 
 - 清理 `Logger.h` 宏说明中位于 `//` 注释行末尾的反斜杠，改用无续行符的等价执行流程示例，避免 C/C++ 预处理阶段把下一物理行拼入注释。

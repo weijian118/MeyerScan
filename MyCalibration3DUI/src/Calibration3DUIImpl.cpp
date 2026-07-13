@@ -29,8 +29,8 @@ Calibration3DUIImpl& Calibration3DUIImpl::Instance() {
 // 初始化三维校准模块。
 // 当前骨架只缓存安装目录和日志目录；后续接入算法/设备库时也应放在此处完成。
 bool Calibration3DUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
-    // 保存为 QByteArray，保证 const char* 生命周期不依赖调用方传入的临时对象。
-    // 这在 MainExe 使用 QDir::fromNativeSeparators(...).toUtf8().constData() 调用时尤其重要。
+    // 保存为 QByteArray，保证模块状态不依赖调用方传入缓冲区的生命周期。
+    // 即使调用方在 Init 返回后销毁自己的 UTF-8 缓冲区，本模块仍持有独立副本。
     m_appDir = QByteArray(appDirUtf8 ? appDirUtf8 : "");
     m_logDir = QByteArray(logDirUtf8 ? logDirUtf8 : "");
 

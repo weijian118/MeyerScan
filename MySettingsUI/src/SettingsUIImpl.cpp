@@ -55,7 +55,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.2.1 (2026-07-12)";
+const char* Version = "MeyerScan_SettingsUI v0.2.2 (2026-07-13)";
 }
 
 // 根据安装目录解析数据库配置路径。
@@ -505,8 +505,9 @@ QWidget* SettingsUIImpl::CreateGeneralPage(QWidget* parent) {
     formatCombo->setMinimumWidth(360);
     layout->addWidget(formatCombo);
 
-    // TODO: 路径应从 ConfigCenter 读取（runtime_config.json）。
-    // 骨架期先使用系统文档目录作为可显示占位，避免界面中出现开发机 D:/ 路径。
+    // 当前骨架使用系统文档目录生成安全默认值，避免界面出现开发机 D:/ 路径。
+    // 正式值应由 MainExe/设置服务读取 ConfigCenter 后通过版本化设置上下文注入；
+    // SettingsUI 不直接读取 runtime_config.json，防止 UI 层和配置层形成隐式耦合。
     const QString documentsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     // 如果系统文档目录取不到，就退回 appDir。这里不是开发机路径回退，而是运行目录兜底。
     const QString basePath = documentsPath.isEmpty()
@@ -549,7 +550,7 @@ QWidget* SettingsUIImpl::CreateInfoTabPage(QWidget* parent,
     // 数据表格只展示 RuntimeDataCenter 提供的只读快照。
     // 新增、编辑、删除按钮目前只保留入口；保存逻辑后续统一走服务层。
     auto* table = new QTableWidget(tab);
-    // QTableWidget 适合当前骨架期的少量演示数据；正式大数据量应切换到 model/view + 分页。
+    // QTableWidget 适合当前骨架期的少量只读快照；正式大数据量应切换到 model/view + 分页。
     table->setColumnCount(headers.size());
     table->setHorizontalHeaderLabels(headers);
     table->setRowCount(rows.size());
@@ -857,8 +858,9 @@ QWidget* SettingsUIImpl::CreateCloudPage(QWidget* parent) {
     serverLayout->addWidget(serverTitle);
 
     auto* serverEdit = new QLineEdit(serverCard);
-    // 这里仍是占位值，正式云端地址应从 ConfigCenter 读取。
-    serverEdit->setText(tr("https://cloud.meyerscan.com"));
+    // 云端地址不在 UI 内硬编码。后续由 MainExe/设置服务读取 ConfigCenter 后注入；
+    // 当前只显示可翻译提示，避免占位 URL 被误认为真实生产配置并保存。
+    serverEdit->setPlaceholderText(tr("Cloud server URL"));
     serverEdit->setMinimumWidth(400);
     serverLayout->addWidget(serverEdit);
 

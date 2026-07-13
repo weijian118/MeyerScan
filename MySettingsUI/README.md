@@ -44,7 +44,7 @@
 | 账号状态 | text | Not logged in | 云端账号登录状态 |
 | 用户名/邮箱 | string | (空) | 登录用户名 |
 | 密码 | string | (空) | 登录密码 |
-| 服务器地址 | string | https://cloud.meyerscan.com | 云服务器 URL |
+| 服务器地址 | string | (空) | 云服务器 URL；正式值由 MainExe/设置服务从 ConfigCenter 读取后注入 |
 | 自动上传 | enum | Enabled | 完成后自动上传开关 |
 
 ### 扫描设置（Scan，v0.2.0 新增）
@@ -68,7 +68,7 @@
 
 ### 设置持久化策略
 
-- **骨架期（当前 v0.2.1）**：所有设置项的默认值硬编码在 UI 代码中，路径使用 `QStandardPaths::DocumentsLocation` 派生的用户目录占位，不显示开发机 `D:/` 路径；
+- **骨架期（当前 v0.2.2）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
   修改后暂不持久化，仅停留在 UI 控件层面。
 - **正式阶段（规划）**：设置项的读写统一走 `ConfigCenter.dll` 的 `runtime_config.json`，由 ConfigCenter 负责配置的版本校验、迁移回滚和变更通知。设置模块不直接访问文件系统或数据库。
 - **路径字段备注**：订单存储路径和打包路径在正式阶段应从 ConfigCenter 读取用户/客户配置，

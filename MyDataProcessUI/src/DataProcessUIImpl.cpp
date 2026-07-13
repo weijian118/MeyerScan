@@ -614,10 +614,12 @@ QWidget* DataProcessUIImpl::CreateBottomStatusBar(QWidget* parent) {
     m_statusLabel = new QLabel(tr("Ready"), frame);
     m_statusLabel->setProperty("muted", true);
 
+    // 底部导航只上报跨步骤意图，不直接持有或调用 WorkspaceShell，避免内容页反向依赖壳子。
     QObject::connect(previousButton, &QPushButton::clicked, [this]() {
         EmitAction(DataProcessActionPrevious, "Previous");
     });
     QObject::connect(nextButton, &QPushButton::clicked, [this]() {
+        // 宿主收到 Next 后决定进入发送页还是拒绝切换，处理 UI 不自行推进工作台状态。
         EmitAction(DataProcessActionNext, "Next");
     });
 

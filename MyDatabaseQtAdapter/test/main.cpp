@@ -87,7 +87,8 @@ int main(int argc, char* argv[]) {
     // Logger 是 DatabaseQtAdapter 的可选依赖，但测试中主动初始化，确保适配层日志链路可用。
     ILogger* logger = GetLogger();
     if (logger) {
-        logger->Init(logDir.toUtf8().constData(), LogLevel::Info);
+        // Qt 调用方直接使用 Logger 的 QString 内联重载；真正 DLL ABI 仍是 UTF-8 const char*。
+        logger->Init(logDir, LogLevel::Info);
     }
 
     DatabaseQtAdapter* adapter = GetDatabaseQtAdapter();
@@ -100,7 +101,9 @@ int main(int argc, char* argv[]) {
     QString errorMessage;
     // EnsureConnected 会完成 QString 路径到 UTF-8 C 字符串的转换，再调用底层 MyDatabase。
     if (!Check(adapter->EnsureConnected(configPath, "sqlite", &errorMessage), "Adapter 能通过 SQLite 配置连接数据库")) {
-        std::fprintf(stderr, "数据库连接错误: %s\n", errorMessage.toUtf8().constData());
+        // fprintf 只接受窄字符；命名 QByteArray 保证打印期间 UTF-8 指针有效。
+        const QByteArray errorUtf8 = errorMessage.toUtf8();
+        std::fprintf(stderr, "数据库连接错误: %s\n", errorUtf8.constData());
         return 2;
     }
     if (!Check(adapter->IsConnected(), "Adapter 连接后 IsConnected 为 true")) {

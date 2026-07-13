@@ -194,7 +194,9 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
     if (!m_databaseAdapter->ExecuteUpdate(sql, &updateError)) {
         // 返回适配层整理后的错误消息，让调用方能定位数据库写入失败原因。
         WriteLog(LogLevel::Error, "SavePatientOrderJson", updateError);
-        return Fail(10004, updateError.toUtf8().constData());
+        // Fail 会立即复制消息，但仍使用命名缓冲区明确 const char* 的有效期。
+        const QByteArray updateErrorUtf8 = updateError.toUtf8();
+        return Fail(10004, updateErrorUtf8.constData());
     }
 
     WriteLog(LogLevel::Info, "SavePatientOrderJson", QString("orderId=%1").arg(orderId));
@@ -223,7 +225,9 @@ CaseOrderServiceResult CaseOrderServiceImpl::GetPatientOrderJson(const char* ord
     QString queryError;
     if (!m_databaseAdapter->ExecuteQueryJson(sql, &jsonBuffer, &queryError, 1024 * 256, 1024 * 1024)) {
         WriteLog(LogLevel::Error, "GetPatientOrderJson", queryError);
-        return Fail(10002, queryError.toUtf8().constData());
+        // 跨入纯 C ABI 结果构造前先保存 UTF-8 字节，避免示范临时指针写法。
+        const QByteArray queryErrorUtf8 = queryError.toUtf8();
+        return Fail(10002, queryErrorUtf8.constData());
     }
 
     // ExecuteQueryJson 返回统一表格 JSON：{ columns:[], rows:[] }。
@@ -270,7 +274,9 @@ CaseOrderServiceResult CaseOrderServiceImpl::ListReferenceDataJson(const char* c
     QString queryError;
     if (!m_databaseAdapter->ExecuteQueryJson(sql, &jsonBuffer, &queryError, 1024 * 256, 1024 * 1024)) {
         WriteLog(LogLevel::Error, "ListReferenceDataJson", queryError);
-        return Fail(10002, queryError.toUtf8().constData());
+        // Fail 在返回结构体中复制错误文本，命名缓冲区让复制来源生命周期一目了然。
+        const QByteArray queryErrorUtf8 = queryError.toUtf8();
+        return Fail(10002, queryErrorUtf8.constData());
     }
 
     // 输出统一结构，方便 UI 只关心 items，不关心底层表名和 SQL。
@@ -307,8 +313,9 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
             return Fail(2, "queryArgsJsonUtf8 must be a JSON object");
         }
         const QString orderId = args.object().value("orderId").toString().trimmed();
-        // 临时 QByteArray 的 constData() 只在函数调用表达式期间有效；GetPatientOrderJson 会立即复制/读取。
-        return GetPatientOrderJson(orderId.toUtf8().constData(), buffer, bufferSize);
+        // 使用命名缓冲区把 QString 转成稳定 UTF-8；被调函数只在本次同步调用内读取该指针。
+        const QByteArray orderIdUtf8 = orderId.toUtf8();
+        return GetPatientOrderJson(orderIdUtf8.constData(), buffer, bufferSize);
     }
 
     if (queryName == "referenceData.list") {
@@ -320,7 +327,8 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
         }
         const QString category = args.object().value("category").toString();
         // category 继续交给 ListReferenceDataJson 做白名单映射，QueryJson 不重复规则。
-        return ListReferenceDataJson(category.toUtf8().constData(), buffer, bufferSize);
+        const QByteArray categoryUtf8 = category.toUtf8();
+        return ListReferenceDataJson(categoryUtf8.constData(), buffer, bufferSize);
     }
 
     // 未登记的 queryName 直接拒绝，防止服务层变成任意查询通道。

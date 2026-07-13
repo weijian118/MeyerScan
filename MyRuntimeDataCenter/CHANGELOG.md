@@ -1,5 +1,10 @@
 ﻿# MeyerScan RuntimeDataCenter 变更记录
 
+## 2026-07-13
+
+- 测试宿主改用 Logger QString 重载和命名 UTF-8 路径/错误缓冲区，补充 C ABI 与 `fprintf` 指针生命周期说明。
+- domain 快照、旧表候选和只读边界不变；`RuntimeDataCenterTest` 已登记到根 CTest 清单。
+
 ## 2026-07-10
 
 - `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；运行时只读 domain JSON 快照边界保持不变。

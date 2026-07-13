@@ -1,5 +1,10 @@
 ﻿# MeyerScan CaseOrderService 变更记录
 
+## 2026-07-13
+
+- 错误消息、订单 ID 和参考数据分类在进入 C ABI 辅助函数前统一保存为命名 `QByteArray`，去除临时 `toUtf8().constData()` 示例写法；测试宿主同步使用 Logger QString 重载和稳定路径缓冲区。
+- 不改变 `CaseOrderService -> DatabaseQtAdapter -> Database` 边界、JSON 合同或模块版本；`CaseOrderServiceTest` 已登记到根 CTest 清单。
+
 ## 2026-07-06
 
 - 修复根聚合 CMake 构建中 `CaseOrderServiceTest` 依赖不完整的问题：测试目标补齐 `MyDatabaseQtAdapter` 依赖，保证测试宿主在 VSCode/CMake 和 VS2015 聚合构建中都能找到数据库适配层。

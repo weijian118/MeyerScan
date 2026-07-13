@@ -1,5 +1,10 @@
 ﻿# MeyerScan Permission 变更记录
 
+## 2026-07-13
+
+- `PermissionTest` 使用命名 UTF-8 目录缓冲区调用 Init，避免示例代码依赖临时 `constData()`；`visible/enabled` 规则行为不变。
+- 测试已登记到根 CTest 清单，继续覆盖入口显隐、功能禁用和缺失规则默认值。
+
 ## 2026-07-10
 
 - 修正 `Init()` 注释中的旧 Core.lib 前置口径：权限规则缺失、损坏、版本不兼容和验签失败等语义稳定后再升级返回类型；本轮不修改 ABI。

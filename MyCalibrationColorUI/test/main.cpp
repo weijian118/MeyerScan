@@ -34,6 +34,9 @@ int main(int argc, char* argv[]) {
     const QString logDir = QDir(appDir).filePath("logs");
     // 先创建日志目录，避免 Init 内部写首条日志时失败。
     QDir().mkpath(logDir);
+    // 显式持有 UTF-8 字节，避免跨 DLL 示例依赖临时 QByteArray 的隐式生命周期。
+    const QByteArray appDirUtf8 = appDir.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
 
     // 验证 DLL 导出的工厂函数能返回有效接口。
     ICalibrationColorUI* calibration = GetCalibrationColorUI();
@@ -41,7 +44,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 当前只打通路径和日志，后续颜色校准算法资源也从这里扩展。
-    if (!Check(calibration->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(calibration->Init(appDirUtf8.constData(), logDirUtf8.constData()),
                "CalibrationColorUI 初始化成功")) {
         return 2;
     }

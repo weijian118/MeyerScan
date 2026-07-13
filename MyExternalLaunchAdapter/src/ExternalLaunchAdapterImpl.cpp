@@ -19,6 +19,8 @@ const char* Version = "MeyerScan_ExternalLaunchAdapter v0.1.0 (2026-07-04)";
 }
 }
 
+// 返回进程内唯一的外部拉起适配器实例。
+// 函数内 static 由 C++ 运行时保证只初始化一次，调用方不负责 delete。
 ExternalLaunchAdapterImpl& ExternalLaunchAdapterImpl::Instance() {
     // 函数内 static 在首次调用时构造，后续所有调用返回同一个对象。
     // 这里不保存订单内容，只缓存路径和 Logger 指针，所以单例不会造成订单数据串扰。
@@ -26,6 +28,8 @@ ExternalLaunchAdapterImpl& ExternalLaunchAdapterImpl::Instance() {
     return instance;
 }
 
+// 初始化模块运行路径和日志依赖。
+// 输入 UTF-8 指针会立即复制进 QByteArray，调用方临时缓冲区可在返回后释放。
 bool ExternalLaunchAdapterImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // 调用方传入的 const char* 可能来自临时 QByteArray::constData()。
     // 这里必须复制到成员 QByteArray，不能保存原始指针。

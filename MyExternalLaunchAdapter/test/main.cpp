@@ -1,5 +1,6 @@
 ﻿#include "ExternalLaunchAdapter.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -67,6 +68,9 @@ int main(int argc, char* argv[]) {
     const QString logDir = QDir(appDir).filePath("logs");
     // 测试日志写在输出目录下，避免污染源码目录。
     QDir().mkpath(logDir);
+    // 适配器是 C ABI；命名 UTF-8 缓冲区覆盖 Init 调用，避免临时指针示范。
+    const QByteArray appDirUtf8 = appDir.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
 
     // 通过 C ABI 工厂函数获取模块单例，模拟 MainExe 的真实调用方式。
     IExternalLaunchAdapter* adapter = GetExternalLaunchAdapter();
@@ -75,7 +79,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Init 会缓存 appDir/logDir，并初始化 Logger 指针。
-    if (!Check(adapter->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(adapter->Init(appDirUtf8.constData(), logDirUtf8.constData()),
                "adapter init ok")) {
         return 2;
     }
@@ -89,7 +93,9 @@ int main(int argc, char* argv[]) {
     // 16KB 足够当前测试样例；正式 MainExe 会在缓冲区不足时按 requiredBufferSize 扩容重试。
     std::vector<char> output(16 * 1024, '\0');
     ExternalLaunchResult result = {};
-    const bool normalizeOk = adapter->NormalizeOrderFile(samplePath.toUtf8().constData(),
+    // 文件路径转换结果需要活到 NormalizeOrderFile 返回；适配器在调用内同步读取它。
+    const QByteArray samplePathUtf8 = samplePath.toUtf8();
+    const bool normalizeOk = adapter->NormalizeOrderFile(samplePathUtf8.constData(),
                                                          "cmd_demo",
                                                          output.data(),
                                                          static_cast<int>(output.size()),

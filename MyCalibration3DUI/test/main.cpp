@@ -35,6 +35,9 @@ int main(int argc, char* argv[]) {
     const QString logDir = QDir(appDir).filePath("logs");
     // mkpath 在目录已存在时不会失败，适合测试启动前防御性创建目录。
     QDir().mkpath(logDir);
+    // DLL 公共接口使用 UTF-8 const char*；命名 QByteArray 保证指针在 Init 返回前有效。
+    const QByteArray appDirUtf8 = appDir.toUtf8();
+    const QByteArray logDirUtf8 = logDir.toUtf8();
 
     // DLL 工厂函数返回接口对象，是测试模块链接和导出的第一步。
     ICalibration3DUI* calibration = GetCalibration3DUI();
@@ -42,7 +45,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 接收应用目录和日志目录，后续真实算法/设备资源也应通过这些根路径查找。
-    if (!Check(calibration->Init(appDir.toUtf8().constData(), logDir.toUtf8().constData()),
+    if (!Check(calibration->Init(appDirUtf8.constData(), logDirUtf8.constData()),
                "Calibration3DUI 初始化成功")) {
         return 2;
     }

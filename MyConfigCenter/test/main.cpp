@@ -1,5 +1,6 @@
 ﻿#include "ConfigCenter.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -43,7 +44,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // Init 会读取或创建 runtime_config.json，并把配置缓存到模块内部。
-    if (!Check(config->Init(runtimeDir.toUtf8().constData()), "ConfigCenter 初始化成功")) {
+    // C ABI 只读取 UTF-8 指针；命名 QByteArray 让生命周期和调用范围清楚可见。
+    const QByteArray runtimeDirUtf8 = runtimeDir.toUtf8();
+    if (!Check(config->Init(runtimeDirUtf8.constData()), "ConfigCenter 初始化成功")) {
         return 2;
     }
 

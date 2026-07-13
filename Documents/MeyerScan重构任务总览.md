@@ -194,9 +194,9 @@ MeyerScan 是美亚光电口腔数字印模仪（mOS MyScan / mOS MyScan 5/5H）
 | 加载订单规则服务 | `MyOrderWorkflowService`（规划） | `MeyerScan_OrderWorkflowService.dll` | DLL | 统一判断新建、加载、继续扫描、进入处理、进入发送；综合订单状态、扫描方案、数据文件完整性、权限、客户配置、机型、软件版本后输出决策。 | 不保存数据、不渲染 UI；HomeUI、CaseUI、OrderCreateUI、ScanReconstructStudio 不得重复实现这套规则。 |
 | 首页 UI | `MyHomeUI` | `MeyerScan_HomeUI.dll`，测试宿主 `HomeUITest.exe` | DLL | 首页入口展示；Create / Browse / Practice / Settings 等入口状态；OEM 首页布局、Logo、主题、入口显隐；入口点击通过回调上报 MainExe。 | 只做入口 UI；不做建单规则、不判断加载订单、不直接决定扫描流程、不做权限核心判断。 |
 | 案例管理 UI | `MyCaseUI` | `MeyerScan_CaseUI.dll`，测试宿主 `CaseUITest.exe` | DLL | 患者/订单列表、搜索、导入导出按钮、删除按钮、打开订单按钮、返回首页按钮、页签切换；模块内客户操作日志；通过操作 ID 上报 MainExe；当前患者/订单列表先读取 RuntimeDataCenter 的 JSON 快照。 | 正式业务不得直接访问 Database；列表读模型可走 RuntimeDataCenter，搜索/CRUD/保存必须走 CaseOrderService/DataExport；打开订单必须走 OrderWorkflowService 和 MainExe 扫描前资源释放流程。 |
-| 建单 UI | `MyOrderCreateUI` | `MeyerScan_OrderCreateUI.dll`，测试宿主 `OrderCreateUITest.exe` | DLL | 手工建单、第三方传参建单、HIS/Worklist 下拉患者建单共用表单；当前 v0.5.2 采用单页三栏工作台内容布局；患者/订单基本信息、五种修复类型、治疗方案图片选择、扫描流程输入、已选牙位明细、标信息占位和确认操作均在同一个界面内；治疗方案区使用上下颌牙弓图片、mask 像素命中、`1/3/4/5/7` 牙位叠加图和桥连接点叠加图；前四种类型 hover/选中只在图标区域显示彩色圆底，种植体使用整行高亮；扫描流程预览固定高度，类型变化不挤压牙弓；通用控件基础样式通过 `MeyerScan_UIComponents.dll` 动态加载复用；`GetCurrentScanProcessJson()` 生成 `scanProcess` JSON。 | 只收集和展示输入；不保存数据库、不决定加载订单规则、不直接启动扫描进程；不把 bridge 当修复类型；不绘制 Order/Scan/Process/Send 步骤导航，步骤导航唯一归 `OrderScanWorkspaceShell`；后续保存走 CaseOrderService / ScanSchemaService / OrderWorkflowService。 |
-| 建单扫描工作台壳 | `MyOrderScanWorkspaceShell` | `MeyerScan_OrderScanWorkspaceShell.dll` | DLL / UI 容器 | 将建单、扫描、数据处理、发送等步骤放入统一工作台外壳；当前 v0.1.2 支持创建模式（Order / Scan / Process / Send）和练习模式（Scan / Process）；顶部整合品牌、返回、唯一的步骤导航、最小化和关闭，并通过动作/步骤回调通知 MainExe。 | 只做容器和导航；不做建单保存、不做扫描算法、不做真实导出/上传；OrderCreateUI、ScanWorkflowUI、DataProcessUI 和 SendUI 不得重复绘制步骤导航。 |
-| 发送 UI | `MySendUI` | `MeyerScan_SendUI.dll`，测试宿主 `SendUITest.exe` | DLL / UI | 工作台 Send 步骤页面；显示患者/医生/订单编号/订单类型/诊所/数据格式/备注等案例信息；提供本地 `Export`、`Compress` 和技工所 `Email Send`、`Upload` 动作按钮，以及 `Previous` / `Finish` 流程按钮；按钮动作通过 `ISendUI` 回调上报 MainExe；当前 v0.1.1 已接入 UIComponents、UIResources、Logger、版本导出、VS2015/CMake 工程和测试宿主。 | 只做发送页展示、上下文字段填充、动作回调和日志；不直接访问数据库、不直接打包数据、不联网、不发送邮件、不上传云端；真实导出/压缩/邮件/上传后续进入 DataExport、NetworkHelper 或专用发送服务。 |
+| 建单 UI | `MyOrderCreateUI` | `MeyerScan_OrderCreateUI.dll`，测试宿主 `OrderCreateUITest.exe` | DLL | 手工建单、第三方传参建单、HIS/Worklist 下拉患者建单共用表单；当前 v0.5.3 采用单页三栏工作台内容布局；患者/订单基本信息、五种修复类型、治疗方案图片选择、扫描流程输入、已选牙位明细、标信息占位和确认操作均在同一个界面内；治疗方案区使用上下颌牙弓图片、mask 像素命中、`1/3/4/5/7` 牙位叠加图和桥连接点叠加图；前四种类型 hover/选中只在图标区域显示彩色圆底，种植体使用整行高亮；扫描流程预览固定高度，类型变化不挤压牙弓；通用控件基础样式通过 `MeyerScan_UIComponents.dll` 动态加载复用；`GetCurrentScanProcessJson()` 生成 `scanProcess` JSON。 | 只收集和展示输入；不保存数据库、不决定加载订单规则、不直接启动扫描进程；不把 bridge 当修复类型；不绘制 Order/Scan/Process/Send 步骤导航，步骤导航唯一归 `OrderScanWorkspaceShell`；后续保存走 CaseOrderService / ScanSchemaService / OrderWorkflowService。 |
+| 建单扫描工作台壳 | `MyOrderScanWorkspaceShell` | `MeyerScan_OrderScanWorkspaceShell.dll` | DLL / UI 容器 | 将建单、扫描、数据处理、发送等步骤放入统一工作台外壳；当前 v0.1.3 支持创建模式（Order / Scan / Process / Send）和练习模式（Scan / Process）；顶部整合品牌、返回、唯一的步骤导航、最小化和关闭，并通过动作/步骤回调通知 MainExe。 | 只做容器和导航；不做建单保存、不做扫描算法、不做真实导出/上传；OrderCreateUI、ScanWorkflowUI、DataProcessUI 和 SendUI 不得重复绘制步骤导航。 |
+| 发送 UI | `MySendUI` | `MeyerScan_SendUI.dll`，测试宿主 `SendUITest.exe` | DLL / UI | 工作台 Send 步骤页面；显示患者/医生/订单编号/订单类型/诊所/数据格式/备注等案例信息；提供本地 `Export`、`Compress` 和技工所 `Email Send`、`Upload` 动作按钮，以及 `Previous` / `Finish` 流程按钮；按钮动作通过 `ISendUI` 回调上报 MainExe；当前 v0.1.2 已接入 UIComponents、UIResources、Logger、版本导出、VS2015/CMake 工程和测试宿主。 | 只做发送页展示、上下文字段填充、动作回调和日志；不直接访问数据库、不直接打包数据、不联网、不发送邮件、不上传云端；真实导出/压缩/邮件/上传后续进入 DataExport、NetworkHelper 或专用发送服务。 |
 | 第三方拉起适配 | `MyExternalLaunchAdapter` | `MeyerScan_ExternalLaunchAdapter.dll`，测试宿主 `ExternalLaunchAdapterTest.exe` | DLL | 支持美亚美牙等第三方软件启动本地口扫软件；当前已支持 `MeyerScan.exe --external-order <json> --external-order-type <type>` 命令行模拟第三方拉起；读取第三方 JSON 后输出标准建单上下文 `source / patient / order / scanPlan`，其中 `source.thirdPartyType`、`source.thirdPartyName`、`sourceSystem`、`sourceVersion` 必须保留，用于区分多个第三方来源和后续字段映射规则。 | 不渲染 UI、不保存数据库、不直接调用 OrderCreateUI、不启动扫描进程；新增第三方时优先改本适配器和映射规则，不改 MainExe、OrderCreateUI 和扫描进程。 |
 | HIS / Worklist 适配 | `MyHisWorklistAdapter`（规划） | `MeyerScan_HisWorklistAdapter.dll` | DLL | 对接公立医院或大型连锁 HIS/Worklist；查询患者列表、下拉选择患者信息、字段映射、接口异常处理。 | 不做建单 UI、不直接写病例表；只输出标准建单上下文给 OrderCreateUI/服务层。 |
 | 权限配置 UI | `MyPermissionConfigUI`（规划） | `MeyerScan_PermissionConfigUI.dll` | DLL | 授权状态展示、扫码授权入口、权限配置界面、规则导入/替换结果展示；调用 Permission 核心接口。 | 不实现权限核心判断；不保存未校验权限规则；避免污染 Permission 热路径。 |
@@ -213,11 +213,11 @@ MeyerScan 是美亚光电口腔数字印模仪（mOS MyScan / mOS MyScan 5/5H）
 | 颜色校准 UI | `MyCalibrationColorUI` | `MeyerScan_CalibrationColorUI.dll` | DLL | 颜色校准界面、颜色标定器流程、颜色采集、颜色校正参数生成、结果展示和记录；可调用算法 DLL、DeviceCmd 和 DeviceTransport；当前已创建 v0.1.0 Qt Widgets 骨架。 | 不做三维校准；不做病例/订单数据维护；UI 和计算入口在本模块内保持一致。 |
 | 扫描数据 IO | `MyScanDataIO`（规划） | `MeyerScan_ScanDataIO.dll` | DLL | 原始帧、深度图、纹理图、扫描中间数据的保存/读取；完整性校验；数据目录结构管理。 | 不做图像处理、不做 UI、不决定订单状态。 |
 | 扫描预处理 | `MyScanDataPreProcess`（规划） | `MeyerScan_ScanDataPreProcess.dll` | DLL | 解密、镜像、裁剪、颜色校准预处理、AI 消去、机型差异预处理流水线。 | 不做 3D 显示、不做病例管理、不直接写订单状态。 |
-| 扫描阶段 UI | `MyScanWorkflowUI` | `MeyerScan_ScanWorkflowUI.dll`，测试宿主 `ScanWorkflowUITest.exe` | DLL / UI | `ScanReconstructStudio.exe` 内部“扫描”大阶段页面；当前 v0.2.1 提供扫描对象选择、右侧扫描工具、底部扫描控制、提示区和 VTK/QVTK 显示区；顶部扫描流程按钮从 session JSON 的 `scanProcess.steps` 渲染，创建模式由 OrderCreateUI 生成并经 MainExe 转发，练习模式回退默认流程；流程按钮必须有手型 hover、tooltip、选中态和点击切换当前扫描部位显示数据；QVTK 滚轮缩放以鼠标位置为中心并在边界内夹紧，不允许先越界再拉回；离开页面时通过 `DeactivateAndRelease()` 释放 QVTKWidget、VTK renderer、OpenGL/显存等重资源。 | 不保存患者/订单，不访问数据库，不判断加载订单规则；不解析建单页开关、不生成扫描流程规则，只消费 `scanProcess.steps` 并渲染按钮；不直接实现设备传输、设备命令或算法；不跨 DLL/跨进程传递 VTK 对象、大块模型内存所有权、QObject 或 Qt 模型对象。 |
-| 数据处理阶段 UI | `MyDataProcessUI` | `MeyerScan_DataProcessUI.dll`，测试宿主 `DataProcessUITest.exe` | DLL / UI | `ScanReconstructStudio.exe` 内部“数据处理”大阶段页面；当前 v0.2.1 提供模型选择栏、右侧处理工具栏、底部状态栏、独立的 Process Hint 提示框和 VTK/QVTK 显示区；顶部处理流程按钮从同一份 session JSON 的 `scanProcess.steps` 渲染，确保 Scan/Process 页面流程按钮一致；流程按钮必须有手型 hover、tooltip、选中态和点击切换当前处理部位显示数据；Process 页不放扫描页底部中间的 Start/Pause 控制；QVTK 滚轮缩放以鼠标位置为中心并在边界内夹紧；离开页面时通过 `DeactivateAndRelease()` 释放 QVTKWidget、VTK renderer、OpenGL/显存等重资源。 | 不连接设备，不做扫描采集；不解析建单页开关、不生成扫描流程规则，只消费 `scanProcess.steps` 并渲染按钮；不在 UI 模块内实现重算法；后续编辑、颈缘、测量、倒凹、咬合、底座、数据 IO 和预处理等能力优先拆成专用 DLL 或独立库。 |
-| 扫描重建工作台 | `MyScanReconstructStudio` | `ScanReconstructStudio.exe` | 独立 EXE / 壳子 | 扫描重建独立进程壳；当前初版已动态加载 `MeyerScan_ScanWorkflowUI.dll` 和 `MeyerScan_DataProcessUI.dll`，承载“扫描”和“数据处理”两个大阶段，并在阶段切换前调用离开模块的 `DeactivateAndRelease()`；后续通过 IPC 与 MeyerScan.exe / OrderScanWorkspaceShell 同步订单上下文、扫描状态和处理进度。 | EXE 只做壳子、UI/交互/流程编排和进程隔离；不做病例管理、云端上传、权限核心、设备协议、扫描算法或后处理算法；打开前 MainExe 必须释放 CaseUI 等非必要资源。 |
+| 扫描阶段 UI | `MyScanWorkflowUI` | `MeyerScan_ScanWorkflowUI.dll`，测试宿主 `ScanWorkflowUITest.exe` | DLL / UI | `ScanReconstructStudio.exe` 内部“扫描”大阶段页面；当前 v0.2.3 提供扫描对象选择、右侧扫描工具、底部扫描控制、提示区和 VTK/QVTK 显示区；顶部扫描流程按钮从 session JSON 的 `scanProcess.steps` 渲染，创建模式由 OrderCreateUI 生成并经 MainExe 转发，练习模式回退默认流程；流程按钮必须有手型 hover、tooltip、选中态和点击切换当前扫描部位显示数据；QVTK 滚轮缩放以鼠标位置为中心并在边界内夹紧，不允许先越界再拉回；离开页面时通过 `DeactivateAndRelease()` 释放 QVTKWidget、VTK renderer、OpenGL/显存等重资源。 | 不保存患者/订单，不访问数据库，不判断加载订单规则；不解析建单页开关、不生成扫描流程规则，只消费 `scanProcess.steps` 并渲染按钮；不直接实现设备传输、设备命令或算法；不跨 DLL/跨进程传递 VTK 对象、大块模型内存所有权、QObject 或 Qt 模型对象。 |
+| 数据处理阶段 UI | `MyDataProcessUI` | `MeyerScan_DataProcessUI.dll`，测试宿主 `DataProcessUITest.exe` | DLL / UI | `ScanReconstructStudio.exe` 内部“数据处理”大阶段页面；当前 v0.2.3 提供模型选择栏、右侧处理工具栏、底部状态栏、独立的 Process Hint 提示框和 VTK/QVTK 显示区；顶部处理流程按钮从同一份 session JSON 的 `scanProcess.steps` 渲染，确保 Scan/Process 页面流程按钮一致；流程按钮必须有手型 hover、tooltip、选中态和点击切换当前处理部位显示数据；Process 页不放扫描页底部中间的 Start/Pause 控制；QVTK 滚轮缩放以鼠标位置为中心并在边界内夹紧；离开页面时通过 `DeactivateAndRelease()` 释放 QVTKWidget、VTK renderer、OpenGL/显存等重资源。 | 不连接设备，不做扫描采集；不解析建单页开关、不生成扫描流程规则，只消费 `scanProcess.steps` 并渲染按钮；不在 UI 模块内实现重算法；后续编辑、颈缘、测量、倒凹、咬合、底座、数据 IO 和预处理等能力优先拆成专用 DLL 或独立库。 |
+| 扫描重建工作台 | `MyScanReconstructStudio` | `ScanReconstructStudio.exe` + `MeyerScan_ScanReconstructStudio.dll` | EXE + DLL / 双形态壳子 | 当前 v0.1.3 共用同一套窗口实现并动态加载 `MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll`；DLL 形态嵌入创建/练习工作台，EXE 形态可作为独立练习进程；阶段切换前调用离开模块的 `DeactivateAndRelease()`。 | 只做壳子、UI/交互和流程编排，不做病例管理、云端上传、权限核心、设备协议、扫描算法或后处理算法；DLL 形态走进程内接口，只有独立 EXE 形态使用版本化 IPC；进入前 MainExe 必须释放 CaseUI 等非必要资源。 |
 | 工程设置 | `MyEngineeringSettings`（规划） | `MeyerScan_EngineeringSettings.dll` | DLL | 设备参数设置、固件升级入口、扫描参数设置、数据处理参数设置、日志/诊断入口、高级维护工具入口。 | 不做数据库管理、不做权限核心；高风险操作必须经 Permission/Workflow 复核。 |
-| 用户设置 UI | `MySettingsUI`（已落地） | `MeyerScan_SettingsUI.dll` | DLL | 软件设置界面，提供 General / Information / Calibration / Cloud / Scan / Data Processing / About 设置分类页面；嵌入 3D 校准和颜色校准模块 UI；通过回调上报设置动作给 MainExe。 | 只做用户设置 UI 和交互；不做设备参数设置（归 EngineeringSettings）；不做权限规则判断；设置持久化通过 ConfigCenter 间接完成。 |
+| 用户设置 UI | `MySettingsUI`（已落地） | `MeyerScan_SettingsUI.dll` | DLL | 当前 v0.2.2 提供 General / Information / Calibration / Cloud / Scan / Data Processing / About 分类页面；嵌入 3D/颜色校准 UI，通过回调上报动作；医生/诊所/技工所只读 RuntimeDataCenter 快照。 | 只做用户设置 UI 和交互；不直接读取 ConfigCenter/Database，不做设备参数设置或权限核心判断；当前设置持久化尚未闭环，后续由 MainExe/设置服务读取 ConfigCenter 后注入版本化上下文并执行保存。 |
 
 **轻量化禁令**：
 
@@ -640,8 +640,8 @@ QApplication
 | 序号 | 任务 | 模块 | 说明 |
 |------|------|------|------|
 | 5.1 | IPC 通信层 | ScanReconstructStudio IPC 子目录/后续独立小库 | 仅服务独立进程模式；消息头稳定、正文使用 UTF-8 JSON/订单 ID，不并入通用 Core 大包 |
-| 5.2 | 开发扫描阶段 UI | MeyerScan_ScanWorkflowUI.dll | 🟡 v0.2.1 初版增强：负责扫描对象、扫描工具、扫描控制和 QVTK 显示区；顶部按钮读取 `scanProcess.steps`，具备手型 hover、tooltip、点击切换当前扫描部位和鼠标中心滚轮缩放；当前已被 MainExe 阶段性挂入工作台 Scan 步骤，离开时释放重资源；后续接设备/算法接口 |
-| 5.3 | 开发数据处理阶段 UI | MeyerScan_DataProcessUI.dll | 🟡 v0.2.1 初版增强：负责模型选择、处理工具入口、独立 Process Hint 和 QVTK 显示区；顶部按钮读取同一份 `scanProcess.steps`，具备手型 hover、tooltip、点击切换当前处理部位和鼠标中心滚轮缩放；Process 页不放 Start/Pause；当前已被 MainExe 阶段性挂入工作台 Process 步骤，离开时释放重资源；后续接编辑/测量/颈缘等处理 DLL |
+| 5.2 | 开发扫描阶段 UI | MeyerScan_ScanWorkflowUI.dll | 🟡 v0.2.3 初版增强：负责扫描对象、扫描工具、扫描控制和 QVTK 显示区；顶部按钮读取 `scanProcess.steps`，具备手型 hover、tooltip、点击切换当前扫描部位和鼠标中心滚轮缩放；当前已被 MainExe 阶段性挂入工作台 Scan 步骤，离开时释放重资源；后续接设备/算法接口 |
+| 5.3 | 开发数据处理阶段 UI | MeyerScan_DataProcessUI.dll | 🟡 v0.2.3 初版增强：负责模型选择、处理工具入口、独立 Process Hint 和 QVTK 显示区；顶部按钮读取同一份 `scanProcess.steps`，具备手型 hover、tooltip、点击切换当前处理部位和鼠标中心滚轮缩放；Process 页不放 Start/Pause；当前已被 MainExe 阶段性挂入工作台 Process 步骤，离开时释放重资源；后续接编辑/测量/颈缘等处理 DLL |
 | 5.4 | 开发扫描采集/三维显示能力 | ScanCapture / ModelViewer / 后续 DLL | 连接设备、抓取下位机数据、传递给算法、获得重建数据、显示数据；UI 只调用接口 |
 | 5.5 | 开发数据处理工具模块 | MeyerScan_ScanProcessingTools.dll（暂定） | 颈缘、测量、倒凹、咬合、色彩、底座等处理能力；可继续细拆 |
 | 5.6 | 开发扫描重建工作台 | ScanReconstructStudio.exe | 🟡 初版壳已完成；独立进程动态加载扫描 UI 和数据处理 UI，阶段切换前释放离开页面重资源 |
@@ -970,7 +970,7 @@ MainExe 只拥有顶层窗口和单内容区，不绘制所有页面共享的可
 4. Qt 重页面生命周期固定为 `Init -> SetContext -> CreateWidget -> 宿主挂载 -> Activate -> DeactivateAndRelease -> 删除 QWidget -> Shutdown`。CreateWidget 不隐式 Activate；Scan/Process 目标页创建失败时工作台和 ScanReconstructStudio 不更新当前步骤。
 5. Logger、UIComponents 和设置内校准模块的失败处理必须明确：Logger 可无日志降级；UIComponents 可回退本模块 Qt 控件/QSS；校准子模块失败只禁用对应校准页。任何降级都要清空半初始化接口，不能把可选依赖失败扩散成主流程崩溃。
 6. 本轮边界复核未发现 UI 直接访问 Database、SendUI 实现真实发送业务、运行路径依赖 `QDir::currentPath()` 或业务源码直接调用 `setStyleSheet()`。样式调用仍只允许公共 `MeyerQtModuleUtils::ApplyModuleQss()` 入口。
-7. 当前版本基线：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.1、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
+7. 当前版本基线：MainExe v0.1.7、HomeUI/CaseUI v0.3.2、SettingsUI v0.2.2、OrderCreateUI v0.5.3、WorkspaceShell/ScanReconstructStudio v0.1.3、ScanWorkflowUI/DataProcessUI v0.2.3、SendUI v0.1.2、UIResources v0.1.3。
 8. 验证基线：VS2015 根方案 Rebuild 和 CMake Release 全量构建通过；24 项自研测试/主链路及 MainExe 登录前 smoke 均返回 0；最新 versionList 为 24 项、0 缺失、0 版本不一致、0 `codeVersionError`；源码注释安全检查为 0 错误、0 警告。
 
 ## 十五、2026-07-13 生产数据与测试数据隔离
@@ -981,6 +981,15 @@ MainExe 只拥有顶层窗口和单内容区，不绘制所有页面共享的可
 4. OrderCreateUI smoke 必须覆盖“无上下文为空白”“有效上下文可显示”“随后写入非法 JSON 不覆盖缓存”“Shutdown 后可重新 Init”四类状态，避免生产默认值和生命周期回归。
 5. 2026-07-13 验证基线：VS2015 根方案和 CMake Release 构建通过；MainExe `--smoke`、`--smoke-main`、`--smoke-external-order` 通过；`versionList_20260713_072234_645.json` 共 24 项，0 缺失、0 文件/代码版本不一致、0 `codeVersionError`。
 
+## 十六、2026-07-13 功能成熟度与统一测试口径
+
+1. “模块可加载、页面可显示、smoke 可退出”只表示框架链路已接通，不等于真实业务完成。进度和对外说明必须分别使用“占位/框架”“最小真实实现”“业务闭环”“交付验收”四种成熟度，不得笼统写“已完成”。
+2. 当前仍未闭环的关键功能包括：OrderCreateUI 到 CaseOrderService 的真实建单保存/失败回显、设置项读取与持久化、ScanSchemaService/OrderWorkflowService、设备采集与重建算法、扫描后处理算法、两类校准真实流程、发送/压缩/上传服务、独立进程 IPC、自动更新和安装打包。
+3. `MyCaseManager` 仅是旧 schema 参考目录；CMake 可识别但不生成活跃 DLL/EXE，不要求为历史源码补测试。`MyVersionManager` 是可编译历史骨架，正式运行时版本清单仍由 MainExe 内置能力生成。
+4. 根 CMake 必须通过 CTest 统一登记现有测试宿主。当前标准清单为 24 项：22 个模块测试，以及 MainExe 内部导航和第三方建单两个集成 smoke；测试从 `build/ctest_runtime/<Config>` 干净运行目录加载同批次 DLL，串行执行并设置 120 秒超时，避免旧 DLL、共享日志、SQLite 测试库或 GUI 事件循环互相影响。
+5. CTest 只负责可重复自动回归；1366x768/1920x1080/2560x1440 截图、多语言长文案、真实设备/算法、数据库迁移、崩溃恢复、长时间资源稳定性和安装升级仍需独立验收证据。
+6. Qt 调用方传 `QString` 到 C ABI 时，优先使用模块提供的 QString 便捷重载；没有重载时先保存命名 `QByteArray`，再在同步调用内传 `constData()`。禁止保存调用方指针，禁止在示例代码中依赖难读的临时缓冲区生命周期技巧。
+
 ---
 
-> **文档版本**：v3.32（2026-07-13，补齐生产/测试数据隔离、空白建单初态和最新验证基线）
+> **文档版本**：v3.33（2026-07-13，补齐功能成熟度、未完成闭环、统一 CTest 和 UTF-8 缓冲区规则）
