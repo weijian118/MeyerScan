@@ -44,11 +44,11 @@
 3. 排除目录按路径深度从深到浅删除，避免先删父目录后继续访问已不存在的子目录。
 4. robocopy 参数使用字符串数组传递，`/XD`、`/XF` 和各自值保持正确顺序；不要用会和自动变量冲突的参数名。
 5. 备份脚本修改后至少执行两次：第一次验证实际变更，第二次必须命中 0 个排除项且没有新 Git 提交，证明幂等。
-6. `_RefactorDocs` 是从 `D:\wj\重构文档` 单独生成的外部 Markdown 快照，主源码 `/MIR` 必须始终排除该目录；即使外部文档目录暂时不可访问，也不得删除本地仓库中已有的快照。
+6. 重构文档只维护 `F:\MeyerScan\Documents`，它和源码一起由主 `/MIR` 备份；不得再从外部目录生成 `_RefactorDocs` 重复快照。历史 `_RefactorDocs` 会在下一次镜像时作为多余目录清理。
 
 ## 5. 当前脚本
 
-- `BackupToLocalRepository.ps1`：整体同步到 `F:\MeyerScan-Reposit`，负责第三方/现场文件过滤、历史排除内容清理和中文 Git 提交；默认从 `D:\wj\重构文档` 更新 `_RefactorDocs`，调用方也可通过 `-RefactorDocsRoot` 覆盖来源。
+- `BackupToLocalRepository.ps1`：整体同步到 `F:\MeyerScan-Reposit`，负责第三方/现场文件过滤、历史排除内容清理和中文 Git 提交；仓库内 `Documents` 随源码直接备份，不再读取任何外部重构文档目录。
 - `CheckSourceCommentSafety.ps1`：检查自研源码的 UTF-8 BOM、`.rc` ASCII 约束、`//` 续行和疑似注释粘连；提交前和批量补注释后必须执行。
 - `MyUIResources/tools/GenerateResourceManifest.ps1`：扫描各模块 `Resources`，用 `XmlWriter` 生成确定性 qrc 清单；只允许 PNG/QSS/SVG/ICO/JPG/BMP/GIF/QM 等 UI 资源类型。
 

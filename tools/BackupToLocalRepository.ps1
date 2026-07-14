@@ -2,7 +2,6 @@
 param(
     [string]$SourceRoot = "F:\MeyerScan",
     [string]$BackupRoot = "F:\MeyerScan-Reposit",
-    [string]$RefactorDocsRoot = "D:\wj\重构文档",
     [string]$CommitMessage = "Local full backup: sync MeyerScan modules"
 )
 
@@ -111,10 +110,6 @@ $excludeDirs = @(
     "plugins", "MySQL", "SQLite", "backup", "CMakeFiles"
 )
 
-# _RefactorDocs 由脚本后半段从外部文档目录单独维护，不属于 SourceRoot 镜像。
-# 主 /MIR 必须跳过它；否则 RefactorDocsRoot 为空或暂时不可访问时，会先删除已有快照。
-$preservedBackupDirs = @("_RefactorDocs")
-
 $excludeFiles = @(
     "Qt5*.dll",
     "api-ms-win-*.dll",
@@ -194,7 +189,7 @@ $robocopyArgs = @(
     "/NDL",
     "/NP",
     "/XD"
-) + $excludeDirs + $preservedBackupDirs + @("/XF") + $excludeFiles
+) + $excludeDirs + @("/XF") + $excludeFiles
 
 Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
 
@@ -207,17 +202,6 @@ if (Test-Path -LiteralPath $localIgnore) {
     Copy-Item -LiteralPath $localIgnore `
               -Destination (Join-Path $backup ".gitignore") `
               -Force
-}
-
-# Refactor documents live outside the source repository. When the caller
-# supplies the path, copy Markdown snapshots into the local backup repository.
-if (-not [string]::IsNullOrWhiteSpace($RefactorDocsRoot) -and (Test-Path -LiteralPath $RefactorDocsRoot)) {
-    $docsTarget = Join-Path $backup "_RefactorDocs"
-    New-Item -ItemType Directory -Path $docsTarget -Force | Out-Null
-
-    Invoke-RobocopyChecked -From (Resolve-Path -LiteralPath $RefactorDocsRoot).Path `
-                           -To $docsTarget `
-                           -CopyArgs @("*.md", "/MIR", "/R:1", "/W:1", "/NFL", "/NDL", "/NP")
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $backup ".git"))) {
