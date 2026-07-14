@@ -22,6 +22,7 @@ include(CTest)
 add_subdirectory(MyLogger)
 add_subdirectory(MyDatabase)
 add_subdirectory(MyDatabaseQtAdapter)
+add_subdirectory(MyDeviceTransport)
 add_subdirectory(MyConfigCenter)
 add_subdirectory(MyPermission)
 add_subdirectory(MyUIResources)
@@ -72,6 +73,8 @@ if(BUILD_TESTING)
         LoggerTest
         DatabaseTest
         DatabaseQtAdapterTest
+        MeyerScan_DeviceTransport
+        DeviceTransportTest
         ConfigCenterTest
         PermissionTest
         UIResourcesTest
@@ -152,6 +155,7 @@ if(BUILD_TESTING)
     meyer_register_aggregate_test(MeyerScan.Logger LoggerTest)
     meyer_register_aggregate_test(MeyerScan.Database DatabaseTest)
     meyer_register_aggregate_test(MeyerScan.DatabaseQtAdapter DatabaseQtAdapterTest)
+    meyer_register_aggregate_test(MeyerScan.DeviceTransport DeviceTransportTest --smoke)
     meyer_register_aggregate_test(MeyerScan.ConfigCenter ConfigCenterTest)
     meyer_register_aggregate_test(MeyerScan.Permission PermissionTest)
     meyer_register_aggregate_test(MeyerScan.UIResources UIResourcesTest)

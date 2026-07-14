@@ -1,0 +1,10 @@
+{
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "files.associations": {
+    "*.h": "cpp",
+    "*.cpp": "cpp"
+  },
+  "git.ignoreLimitWarning": true
+}

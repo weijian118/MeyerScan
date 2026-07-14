@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Public"><UniqueIdentifier>{146DBF1A-2DA3-4AF8-B88D-B762A32858A1}</UniqueIdentifier></Filter>
+    <Filter Include="Source"><UniqueIdentifier>{A53B038E-BCDF-435E-86C7-77392737D0A1}</UniqueIdentifier></Filter>
+    <Filter Include="Source\Core"><UniqueIdentifier>{B1137688-1D29-430F-8471-3D846C77A2A3}</UniqueIdentifier></Filter>
+    <Filter Include="Source\Capture"><UniqueIdentifier>{73C77C18-C53D-4386-8F35-C6BE4713A2B2}</UniqueIdentifier></Filter>
+    <Filter Include="Source\Model"><UniqueIdentifier>{EA72AB26-F0D1-42BA-8E5B-3147B9C1E93A}</UniqueIdentifier></Filter>
+    <Filter Include="Source\IMU"><UniqueIdentifier>{A72A438E-5A3C-45A5-93C6-D34FDF5634A4}</UniqueIdentifier></Filter>
+    <Filter Include="Source\Transport"><UniqueIdentifier>{E9EA8952-1FB4-488B-80FB-C683822C3C0D}</UniqueIdentifier></Filter>
+    <Filter Include="Resource"><UniqueIdentifier>{1BB2C1DC-BA55-4FB0-9976-84B41AF3B95C}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\DeviceTransport.h"><Filter>Public</Filter></ClInclude>
+    <ClInclude Include="src\stdafx.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\api\DeviceTypes.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\core\DeviceSession.h"><Filter>Source\Core</Filter></ClInclude>
+    <ClInclude Include="src\core\capture\CaptureEngine.h"><Filter>Source\Capture</Filter></ClInclude>
+    <ClInclude Include="src\core\capture\CaptureTransportLoop.h"><Filter>Source\Capture</Filter></ClInclude>
+    <ClInclude Include="src\core\capture\FramePostProcessor.h"><Filter>Source\Capture</Filter></ClInclude>
+    <ClInclude Include="src\core\capture\FrameSyncAssembler.h"><Filter>Source\Capture</Filter></ClInclude>
+    <ClInclude Include="src\model\CaptureFrameConfig.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\CapturePacket.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\DeviceStatus.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\ExposureParams.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\ImageFrame.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\ImuSample.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\model\TransportConfig.h"><Filter>Source\Model</Filter></ClInclude>
+    <ClInclude Include="src\processing\imu\IImuProcessor.h"><Filter>Source\IMU</Filter></ClInclude>
+    <ClInclude Include="src\processing\imu\ImuAttitudeProcessor.h"><Filter>Source\IMU</Filter></ClInclude>
+    <ClInclude Include="src\processing\imu\ImuPacketDecoder.h"><Filter>Source\IMU</Filter></ClInclude>
+    <ClInclude Include="src\protocol\MeyerProtocolDefs.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\support\ModuleInfo.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\support\ModuleLogger.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\transport\ITransport.h"><Filter>Source\Transport</Filter></ClInclude>
+    <ClInclude Include="src\transport\TransportFactory.h"><Filter>Source\Transport</Filter></ClInclude>
+    <ClInclude Include="src\transport\cyapi\CyApiTransport.h"><Filter>Source\Transport</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\api\DeviceTransportApi.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceSession.cpp"><Filter>Source\Core</Filter></ClCompile>
+    <ClCompile Include="src\core\capture\CaptureEngine.cpp"><Filter>Source\Capture</Filter></ClCompile>
+    <ClCompile Include="src\core\capture\CaptureTransportLoop.cpp"><Filter>Source\Capture</Filter></ClCompile>
+    <ClCompile Include="src\core\capture\FramePostProcessor.cpp"><Filter>Source\Capture</Filter></ClCompile>
+    <ClCompile Include="src\core\capture\FrameSyncAssembler.cpp"><Filter>Source\Capture</Filter></ClCompile>
+    <ClCompile Include="src\processing\imu\ImuAttitudeProcessor.cpp"><Filter>Source\IMU</Filter></ClCompile>
+    <ClCompile Include="src\processing\imu\ImuPacketDecoder.cpp"><Filter>Source\IMU</Filter></ClCompile>
+    <ClCompile Include="src\support\ModuleLogger.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\transport\TransportFactory.cpp"><Filter>Source\Transport</Filter></ClCompile>
+    <ClCompile Include="src\transport\cyapi\CyApiTransport.cpp"><Filter>Source\Transport</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\Version.rc"><Filter>Resource</Filter></ResourceCompile>
+  </ItemGroup>
+</Project>

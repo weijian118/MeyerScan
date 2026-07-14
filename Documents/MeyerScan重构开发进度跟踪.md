@@ -37,6 +37,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | Logger | 1.1.0 | 基础能力可用 |
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.0 | 转换链路可用 |
+| DeviceTransport | 1.0.0 | VS2015 Debug/Release、总解决方案、CMake 与 30 项无硬件 smoke 可用；CyAPI 真实设备、长时间采集和拔插恢复待联调 |
 | ConfigCenter | 0.1.0 | 读取骨架可用；迁移、通知、加密待完成 |
 | Permission | 0.1.0 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.0 | 本地/云端 JSON 快照骨架可用 |
@@ -69,7 +70,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | 建单 | 五种修复类型、FDI 牙位、桥、扫描流程、第三方上下文 | ScanSchemaService、字段校验、保存失败回滚、HIS/Worklist |
 | 设置 | 分类页面、来源页参数、两校准入口、只读参考数据 | ConfigCenter 上下文、Apply/Confirm/Restore、保存后刷新 |
 | 权限 | JSON 读取、visible/enabled、首页/浏览示例 | 六维快照、PermissionConfigUI、服务/工作流/IPC 复核、绕过测试 |
-| 扫描/处理 | DLL/EXE 壳、QVTK 占位、流程按钮、鼠标中心缩放、重资源释放 | 设备、采集、重建、真实模型、编辑/分析算法、异常恢复、独立进程 IPC |
+| 扫描/处理 | DLL/EXE 壳、QVTK 占位、流程按钮、鼠标中心缩放、重资源释放；DeviceTransport 独立模块和无硬件 smoke | DeviceTransport 真实硬件联调、DeviceCmd、采集接线、重建、真实模型、编辑/分析算法、异常恢复、独立进程 IPC |
 | 校准 | 两个独立 UI DLL 骨架 | 设备采集、算法、结果保存和失败恢复 |
 | 发送 | UI 展示和动作回调 | DataExport、压缩、邮件、云上传、重试和状态持久化 |
 | 资源与样式 | UIResources DLL、模块 QSS、通用控件 | LanguageManager、Common qm、完整资源签名/修复 |
@@ -101,7 +102,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 ### P2：扫描真实能力
 
 1. 只为独立 ScanReconstructStudio EXE 建立最小版本化 IPC。
-2. 接入 DeviceTransport、DeviceCmd、ScanDataIO 和采集/重建算法。
+2. 把已开发 DeviceTransport 接入扫描编排并完成真实设备联调；继续开发 DeviceCmd、ScanDataIO 和采集/重建算法。
 3. 按实际需求拆出编辑、手动配准、测量、颈缘、倒凹、咬合、底座等处理 DLL。
 4. 增加重复 Scan/Process 切换、模型加载和异常退出稳定性测试。
 

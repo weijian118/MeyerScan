@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1D3483D6-4EFB-437A-9C98-6AA313370451}</ProjectGuid>
+    <RootNamespace>MeyerScanDeviceTransport</RootNamespace>
+    <ProjectName>MeyerScan_DeviceTransport</ProjectName>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(ProjectName)\$(Configuration)\</IntDir>
+    <TargetName>MeyerScan_DeviceTransport</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)thirdparty\CyAPI\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>MEYERSCAN_DEVICE_TRANSPORT_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(ProjectDir)thirdparty\CyAPI\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>CyAPI.lib;setupapi.lib;legacy_stdio_definitions.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)thirdparty\CyAPI\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>MEYERSCAN_DEVICE_TRANSPORT_EXPORTS;_CRT_SECURE_NO_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)thirdparty\CyAPI\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>CyAPI.lib;setupapi.lib;legacy_stdio_definitions.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="include\DeviceTransport.h" />
+    <ClInclude Include="src\stdafx.h" />
+    <ClInclude Include="src\api\DeviceTypes.h" />
+    <ClInclude Include="src\core\DeviceSession.h" />
+    <ClInclude Include="src\core\capture\CaptureEngine.h" />
+    <ClInclude Include="src\core\capture\CaptureTransportLoop.h" />
+    <ClInclude Include="src\core\capture\FramePostProcessor.h" />
+    <ClInclude Include="src\core\capture\FrameSyncAssembler.h" />
+    <ClInclude Include="src\model\CaptureFrameConfig.h" />
+    <ClInclude Include="src\model\CapturePacket.h" />
+    <ClInclude Include="src\model\DeviceStatus.h" />
+    <ClInclude Include="src\model\ExposureParams.h" />
+    <ClInclude Include="src\model\ImageFrame.h" />
+    <ClInclude Include="src\model\ImuSample.h" />
+    <ClInclude Include="src\model\TransportConfig.h" />
+    <ClInclude Include="src\processing\imu\IImuProcessor.h" />
+    <ClInclude Include="src\processing\imu\ImuAttitudeProcessor.h" />
+    <ClInclude Include="src\processing\imu\ImuPacketDecoder.h" />
+    <ClInclude Include="src\protocol\MeyerProtocolDefs.h" />
+    <ClInclude Include="src\support\ModuleInfo.h" />
+    <ClInclude Include="src\support\ModuleLogger.h" />
+    <ClInclude Include="src\transport\ITransport.h" />
+    <ClInclude Include="src\transport\TransportFactory.h" />
+    <ClInclude Include="src\transport\cyapi\CyApiTransport.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\api\DeviceTransportApi.cpp" />
+    <ClCompile Include="src\core\DeviceSession.cpp" />
+    <ClCompile Include="src\core\capture\CaptureEngine.cpp" />
+    <ClCompile Include="src\core\capture\CaptureTransportLoop.cpp" />
+    <ClCompile Include="src\core\capture\FramePostProcessor.cpp" />
+    <ClCompile Include="src\core\capture\FrameSyncAssembler.cpp" />
+    <ClCompile Include="src\processing\imu\ImuAttitudeProcessor.cpp" />
+    <ClCompile Include="src\processing\imu\ImuPacketDecoder.cpp" />
+    <ClCompile Include="src\support\ModuleLogger.cpp" />
+    <ClCompile Include="src\transport\TransportFactory.cpp" />
+    <ClCompile Include="src\transport\cyapi\CyApiTransport.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\Version.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

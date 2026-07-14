@@ -97,6 +97,7 @@ xcopy /Y /D "$(ProjectDir)..\MyUIResources\bin\$(Configuration)\MeyerScan_UIReso
 xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDatabaseQtAdapter\bin\$(Configuration)\MeyerScan_DatabaseQtAdapter.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDatabase\bin\$(Configuration)\MeyerScan_Database.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)..\MyDeviceTransport\bin\$(Configuration)\MeyerScan_DeviceTransport.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyCaseOrderService\bin\$(Configuration)\MeyerScan_CaseOrderService.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyRuntimeDataCenter\bin\$(Configuration)\MeyerScan_RuntimeDataCenter.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyOrderCreateUI\bin\$(Configuration)\MeyerScan_OrderCreateUI.dll" "$(OutDir)"

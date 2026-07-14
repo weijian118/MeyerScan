@@ -67,6 +67,7 @@ foreach(_meyer_runtime_target
         MeyerScan_RuntimeDataCenter
         MeyerScan_DatabaseQtAdapter
         MeyerScan_Database
+        MeyerScan_DeviceTransport
         MeyerScan_CaseOrderService
         MeyerScan_Calibration3DUI
         MeyerScan_CalibrationColorUI

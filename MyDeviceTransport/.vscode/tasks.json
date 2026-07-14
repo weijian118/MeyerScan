@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: Configure VS2015 x64",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--preset", "vs2015-x64"],
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: Build Debug",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "--preset", "vs2015-x64-debug"],
+      "dependsOn": "CMake: Configure VS2015 x64",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "CMake: Build Release",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "--preset", "vs2015-x64-release"],
+      "dependsOn": "CMake: Configure VS2015 x64",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "CTest: DeviceTransport Release",
+      "type": "shell",
+      "command": "ctest",
+      "args": ["--preset", "vs2015-x64-release"],
+      "dependsOn": "CMake: Build Release",
+      "problemMatcher": []
+    }
+  ]
+}

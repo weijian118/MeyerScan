@@ -19,6 +19,16 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-14：设备传输模块命名、ABI 和职责
+
+- 问题：初版 `MyDeviceManager` 名称过宽，混入命令语义、空传输占位、重复旧工程、硬编码 Eigen/OpenCV 路径，并存在采集线程和 CyAPI 异步资源风险。
+- 结论：统一为 `MyDeviceTransport / MeyerScan_DeviceTransport.dll / DeviceTransportTest.exe`；当前只实现 Windows x64 CyAPI USB。
+- 结论：公共接口统一为版本化 C ABI；模块负责原始命令/流、异步传输、组帧和底层错误，命令业务归 DeviceCmd，UI/重建算法不得进入本模块。
+- 结论：采集参数在访问 CyAPI 前按公共 `MAX_*` 常量和 512 MiB 总预算校验；尺寸乘法使用 64 位中间值。`GetFrame` 固定非阻塞，无帧立即返回 `NotReady`。
+- 结论：默认测试为无硬件 smoke；真实枚举、命令、流和采集必须显式选择，真实设备稳定性在后续联调验收。
+- 验证：模块 VS2015 x64 Debug/Release、模块 CMake、总解决方案 Release、根 CMake 通过；复制到无仓库 helper 的临时目录后仍可独立构建；DeviceTransport smoke 30/30、根 CTest 25/25。
+- 影响：ScanWorkflow/扫描编排后续只依赖 DeviceTransport 公共头；版本清单记录 DLL 的代码版本和文件版本，不记录测试及 CyAPI 第三方库。
+
 ### 2026-07-14：文档单一来源与内容收敛
 
 - 问题：仓库 Documents、D 盘镜像、`_RefactorDocs` 和多份大文档重复，旧方案容易干扰后续开发。

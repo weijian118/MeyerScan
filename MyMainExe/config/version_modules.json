@@ -23,6 +23,10 @@
             "versionFunction": "GetMeyerModuleVersion"
         },
         {
+            "file": "MeyerScan_DeviceTransport.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
             "file": "MeyerScan_ConfigCenter.dll",
             "versionFunction": "GetMeyerModuleVersion"
         },
