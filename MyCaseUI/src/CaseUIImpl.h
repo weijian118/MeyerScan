@@ -2,7 +2,6 @@
 
 #include "CaseUI.h"
 #include "Logger.h"
-#include "RuntimeDataCenter.h"
 #include "UIComponents.h"
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -13,7 +12,6 @@
 #include <QStringList>
 
 using GetLoggerFunc = ILogger* (*)();
-using GetRuntimeDataCenterFunc = IRuntimeDataCenter* (*)();
 using GetUIComponentsFunc = IUIComponents* (*)();
 
 class QTableWidget;
@@ -27,8 +25,8 @@ public:
     // 返回进程内单例，避免多个案例 UI 实例重复抢占基础设施。
     static CaseUIImpl& Instance();
 
-    // 初始化案例 UI 的日志、共享 UI 和运行时数据中心引用。
-    bool Init(const char* databaseConfigPath, const char* logDir) override;
+    // 初始化案例 UI 的应用目录、日志和共享 UI 引用。
+    bool Init(const char* appDirUtf8, const char* logDir) override;
 
     // 注册按钮/页签/打开订单等动作回调，由 MainExe 统一处理跨模块流程。
     void SetActionCallback(void (*callback)(void* context, int actionId), void* context) override;
@@ -45,8 +43,11 @@ public:
     // 返回模块版本字符串。
     const char* GetModuleVersion() const override;
 
-    // 释放模块引用；不关闭全局 Logger / RuntimeDataCenter。
+    // 释放模块引用和本地快照；不关闭全局 Logger。
     void Shutdown() override;
+
+    // 保存宿主注入的只读数据上下文。
+    bool SetDataContextJson(const char* contextJsonUtf8) override;
 
 private:
     CaseUIImpl() = default;
@@ -59,9 +60,6 @@ private:
 
     // 动态加载共享 UI 组件模块。
     void LoadUIComponents();
-
-    // 动态加载运行时数据中心模块。
-    void LoadRuntimeDataCenter();
 
     // 写结构化日志；日志未初始化时静默返回。
     void WriteLog(LogLevel level, const char* operation, const QString& content);
@@ -81,8 +79,8 @@ private:
     // 创建订单管理 Tab 的框架页面。
     QWidget* CreateOrderTab(QWidget* parent);
 
-    // 从 RuntimeDataCenter 读取某个 domain 的 items 数组。
-    QJsonArray LoadRuntimeItems(const char* domain);
+    // 从宿主注入的数据上下文读取某个 domain 的 items 数组。
+    QJsonArray LoadContextItems(const char* domain) const;
 
     // 用患者快照填充患者表。
     void FillPatientTable(QTableWidget* table, const QJsonArray& items);
@@ -100,20 +98,20 @@ private:
     // UIComponents DLL 句柄；CaseUI 只借用控件工厂统一样式。
     QLibrary m_uiComponentsLibrary;
 
-    // RuntimeDataCenter DLL 句柄；CaseUI 只借用快照读取接口。
-    QLibrary m_runtimeDataCenterLibrary;
-
     // 缓存后的日志接口指针。
     ILogger* m_logger = nullptr;
 
     // 缓存后的共享 UI 接口；不可用时降级为本地 Qt 控件。
     IUIComponents* m_uiComponents = nullptr;
 
-    // 缓存后的运行时数据中心接口；用于读取本地/云端信息快照。
-    IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
+    // MainExe 注入的版本化只读 domain 快照根对象。
+    QJsonObject m_dataContext;
 
-    // 运行时数据中心是否可用。CaseUI 不直接访问 Database。
-    bool m_runtimeDataReady = false;
+    // 应用目录用于按绝对路径加载 Logger/UIComponents。
+    QString m_appDir;
+
+    // 标记宿主是否已经注入有效数据上下文。
+    bool m_dataContextReady = false;
 
     // 最近一次状态文本，显示在页面底部。
     QString m_lastStatus = "Not initialized";

@@ -25,6 +25,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QWidget>
+#include <iostream>
 #include <windows.h>
 #include <cstdio>
 
@@ -564,6 +565,32 @@ int main(int argc, char* argv[]) {
     }
     if (!Check(hasDiffRod2 && hasBiteRecord, "扫描流程 JSON 根据建单控件生成异性杆分段和咬合记录步骤")) {
         return 17;
+    }
+
+    // 完整建单上下文必须保留患者/订单字段，并包含由 ScanSchemaService 生成的最新流程。
+    const QByteArray currentContextBytes(orderCreate->GetCurrentOrderContextJson());
+    const QJsonDocument currentContextDocument = QJsonDocument::fromJson(currentContextBytes);
+    if (!Check(currentContextDocument.isObject(), "能导出完整建单上下文 JSON")) {
+        return 39;
+    }
+    const QJsonObject currentContext = currentContextDocument.object();
+    const QString exportedPatientId = currentContext.value("patient").toObject().value("patientId").toString();
+    const QString exportedOrderId = currentContext.value("order").toObject().value("orderId").toString();
+    const bool hasScanPlanObject = currentContext.value("scanPlan").isObject();
+    const int exportedTreatmentCount = currentContext.value("scanPlan").toObject().value("items").toArray().size();
+    const int exportedStepCount = currentContext.value("scanProcess").toObject().value("steps").toArray().size();
+    // 失败时输出各子条件，避免维护者只能看到一个合并布尔值而无法定位丢失字段。
+    std::cout << "[INFO] exported context patientId=" << exportedPatientId.toStdString()
+              << " orderId=" << exportedOrderId.toStdString()
+              << " hasScanPlan=" << (hasScanPlanObject ? "true" : "false")
+              << " treatments=" << exportedTreatmentCount
+              << " steps=" << exportedStepCount << std::endl;
+    const bool contextMatches = exportedPatientId == "CTX-P-001"
+        && exportedOrderId == "CTX-O-001"
+        && hasScanPlanObject
+        && exportedStepCount > 0;
+    if (!Check(contextMatches, "完整上下文包含患者、订单、治疗方案和扫描步骤")) {
+        return 40;
     }
 
     // 任意两颗相邻已选牙都应先显示空心桥点，不需要额外选择一个名为 Bridge 的修复类型。

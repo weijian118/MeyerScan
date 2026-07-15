@@ -11,7 +11,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_Permission";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_Permission v0.1.0 (2026-06-23)";
+const char* Version = "MeyerScan_Permission v0.1.1 (2026-07-15)";
 }
 }
 
@@ -180,4 +180,9 @@ extern "C" MEYERSCAN_PERMISSION_API IPermission* GetPermission() {
 // 版本清单只读取这个固定符号名，不需要初始化权限规则或读取 permission_rules.json。
 extern "C" MEYERSCAN_PERMISSION_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回权限模块公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

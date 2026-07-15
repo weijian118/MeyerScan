@@ -1,5 +1,18 @@
 ﻿# MeyerScan CaseOrderService 变更记录
 
+## 2026-07-15（v0.2.2）
+
+- 新增 `patientOrder.listOrders` 和 `patientOrder.listPatients` 白名单查询，把服务自有患者/订单 JSON 转换成轻量案例读模型。
+- 患者列表按 `patientId` 归并并统计订单数量；无效单条 payload 只记录警告并跳过，不阻断整个列表。
+- 扩展测试宿主，验证建单保存后能够查询订单摘要和患者摘要，为 MainExe/CaseUI 新旧数据合并提供回归保障。
+- 补齐 CMake 的 DatabaseQtAdapter、Database、Logger 和 QtCore 运行时复制规则，使 CMake 与 VS2015 输出目录都可直接运行测试宿主。
+
+## 2026-07-15（v0.2.1）
+
+- 版本升级为 `v0.2.1`；`SavePatientOrderJson()` 正式兼容标准嵌套合同 `patient.patientId`、`order.orderId/caseId/status`，同时保留旧顶层字段回退。
+- 新增 `GetMeyerModuleApiVersion()`，MainExe 在取得服务虚接口前强制校验 ABI 版本。
+- MainExe 的建单 Confirm/Next 已接入本服务保存入口；服务仍不承担 UI、扫描流程生成或权限策略。
+
 ## 2026-07-13
 
 - 错误消息、订单 ID 和参考数据分类在进入 C ABI 辅助函数前统一保存为命名 `QByteArray`，去除临时 `toUtf8().constData()` 示例写法；测试宿主同步使用 Logger QString 重载和稳定路径缓冲区。

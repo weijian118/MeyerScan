@@ -10,7 +10,8 @@
 - 本模块负责患者/订单组合数据、医生列表、技工所列表、诊所列表和后续类似数据库字典/主数据的服务边界。
 - 对外先使用 UTF-8 JSON 字符串承载患者/订单组合数据，避免患者/订单字段频繁变化时破坏 DLL ABI。
 - 当前已提供轻量 schema 占位：`ms_patient_order` 存患者/订单组合 JSON，`ms_reference_data` 存医生、诊所、技工所等分类主数据。
-- 当前实现可保存/读取患者订单 JSON、列出参考数据，并预留 `QueryJson()` 统一查询入口；正式字段表、迁移脚本、DAO 和权限复核后续继续补充。
+- 当前实现可保存/读取患者订单 JSON、列出参考数据，并通过 `QueryJson()` 提供白名单查询；保存入口接受标准嵌套 `patient` / `order` 合同，正式字段表、迁移脚本、DAO 和权限复核后续继续补充。
+- `patientOrder.listOrders` 和 `patientOrder.listPatients` 把 `ms_patient_order.payload_json` 转换成案例管理需要的轻量摘要；MainExe 将其与旧库快照按稳定 ID 合并，CaseUI 不直接依赖本服务或数据库。
 - 通过 `MeyerScan_DatabaseQtAdapter.dll` 访问 `MeyerScan_Database.dll v1.3.0+` 的 `ExecuteQueryJson()` 基础能力；本模块不直接包含 `Database.h`。
 - 当前内部可继续使用 Qt JSON 维持已跑通的骨架链路，但 Qt/Database 类型转换集中在 `MyDatabaseQtAdapter`，Qt 不进入公共头文件和长期 ABI；后续可替换为非 Qt JSON/DAO 实现，调用方接口保持稳定。
 
@@ -21,6 +22,7 @@
 - 不做扫描方案结构化保存，扫描方案仍归 `ScanSchemaService`。
 - 不直接决定加载订单后进入建单、扫描、处理或发送，该规则归 `OrderWorkflowService`。
 - 不把医生、诊所、技工所等主数据散落到 UI 内部；这类数据统一通过本模块读写。
+- MainExe 当前在建单 Confirm/Next 调用本服务；Next 必须保存成功后才能进入 Scan。ID 由宿主工作流补齐，本服务负责校验和持久化。
 
 ## 构建
 

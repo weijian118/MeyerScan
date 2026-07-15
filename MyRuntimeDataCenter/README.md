@@ -35,11 +35,14 @@
 
 `local.orders` 当前只缓存列表/上下文常用字段，避免把旧表里的 `*_TRAN` 大字段一次性读入内存。
 
+迁移期 `local.orders` / `local.patients` 仍表示旧表只读快照；CaseOrderService 新表摘要由 MainExe 通过白名单查询读取，并按订单号/患者号合并后再注入 CaseUI。RuntimeDataCenter 不读取 CaseOrderService 私有表结构。
+
 ## 与 CaseOrderService 的关系
 
 | 场景 | 归属模块 |
 |------|----------|
-| 首页、案例管理、建单页需要读取当前诊所、医生、技工所、患者列表、订单列表、设备列表等上下文 | `RuntimeDataCenter` 返回 domain JSON 快照 |
+| 首页、设置、建单页读取诊所、医生、技工所、设备等上下文 | `RuntimeDataCenter` 返回 domain JSON 快照 |
+| 案例管理读取患者/订单列表 | MainExe 合并 `CaseOrderService` 新表摘要与 `RuntimeDataCenter` 旧表快照后注入 UI |
 | 新建患者/订单、编辑患者/订单、删除患者/订单、订单状态变化、医生/诊所/技工所主数据维护 | `CaseOrderService` |
 | 读取一条订单后判断是否能继续扫描、进入处理或发送 | `OrderWorkflowService` 读取 `CaseOrderService`、`ScanSchemaService`、`Permission` 的结果后决策 |
 | 直接执行 SQL、事务、备份、数据库类型切换 | `Database`；Qt 模块必须经 `DatabaseQtAdapter` 转换 |

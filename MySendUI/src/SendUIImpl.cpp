@@ -23,7 +23,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SendUI";
 
 // 代码版本必须和 CMakeLists.txt、Version.rc 同步递增。
-const char* Version = "MeyerScan_SendUI v0.1.2 (2026-07-12)";
+const char* Version = "MeyerScan_SendUI v0.1.3 (2026-07-15)";
 }
 }
 
@@ -179,6 +179,13 @@ void SendUIImpl::LoadUIComponents() {
                  "LoadUIComponents",
                  QString("UIComponents unavailable; fallback to Qt controls: %1")
                      .arg(m_uiComponentsLibrary.errorString()));
+        return;
+    }
+
+    auto uiApiVersion = reinterpret_cast<int (*)()>(
+        m_uiComponentsLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!uiApiVersion || uiApiVersion() != 1) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents API version mismatch");
         return;
     }
 
@@ -474,4 +481,9 @@ extern "C" MEYERSCAN_SENDUI_API ISendUI* GetSendUI() {
 // 供运行时 versionList 读取的统一代码版本入口。
 extern "C" MEYERSCAN_SENDUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回发送界面公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

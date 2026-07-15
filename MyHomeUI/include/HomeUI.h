@@ -8,6 +8,9 @@
 #  define MEYERSCAN_HOMEUI_API __declspec(dllimport)
 #endif
 
+// HomeUI 公共虚接口版本；Init 参数改为应用目录后升级为 2。
+static const int MEYER_HOME_UI_API_VERSION = 2;
+
 // IHomeUI 是首页 UI 模块的公共接口。
 // 模块边界:
 //   - 首页只负责展示入口按钮、输出用户点击日志、通过回调通知 MainExe。
@@ -19,8 +22,8 @@ public:
     virtual ~IHomeUI() = default;
 
     // 初始化首页模块。
-    // databaseConfigPath 当前用于连通数据库基础链路，logDir 是统一日志目录。
-    virtual bool Init(const char* databaseConfigPath, const char* logDir) = 0;
+    // appDirUtf8 是 MeyerScan.exe 所在目录，logDir 是统一日志目录。
+    virtual bool Init(const char* appDirUtf8, const char* logDir) = 0;
 
     // 设置首页入口点击回调。
     // callback 由 MainExe 提供；context 一般传 MainWindow 指针，避免 UI 模块直接依赖 MainExe 类型。

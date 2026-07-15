@@ -102,18 +102,15 @@ int main(int argc, char* argv[]) {
 
     // 测试宿主不依赖 currentPath，所有路径都从 EXE 目录推导，和正式 MainExe 规则一致。
     const QString moduleRoot = ResolveModuleRoot();
-    QDir repoDir(moduleRoot);
-    // 从 MyHomeUI 上一级回到 F:/MeyerScan，方便定位 MyDatabase/config。
-    repoDir.cdUp();
-    const QString databaseConfigPath = repoDir.filePath("MyDatabase/config/db_config.json");
+    const QString appDir = QDir::fromNativeSeparators(QCoreApplication::applicationDirPath());
     const QString logDir = QDir(moduleRoot).filePath("logs");
 
     // 公共接口使用 const char*，这里把 QString 转成 UTF-8 并保持到 Init 调用结束。
-    const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
+    const QByteArray appDirBytes = appDir.toUtf8();
     const QByteArray logDirBytes = QDir::fromNativeSeparators(logDir).toUtf8();
-    // Init 返回 false 表示数据库、日志或模块内部状态没有准备完成。
+    // Init 返回 false 表示应用目录、日志或模块内部状态没有准备完成。
     // 测试宿主必须在这里停止，不能继续 CreateWidget 后把初始化错误误报成界面错误。
-    if (!home->Init(databaseConfigBytes.constData(), logDirBytes.constData())) {
+    if (!home->Init(appDirBytes.constData(), logDirBytes.constData())) {
         // 即使初始化只完成了一部分，也调用 Shutdown 让模块释放已经取得的资源。
         home->Shutdown();
         return 2;

@@ -21,7 +21,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderScanWorkspaceShell";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.3 (2026-07-12)";
+const char* Version = "MeyerScan_OrderScanWorkspaceShell v0.1.4 (2026-07-15)";
 }
 }
 
@@ -488,4 +488,9 @@ extern "C" MEYERSCAN_ORDERSCANWORKSPACESHELL_API IOrderScanWorkspaceShell* GetOr
 // 版本清单读取工作台壳代码版本时，不创建工作台页面或步骤占位控件。
 extern "C" MEYERSCAN_ORDERSCANWORKSPACESHELL_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回建单扫描工作台壳公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

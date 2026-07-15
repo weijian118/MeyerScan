@@ -1,5 +1,18 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-15（v0.1.9）
+
+- 案例页数据上下文新增 CaseOrderService 读模型合并：服务新记录优先，旧库快照按订单号/患者号去重补充。
+- 建单保存边界统一补齐 `caseId`、`order.status` 和 UTC `createdAt`，重复保存不覆盖首次创建时间。
+- 保持 CaseUI 纯展示边界，不向 UI 传数据库、SQL 或 Service 对象；读模型查询失败时自动保留旧库快照并记录日志。
+
+## 2026-07-15（v0.1.8）
+
+- 版本升级为 `v0.1.8`。MainExe 统一从 RuntimeDataCenter 组装版本化 domain 快照，并在创建 CaseUI/SettingsUI 前注入；两个 UI 不再自行初始化数据库链路。
+- 动态加载自研 C++ 接口前强制校验 `GetMeyerModuleApiVersion()`，缺失或不匹配时拒绝调用工厂函数，并记录 DLL 加载、ABI 拒绝和工厂解析日志。
+- 正式接入 CaseOrderService：启动时初始化并检查 schema；建单 Confirm/Next 在权限复核后读取完整建单上下文、补齐患者/订单 ID、保存成功后刷新读模型，Next 仅在保存成功后进入扫描。
+- 聚合方案加入 ScanSchemaService/测试项目，并清理 CaseUI/SettingsUI 对数据库链路的旧构建依赖。
+
 ## 2026-07-13
 
 - `v0.1.7` 最终代码日期更新为 2026-07-13；手工创建默认上下文改为空白患者/订单，不再注入 `Test Patient`、`LOCAL_ORDER`、默认医生或默认技工所。

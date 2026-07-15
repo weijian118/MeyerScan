@@ -19,7 +19,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_RuntimeDataCenter";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 同步维护。
-const char* Version = "MeyerScan_RuntimeDataCenter v0.1.0 (2026-06-30)";
+const char* Version = "MeyerScan_RuntimeDataCenter v0.1.1 (2026-07-15)";
 }
 
 // 将短消息复制到固定长度返回结构中。
@@ -566,4 +566,9 @@ extern "C" MEYERSCAN_RUNTIMEDATACENTER_API IRuntimeDataCenter* GetRuntimeDataCen
 // 版本清单读取 RuntimeDataCenter 代码版本时不加载任何 domain 缓存。
 extern "C" MEYERSCAN_RUNTIMEDATACENTER_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回运行时数据中心公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

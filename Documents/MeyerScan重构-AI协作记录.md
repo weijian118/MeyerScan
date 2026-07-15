@@ -19,6 +19,15 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-15：UI 数据注入、服务读模型和动态 ABI 门禁
+
+- 问题：CaseUI/SettingsUI 自行连接 RuntimeDataCenter/Database 会让 UI、数据读取和基础设施生命周期耦合；CaseOrderService 写入新表后，旧表快照又无法显示新订单。
+- 结论：业务 UI 只接收 MainExe 注入的版本化只读 JSON；CaseOrderService 提供患者/订单轻量列表查询，MainExe 按稳定 ID 与 RuntimeDataCenter 旧库快照合并，新数据优先且不硬写不稳定旧表。
+- 结论：ScanSchemaService 是扫描步骤规则唯一生产者；OrderCreateUI 只采集配置，Scan/Process 只按稳定 `steps.code` 翻译和显示。
+- 结论：所有返回自研 C++ 虚接口的动态 DLL 必须先通过 `GetMeyerModuleApiVersion()` 门禁，且使用应用目录绝对路径加载。
+- 结论：建单 Confirm/Next 已接 CaseOrderService 最小保存链路；宿主补齐患者号、订单号、病例号、状态和创建时间，Next 仅在保存成功后进入扫描。
+- 影响：CaseUI/SettingsUI 和测试宿主不再依赖数据库；患者/订单新旧 schema 迁移期间由宿主合并读模型，正式 migration/事务/CRUD 仍需继续完成。
+
 ### 2026-07-14：设备传输模块命名、ABI 和职责
 
 - 问题：初版 `MyDeviceManager` 名称过宽，混入命令语义、空传输占位、重复旧工程、硬编码 Eigen/OpenCV 路径，并存在采集线程和 CyAPI 异步资源风险。
@@ -67,7 +76,7 @@
 ### 2026-07-07：扫描流程单一生产者与 SendUI 边界
 
 - 问题：建单、Scan 和 Process 可能各自复制扫描流程规则；发送页容易直接实现导出/网络逻辑。
-- 结论：OrderCreateUI 生成 `scanProcess`，MainExe/Workflow 转发，Scan/Process 只渲染 `steps`。
+- 结论：ScanSchemaService 根据 OrderCreateUI 收集的配置生成 `scanProcess`；MainExe/Workflow 只转发，Scan/Process 只消费稳定 `steps.code`。
 - 结论：SendUI 只展示上下文和上报 Export/Compress/Email/Upload；真实能力进入 DataExport/Network/服务层。
 
 ### 2026-07-06：扫描与数据处理分层
@@ -86,7 +95,7 @@
 
 - 问题：非界面 Database 使用 QtSql 增加底层依赖，UI 又需要 QString/QJson 便利性。
 - 结论：Database 使用纯 C++/SQLite C API；新增 DatabaseQtAdapter 负责 Qt/C++ 类型和缓冲区转换。
-- 标准链路：`UI -> RuntimeDataCenter/CaseOrderService -> DatabaseQtAdapter -> Database`。
+- 标准写链路：`UI 动作 -> MainExe/Workflow -> CaseOrderService -> DatabaseQtAdapter -> Database`；只读页面通过 MainExe 注入快照，不直接持有数据服务。
 
 ### 2026-07-02：双构建、本地整体仓库和非界面 Qt 边界
 
@@ -148,4 +157,4 @@ git -C F:\MeyerScan log -- <module>/CHANGELOG.md
 
 ---
 
-> **文档版本**：v3.0（2026-07-14，从逐次对话流水账收敛为关键决策索引）
+> **文档版本**：v3.1（2026-07-15，补充 UI 注入、服务读模型、扫描规则和 ABI 门禁决策）

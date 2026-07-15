@@ -1,5 +1,9 @@
 ﻿# MeyerScan RuntimeDataCenter 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.1.1`；新增公共接口 ABI 版本导出。RuntimeDataCenter 继续由 MainExe 统一初始化，UI 改为消费宿主注入的只读快照。
+
 ## 2026-07-13
 
 - 测试宿主改用 Logger QString 重载和命名 UTF-8 路径/错误缓冲区，补充 C ABI 与 `fprintf` 指针生命周期说明。

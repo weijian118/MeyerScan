@@ -60,6 +60,12 @@ private:
     // 将外部 category 别名映射成内部稳定分类名。
     QString ReferenceCategoryToTable(const QString& category) const;
 
+    // 查询患者/订单组合表，并转换成案例管理页面需要的轻量只读列表。
+    // queryKind 只允许 orders 或 patients，调用方不会接触内部表名和 payload_json 存储细节。
+    CaseOrderServiceResult ListPatientOrderReadModelJson(const QString& queryKind,
+                                                         char* buffer,
+                                                         int bufferSize);
+
     // 写服务层结构化日志。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 

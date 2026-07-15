@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.1.7 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.1.9 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
@@ -39,6 +39,7 @@ target_include_directories(MeyerScan PRIVATE
     ../MyDatabaseQtAdapter/include
     ../MyDatabase/include
     ../MyCaseOrderService/include
+    ../MyScanSchemaService/include
     ../MyCalibration3DUI/include
     ../MyCalibrationColorUI/include
     ../MyLogger/include
@@ -69,6 +70,7 @@ foreach(_meyer_runtime_target
         MeyerScan_Database
         MeyerScan_DeviceTransport
         MeyerScan_CaseOrderService
+        MeyerScan_ScanSchemaService
         MeyerScan_Calibration3DUI
         MeyerScan_CalibrationColorUI
         MeyerScan_ScanWorkflowUI

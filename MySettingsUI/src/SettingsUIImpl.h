@@ -2,7 +2,6 @@
 
 #include "SettingsUI.h"
 #include "Logger.h"
-#include "RuntimeDataCenter.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -23,7 +22,6 @@ class ICalibrationColorUI;
 using GetLoggerFunc = ILogger* (*)();
 using GetCalibration3DUIFunc = ICalibration3DUI* (*)();
 using GetCalibrationColorUIFunc = ICalibrationColorUI* (*)();
-using GetRuntimeDataCenterFunc = IRuntimeDataCenter* (*)();
 
 // SettingsUIImpl 是设置模块当前骨架实现。
 // 设计目标是先跑通“多入口打开设置 -> 设置内切换分类 -> 打开校准子页 -> 返回/关闭”的流程。
@@ -55,6 +53,9 @@ public:
     // 清理设置模块缓存引用。
     void Shutdown() override;
 
+    // 保存宿主注入的医生、诊所、技工所快照。
+    bool SetDataContextJson(const char* contextJsonUtf8) override;
+
 private:
     SettingsUIImpl() = default;
     ~SettingsUIImpl() = default;
@@ -66,9 +67,6 @@ private:
 
     // 动态加载三维校准和颜色校准模块。
     void LoadCalibrationModules();
-
-    // 动态加载运行时数据中心，用于读取医生、诊所、技工所等只读快照。
-    void LoadRuntimeDataCenter();
 
     // 写结构化日志；日志不可用时静默返回。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
@@ -96,8 +94,8 @@ private:
                                const QStringList& headers,
                                const QList<QStringList>& rows);
 
-    // 从 RuntimeDataCenter 读取某个 domain 的 items 数组。
-    QJsonArray LoadRuntimeItems(const char* domain);
+    // 从宿主注入的数据上下文读取某个 domain 的 items 数组。
+    QJsonArray LoadContextItems(const char* domain) const;
 
     // 把医生快照转换成表格行。
     QList<QStringList> BuildDoctorRows(const QJsonArray& items) const;
@@ -137,9 +135,8 @@ private:
     QLibrary m_loggerLibrary;
     ILogger* m_logger = nullptr;
 
-    // RuntimeDataCenter DLL 句柄和缓存后的快照接口。
-    QLibrary m_runtimeDataCenterLibrary;
-    IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
+    // MainExe 注入的版本化只读 domain 快照根对象。
+    QJsonObject m_dataContext;
 
     // 校准模块句柄和接口指针。设置模块只嵌入 QWidget，不处理算法细节。
     QLibrary m_calibration3DLibrary;

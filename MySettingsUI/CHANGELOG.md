@@ -1,5 +1,11 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.2.3`，公共接口版本升级为 2；新增 `SetDataContextJson()`，医生、诊所、技工所只从宿主快照读取。
+- 删除 RuntimeDataCenter/DatabaseQtAdapter 自举、数据库配置解析和 SQLite 运行依赖；测试宿主改用纯 JSON fixture。
+- Logger 与两个校准 DLL 使用应用目录绝对路径，并在调用虚接口前校验 ABI 版本。
+
 ## 2026-07-13
 
 - 版本升级为 `v0.2.2`，同步 CMake、代码版本和 Windows `Version.rc`。

@@ -8,6 +8,9 @@
 #  define MEYERSCAN_SETTINGSUI_API __declspec(dllimport)
 #endif
 
+// SettingsUI 公共虚接口版本；新增宿主数据注入接口后升级为 2。
+static const int MEYER_SETTINGS_UI_API_VERSION = 2;
+
 // ISettingsUI 是设置模块的公共接口。
 // 模块边界:
 //   - 设置模块负责设置主界面、设置分类切换、校准入口和设置内轻量流程。
@@ -45,6 +48,9 @@ public:
     // 关闭设置模块并释放缓存引用。
     // QWidget 的销毁仍由调用方页面容器或 Qt 父子关系负责。
     virtual void Shutdown() = 0;
+
+    // 接收 MainExe 注入的医生、诊所、技工所等只读 domain 快照。
+    virtual bool SetDataContextJson(const char* contextJsonUtf8) = 0;
 };
 
 // 设置模块动作 ID。

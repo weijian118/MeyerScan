@@ -8,6 +8,9 @@
 #  define MEYERSCAN_ORDERCREATEUI_API __declspec(dllimport)
 #endif
 
+// OrderCreateUI 公共虚接口版本；新增完整建单上下文读取接口后升级为 2。
+static const int MEYER_ORDER_CREATE_UI_API_VERSION = 2;
+
 // 建单界面向外抛出的用户动作 ID。
 // 外部模块不要直接依赖按钮对象名，而是通过这些稳定 ID 接收用户操作。
 enum OrderCreateActionId {
@@ -55,6 +58,10 @@ public:
     // 返回指针由 OrderCreateUI 模块内部缓存并维护生命周期，调用方必须立即复制使用。
     // JSON 中只包含 POD/字符串/数组，不跨 DLL 传递 QWidget、QString 或复杂对象。
     virtual const char* GetCurrentScanProcessJson() = 0;
+
+    // 获取用户当前编辑后的完整建单上下文 JSON。
+    // 返回指针由模块内部缓存；调用方必须在下一次模块调用前立即复制。
+    virtual const char* GetCurrentOrderContextJson() = 0;
 };
 
 // C ABI 工厂函数，便于 MainExe 或测试宿主静态/动态获取模块接口。

@@ -30,6 +30,7 @@ add_subdirectory(MyUIComponents)
 
 # Business services and runtime read models.
 add_subdirectory(MyCaseOrderService)
+add_subdirectory(MyScanSchemaService)
 add_subdirectory(MyRuntimeDataCenter)
 
 # Settings, calibration, order workflow, scan workflow, and version skeletons.
@@ -80,6 +81,7 @@ if(BUILD_TESTING)
         UIResourcesTest
         UIComponentsTest
         CaseOrderServiceTest
+        ScanSchemaServiceTest
         RuntimeDataCenterTest
         VersionManagerTest
         ExternalLaunchAdapterTest
@@ -161,6 +163,7 @@ if(BUILD_TESTING)
     meyer_register_aggregate_test(MeyerScan.UIResources UIResourcesTest)
     meyer_register_aggregate_test(MeyerScan.UIComponents UIComponentsTest)
     meyer_register_aggregate_test(MeyerScan.CaseOrderService CaseOrderServiceTest)
+    meyer_register_aggregate_test(MeyerScan.ScanSchemaService ScanSchemaServiceTest)
     meyer_register_aggregate_test(MeyerScan.RuntimeDataCenter RuntimeDataCenterTest)
     meyer_register_aggregate_test(MeyerScan.VersionManager VersionManagerTest)
     meyer_register_aggregate_test(MeyerScan.ExternalLaunchAdapter ExternalLaunchAdapterTest)

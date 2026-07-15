@@ -1,5 +1,9 @@
 ﻿# MeyerScan Logger 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v1.1.1`；新增 `GetMeyerModuleApiVersion()`，动态调用方在取得 `ILogger` 前可校验 ABI 版本。
+
 ## 2026-07-13
 
 - QString 便捷重载改为先保存命名 `QByteArray`，再调用 UTF-8 `const char*` 主接口；补充缓冲区生命周期实现注释，便于理解 Qt 调用方与无 Qt DLL ABI 的关系。

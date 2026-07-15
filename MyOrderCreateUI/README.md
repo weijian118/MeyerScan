@@ -8,7 +8,7 @@
 - 本模块只提供工作台的 Order 步骤内容，不绘制 Order / Scan / Process / Send 步骤导航；唯一导航由 `MyOrderScanWorkspaceShell` 管理。
 - 初版把原“基本信息”和“扫描方案”的主要内容放在同一个工作台界面内，减少页面切换。
 - 本模块是 Qt Widgets UI 模块，可以使用 `QWidget`、Qt Layout、信号槽和 `QString`。
-- 本模块不直接保存数据库，不加载订单规则，不启动扫描；但会根据建单页输入生成当前订单的扫描流程 JSON，供 MainExe 转发给 Scan/Process 页面。
+- 本模块不直接保存数据库，不加载订单规则，不启动扫描；它把页面输入整理为扫描配置，由 ScanSchemaService 生成流程 JSON，再供 MainExe 转发给 Scan/Process 页面。
 - 对外动作通过 `OrderCreateActionId` 回调抛出，避免外部模块直接绑定内部按钮对象。
 - 支持 `SetOrderContextJson(const char*)` 接收标准建单上下文；第三方拉起、HIS/Worklist 和手工建单补全后都应收敛到同一套上下文结构。
 - `SetOrderContextJson()` 先解析候选 UTF-8 JSON，成功后才替换预创建缓存；非法 JSON 返回 false 并保留上一份有效上下文，CreateWidget 重新应用缓存时也必须检查返回值。
@@ -35,7 +35,8 @@
 
 - 建单页新增四个开关：`Maxilla special scanbody`、`Mandible special scanbody`、`Maxilla segmented scanbody`、`Mandible segmented scanbody`。
 - 建单页新增 `Occlusion Type` 下拉框：`Natural occlusion`、`Maxilla temporary occlusion`、`Mandible temporary occlusion`、`Full temporary occlusion`、`Bite record`。
-- `GetCurrentScanProcessJson()` 会读取牙位类型、种植牙位、上述开关和咬合类型，生成 `scanProcess` JSON。
+- `GetCurrentScanProcessJson()` 把牙位类型、种植牙位、上述开关和咬合类型交给 `MeyerScan_ScanSchemaService.dll`，返回标准 `scanProcess` JSON；规则不再写在 UI 内。
+- `GetCurrentOrderContextJson()` 返回用户当前编辑后的 `source/patient/order/scanPlan/scanProcess` 完整快照；MainExe 必须立即复制，并负责 ID、权限和保存。
 - `Segmented scanbody` 只表示对应颌第二扫描杆/第二异性扫描杆是否显示；普通扫描杆流程仍由该颌是否存在 `implant` 牙位触发，避免用户只勾选分段时凭空生成种植扫描流程。
 - `OrderCreateActionScanProcessChanged` 只表示流程输入变化；MainExe 收到后读取 JSON 并合并到工作台上下文。
 - ScanWorkflowUI 和 DataProcessUI 只读取 `scanProcess.steps` 渲染按钮，不反向解析建单页开关，也不复制建单流程规则。
@@ -124,7 +125,7 @@
 - 右侧：基本摘要、已选牙位明细、标信息占位、订单备注、上一步/取消/确认/下一步；普通操作按钮和表格基础样式走 UIComponents，牙位明细数据和列含义仍由本模块维护。
 - 当前根界面最小尺寸为 960x600；左栏至少 380px，四个常用类型在首行完整显示，种植体使用第二行宽按钮；中间分栏可以扩展，但 Scan Plan 内容最大 980px 并保持居中，避免 2K/4K 下横向拉空；低高度屏幕下左侧表单通过滚动区访问完整字段。
 - Scan Plan 整体最大高度为 1060px，并在高分辨率宿主中垂直居中；2K/4K 的额外高度不得拉大上下颌间距。
-- 当前模块版本为 `v0.5.3`；smoke 会验证五类型资源映射、hover 视觉边界、mask/桥规则以及种植体前后牙弓尺寸稳定性。
+- 当前模块版本为 `v0.5.4`；smoke 会验证五类型资源映射、hover 视觉边界、mask/桥规则、扫描服务结果以及种植体前后牙弓尺寸稳定性。
 - `OrderCreateUITest` 必须依赖并加载同批次 `MeyerScan_UIResources.dll`；只更新业务 DLL 而沿用旧资源 DLL 的测试结果无效。
 - 视觉验收可使用 `OrderCreateUITest --capture-screenshot <png> --capture-size <WxH> --capture-hover-type <crown|missing|inlay|veneer|implant>`，固定复现指定类型的 hover 状态。
 - 截图使用不显示到桌面的固定画布，输出 PNG 像素尺寸必须与 `--capture-size` 完全一致；2560x1440 画布会通过测试属性选择 2x 图源，不修改用户桌面分辨率。

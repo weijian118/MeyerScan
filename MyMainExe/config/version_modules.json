@@ -59,6 +59,10 @@
             "versionFunction": "GetMeyerModuleVersion"
         },
         {
+            "file": "MeyerScan_ScanSchemaService.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
             "file": "MeyerScan_RuntimeDataCenter.dll",
             "versionFunction": "GetMeyerModuleVersion"
         },

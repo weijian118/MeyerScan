@@ -8,13 +8,13 @@
 3. 显示启动等待页。
 4. 初始化 Logger、ConfigCenter、Permission；UI 页面首次创建前由公共加载器注册 UIResources，再加载 UIComponents；通过 DatabaseQtAdapter 初始化 Database；由 MainExe 内部生成版本清单。
 5. 根据 ConfigCenter 的 `database.type` 设置数据库类型，并执行数据库健康检查。
-6. 初始化 `MeyerScan_RuntimeDataCenter.dll` 并预热本地/云端运行时快照。
+6. 初始化 `MeyerScan_CaseOrderService.dll` 并检查最小 schema；初始化 `MeyerScan_RuntimeDataCenter.dll` 并预热本地/云端运行时快照。
 7. 写出 `logs/versionList/versionList_yyyyMMdd_HHmmss_zzz.json`。
 8. 调用既有 `MeyerLoginWidget.dll` 显示登录界面。
 9. 登录成功后加载 `MyHomeUI` 首页模块。
 10. HomeUI 发出入口点击事件，MainExe 集中切换到 `MyCaseUI` 案例管理模块，或从“Create”入口进入 `OrderScanWorkspaceShell + OrderCreateUI`。
 11. HomeUI 的“Practice”入口进入 `OrderScanWorkspaceShell` 练习模式，只显示 Scan / Process，并挂载 `ScanWorkflowUI` / `DataProcessUI`。
-12. 创建模式进入 Scan/Process 前，MainExe 从 OrderCreateUI 读取 `scanProcess` JSON 并合并到工作台上下文；练习模式固定生成 Natural maxilla / Exchange / Natural mandible / Natural occlusion。
+12. 创建模式的扫描步骤由 ScanSchemaService 生成；Confirm/Next 由 MainExe 读取完整建单上下文并交给 CaseOrderService 保存，只有 Next 保存成功后才进入 Scan；练习模式固定生成 Natural maxilla / Exchange / Natural mandible / Natural occlusion。
 13. 创建模式在 DataProcess 点击 Next 后进入 Send 步骤，MainExe 懒加载 `MeyerScan_SendUI.dll` 并转发同一份订单上下文；练习模式不进入 Send。
 14. 手工创建的默认标准上下文必须为空白患者/订单，只携带 schema、source 和默认扫描流程；练习模式才允许使用带 `PRACTICE_*` 标识的非真实数据。生产主链路禁止内置 `Test Patient`、`LOCAL_ORDER` 等测试业务值。
 14. CaseUI 发出 `Open` 操作事件时，MainExe 先进入扫描前准备流程：切换等待页、释放 CaseUI widget、处理延迟删除事件；后续再接入 `ScanReconstructStudio.exe`。
@@ -25,11 +25,15 @@
 - MainExe 只做启动、模块编排和窗口容器。
 - MainExe 使用无边框全屏顶层窗口和单内容区，但不绘制所有页面共享的可见标题栏；HomeUI、CaseUI、OrderScanWorkspaceShell 各自提供页面语义顶部区域，窗口动作仍由 MainExe 执行。
 - 业务规则、数据库 SQL、权限核心、扫描采集不写在 MainExe。
-- MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ScanWorkflowUI、DataProcessUI、SendUI、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
+- MainExe 对自研功能/支撑 DLL 优先运行时动态加载：Logger、ConfigCenter、Permission、UIComponents、DatabaseQtAdapter、RuntimeDataCenter、CaseOrderService、HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ScanWorkflowUI、DataProcessUI、SendUI、ExternalLaunchAdapter 均通过 `QLibrary + extern "C" GetXxx()` 获取接口；主程序工程只保留接口头文件依赖，不再链接这些模块的 import lib。
+- 动态 C++ 接口在调用工厂函数前必须通过 `GetMeyerModuleApiVersion()` 门禁；缺失或不匹配时拒绝调用，不能仅凭 DLL 能加载就继续使用虚接口。
 - 动态加载成功不等于模块可用：所有返回 bool 的 `Init()`、上下文写入和目标页创建都必须检查。基础设施失败只能进入文档规定的显式降级；业务页面失败不得继续切换步骤或调用半初始化接口。
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
+- CaseUI/SettingsUI 不直接持有 RuntimeDataCenter。MainExe 从进程级缓存读取指定 domain，组装 `{schemaVersion, generatedAtUtc, domains}` 后在 CreateWidget 前注入。
+- 患者/订单快照由 MainExe 编排合并：CaseOrderService 新表摘要优先，RuntimeDataCenter 旧表记录按稳定 ID 补充；新建订单保存后无需硬写不稳定旧表即可在案例页显示。
+- CaseOrderService 是患者/订单正式写入口；MainExe 只补齐工作流 ID、复核权限和编排保存，不在主程序中拼患者/订单 SQL。
 - 所有运行路径基于 `QCoreApplication::applicationDirPath()`，不使用 `QDir::currentPath()`，避免第三方软件拉起时工作目录错误。
 - 日志目录固定为 `MeyerScan.exe` 同级 `logs/`，版本清单写入 `logs/versionList/`。
 - ConfigCenter 当前读取 `config/runtime_config.json`；Permission 当前读取 `config/permission_rules.json`，先用于首页“设置”和浏览“返回首页”的显隐控制。
@@ -45,7 +49,7 @@
 - 标准建单上下文必须包含 `source.thirdPartyType`，用于区分多个第三方来源；新增第三方优先改 ExternalLaunchAdapter 映射规则。
 - 首页进入浏览、浏览返回首页、浏览进入扫描重建前准备都按“替换当前页面 + 释放离开页面资源”处理，避免隐藏页面长期占用内存/显存。
 - 创建工作台和练习工作台共用 `OrderScanWorkspaceShell`：创建模式显示 Order / Scan / Process / Send；练习模式只显示 Scan / Process。工作台顶部步骤导航只有这一套；OrderCreateUI/ScanWorkflowUI/DataProcessUI/SendUI 不重复绘制。最小化、关闭和返回通过动作 ID 交给 MainExe，关闭工作台表示返回首页并释放资源，不退出 MeyerScan.exe。
-- `scanProcess` 是建单流程传给 Scan/Process 的轻量 JSON 合同：OrderCreateUI 生成，MainExe 合并/转发，ScanWorkflowUI/DataProcessUI 渲染 `steps`。MainExe 不解析具体临床规则，Scan/Process 不反向读取建单控件。
+- `scanProcess` 是建单流程传给 Scan/Process 的轻量 JSON 合同：OrderCreateUI 收集配置，ScanSchemaService 生成稳定 `steps.code`，MainExe 合并/转发，ScanWorkflowUI/DataProcessUI 使用各自 `tr()` 渲染。MainExe 不解析扫描规则，Scan/Process 不反向读取建单控件。
 - 工作台 Scan / Process 页面由 MainExe 按步骤懒加载；切换离开时主动调用对应模块释放 QVTK/VTK/OpenGL 重资源，并用占位页替换旧步骤，避免壳子继续持有等待删除的 QWidget。
 - 工作台 Send 页面由 MainExe 按步骤懒加载并注入订单上下文；SendUI 只上报导出、压缩、邮件发送、上传、上一步、完成等动作，真实发送能力后续走 DataExport / Network 等服务模块。
 - 工作台上下文更新采用“先校验、成功后替换”语义；ScanWorkflowUI、DataProcessUI、SendUI 拒绝非法 JSON 时保留上一份有效状态，MainExe 记录 `ContextRejected` 并停止对应跳转。

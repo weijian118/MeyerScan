@@ -24,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_HomeUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_HomeUI v0.3.2 (2026-07-12)";
+const char* Version = "MeyerScan_HomeUI v0.3.3 (2026-07-15)";
 }
 
 // 首页背景控件负责按窗口尺寸绘制产品视觉图。
@@ -68,7 +68,7 @@ private:
 }
 
 // 返回首页模块单例。
-// 当前 DLL 只暴露一个 IHomeUI 实例，避免多个首页对象重复初始化 Logger/Database。
+// 当前 DLL 只暴露一个 IHomeUI 实例，避免多个首页对象重复初始化 Logger/UIComponents。
 HomeUIImpl& HomeUIImpl::Instance() {
     // 首页模块在进程内只需要一个接口实例。
     // 函数内 static 由 C++11 保证线程安全初始化，避免自己写互斥锁。
@@ -77,12 +77,16 @@ HomeUIImpl& HomeUIImpl::Instance() {
 }
 
 // 初始化首页模块。
-// 这里只做日志加载和数据库健康检查；正式患者/订单数据必须由服务层提供。
-bool HomeUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
+// 这里只保存应用目录并加载日志、共享 UI；首页不接收数据库配置。
+bool HomeUIImpl::Init(const char* appDirUtf8, const char* logDir) {
     // 首页模块本身不保存业务数据，也不直接确认数据库是否可用。
     // 这样首页既能独立测试，也能在 MainExe 中复用已经初始化好的基础设施。
     // 初始化顺序先日志、再 UIComponents，确保后续异常能尽量写日志。
-    (void)databaseConfigPath;
+    m_appDir = QDir::fromNativeSeparators(QString::fromUtf8(appDirUtf8 ? appDirUtf8 : ""));
+    if (m_appDir.isEmpty()) {
+        m_lastStatus = "Application directory is empty";
+        return false;
+    }
     LoadLogger(logDir);
     LoadUIComponents();
     if (m_lastStatus == "Not initialized") {
@@ -145,10 +149,19 @@ void HomeUIImpl::LoadLogger(const char* logDir) {
     // PreventUnloadHint 表示进程退出前尽量不要卸载 Logger DLL。
     // 这样可以规避 Qt/Windows 退出阶段 DLL 卸载顺序导致的悬空函数指针。
     m_loggerLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    // 只写模块名，不写 .dll 后缀，让 Qt 按平台规则查找对应动态库。
-    m_loggerLibrary.setFileName("MeyerScan_Logger");
+    // 使用应用目录下的绝对路径，避免第三方启动改变 currentPath 或 PATH 后误加载。
+    m_loggerLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_Logger.dll"));
     if (!m_loggerLibrary.load()) {
         m_lastStatus = "Logger unavailable; continuing without log output";
+        return;
+    }
+
+    // Logger 返回 C++ 虚接口，获取单例前必须校验 ABI 版本。
+    typedef int (*ApiVersionFunction)();
+    auto loggerApiVersion = reinterpret_cast<ApiVersionFunction>(
+        m_loggerLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!loggerApiVersion || loggerApiVersion() != 1) {
+        m_lastStatus = "Logger API version mismatch; continuing without log output";
         return;
     }
 
@@ -177,9 +190,16 @@ void HomeUIImpl::LoadUIComponents() {
 
     m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
     // UIComponents 是可选依赖，加载失败时首页仍用本地降级样式。
-    m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
+    m_uiComponentsLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_UIComponents.dll"));
     if (!m_uiComponentsLibrary.load()) {
         WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local styles");
+        return;
+    }
+
+    auto uiApiVersion = reinterpret_cast<int (*)()>(
+        m_uiComponentsLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!uiApiVersion || uiApiVersion() != 1) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents API version mismatch");
         return;
     }
 
@@ -192,7 +212,7 @@ void HomeUIImpl::LoadUIComponents() {
     m_uiComponents = getUIComponents();
     if (m_uiComponents) {
         // applicationDirPath 用于传安装目录，不能用 currentPath。
-        const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
+        const QByteArray appDirBytes = m_appDir.toUtf8();
         // appDirBytes 必须作为局部变量保存到 Init 调用结束，避免临时 QByteArray 指针悬空。
         if (!m_uiComponents->Init(appDirBytes.constData())) {
             // 初始化失败时不能继续使用工厂接口，清空后让 CreateWidget 走本地 Qt 控件降级分支。
@@ -432,6 +452,7 @@ void HomeUIImpl::Shutdown() {
     // m_logger 是外部单例裸指针，这里只清空引用，不释放对象。
     m_logger = nullptr;
     m_uiComponents = nullptr;
+    m_appDir.clear();
     // QLibrary 使用 PreventUnloadHint，进程退出前尽量不卸载 DLL，避免退出阶段函数指针悬空。
 }
 
@@ -490,4 +511,9 @@ extern "C" MEYERSCAN_HOMEUI_API IHomeUI* GetHomeUI() {
 // 版本清单读取该函数时不会创建首页 QWidget，避免启动版本扫描带来 UI 资源占用。
 extern "C" MEYERSCAN_HOMEUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回首页模块公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return MEYER_HOME_UI_API_VERSION;
 }

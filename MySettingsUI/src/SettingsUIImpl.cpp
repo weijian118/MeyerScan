@@ -14,7 +14,6 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -27,8 +26,6 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 
-#include <cstring>
-
 // =============================================================================
 // 文件说明:
 //   设置模块 UI 实现，负责创建设置主界面、读取运行时只读数据快照、
@@ -36,9 +33,9 @@
 //
 // 模块边界:
 //   - 不直接拼 SQL，不直接包含 Database.h。
-//   - 医生/诊所/技工所等列表通过 RuntimeDataCenter 读取。
+//   - 医生/诊所/技工所等列表由 MainExe 以版本化 JSON 快照注入。
 //   - 3D 校准和颜色校准按需懒加载，扫描重建来源打开设置时禁止校准。
-//   - Logger、RuntimeDataCenter、Calibration DLL 都是借用接口，不由 SettingsUI delete。
+//   - Logger、Calibration DLL 都是借用接口，不由 SettingsUI delete。
 //
 // 阅读重点:
 //   - UI 文案统一写英文并用 tr() 包裹，后续由 qm 翻译。
@@ -47,45 +44,12 @@
 // =============================================================================
 
 namespace {
-const int kInitialRuntimeDomainBufferSize = 512 * 1024;
-const int kMaxRuntimeDomainBufferSize = 32 * 1024 * 1024;
-
 namespace ModuleInfo {
 // 模块名用于日志 [Mod:] 字段，必须与 vcxproj 中的 MEYER_MODULE_NAME 保持一致。
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.2.2 (2026-07-13)";
-}
-
-// 根据安装目录解析数据库配置路径。
-// SettingsUI 独立测试时 appDir 指向测试 exe 目录；正式运行时 appDir 指向 MeyerScan.exe 目录。
-// 两种场景都只从传入路径附近查找，不依赖 currentPath。
-QString ResolveDatabaseConfigPath(const QString& appDir) {
-    // 传入空路径时直接返回空字符串，让调用方写日志并降级，而不是在这里猜测路径。
-    if (appDir.isEmpty()) {
-        return QString();
-    }
-
-    // 正式发布目录优先：MainExe 会把 db_config.json 复制到 MeyerScan.exe 同级 config。
-    const QString deployedPath = QDir(appDir).filePath("config/db_config.json");
-    if (QFileInfo::exists(deployedPath)) {
-        return deployedPath;
-    }
-
-    // 开发期 SettingsUITest.exe 位于 MySettingsUI/bin/Release。
-    // 向上三级可回到 F:/MeyerScan，再定位 MyDatabase/config/db_config.json。
-    QDir repoDir(appDir);
-    // QDir::cdUp() 会原地修改目录对象，三个条件短路失败时不会继续拼错误路径。
-    if (repoDir.cdUp() && repoDir.cdUp() && repoDir.cdUp()) {
-        const QString devPath = repoDir.filePath("MyDatabase/config/db_config.json");
-        if (QFileInfo::exists(devPath)) {
-            return devPath;
-        }
-    }
-
-    // 返回 deployedPath 即使文件不存在，也能让下游日志看到期望路径，方便排查缺文件。
-    return deployedPath;
+const char* Version = "MeyerScan_SettingsUI v0.2.3 (2026-07-15)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -116,7 +80,6 @@ bool SettingsUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // 校准 DLL 不在 Init 阶段加载，而是在用户真正点击校准入口时懒加载；
     // 这样从扫描重建打开设置时不会提前占用校准/算法/设备相关资源。
     LoadLogger();
-    LoadRuntimeDataCenter();
     WriteLog(LogLevel::Info, "Init", "SettingsUI initialized");
     return true;
 }
@@ -286,8 +249,8 @@ void SettingsUIImpl::Shutdown() {
         m_logger->Flush();
         m_logger = nullptr;
     }
-    // RuntimeDataCenter 是进程级只读缓存，SettingsUI 只清引用，不关闭模块。
-    m_runtimeDataCenter = nullptr;
+    // 数据快照由宿主拥有。设置页关闭时清除本地副本，防止下次打开误用旧数据。
+    m_dataContext = QJsonObject();
     DestroyWidget();
 }
 
@@ -303,11 +266,15 @@ void SettingsUIImpl::LoadLogger() {
     }
     // 设置模块通过 QLibrary 动态借用 Logger，避免静态链接导致测试宿主必须固定加载顺序。
     m_loggerLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    // setFileName 不带扩展名时，Qt 会按当前平台自动补 .dll。
-    // DLL 查找目录由 EXE 所在目录、PATH 等运行时环境决定。
-    m_loggerLibrary.setFileName("MeyerScan_Logger");
+    // 使用安装目录下的绝对路径，避免第三方启动改变 currentPath 后加载失败或误加载同名 DLL。
+    m_loggerLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_Logger.dll"));
     if (!m_loggerLibrary.load()) {
         // 这里不弹窗。Logger 缺失本身应由 MainExe 启动检查和安装包检查发现。
+        return;
+    }
+    auto loggerApiVersion = reinterpret_cast<int (*)()>(
+        m_loggerLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!loggerApiVersion || loggerApiVersion() != 1) {
         return;
     }
     // resolve 找 C ABI 导出的 GetLogger；函数名稳定，不受 C++ 类名/命名空间影响。
@@ -335,8 +302,14 @@ void SettingsUIImpl::LoadCalibrationModules() {
         // 校准模块用懒加载：只有用户进入校准页时才加载 DLL。
         // 这样从首页/浏览打开普通设置时不会提前占用算法、设备或 UI 资源。
         m_calibration3DLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-        m_calibration3DLibrary.setFileName("MeyerScan_Calibration3DUI");
+        m_calibration3DLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_Calibration3DUI.dll"));
         if (m_calibration3DLibrary.load()) {
+            auto apiVersion = reinterpret_cast<int (*)()>(
+                m_calibration3DLibrary.resolve("GetMeyerModuleApiVersion"));
+            if (!apiVersion || apiVersion() != 1) {
+                WriteLog(LogLevel::Warning, "LoadCalibrationModules", "Calibration3DUI API version mismatch");
+                return;
+            }
             // 工厂函数返回 ICalibration3DUI 接口，SettingsUI 不包含实现类头文件。
             auto getter = reinterpret_cast<GetCalibration3DUIFunc>(m_calibration3DLibrary.resolve("GetCalibration3DUI"));
             if (getter) {
@@ -362,8 +335,14 @@ void SettingsUIImpl::LoadCalibrationModules() {
     if (!m_calibrationColor) {
         // 颜色校准与三维校准是两个独立 DLL，互相加载失败不影响另一个入口。
         m_calibrationColorLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-        m_calibrationColorLibrary.setFileName("MeyerScan_CalibrationColorUI");
+        m_calibrationColorLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_CalibrationColorUI.dll"));
         if (m_calibrationColorLibrary.load()) {
+            auto apiVersion = reinterpret_cast<int (*)()>(
+                m_calibrationColorLibrary.resolve("GetMeyerModuleApiVersion"));
+            if (!apiVersion || apiVersion() != 1) {
+                WriteLog(LogLevel::Warning, "LoadCalibrationModules", "CalibrationColorUI API version mismatch");
+                return;
+            }
             auto getter = reinterpret_cast<GetCalibrationColorUIFunc>(m_calibrationColorLibrary.resolve("GetCalibrationColorUI"));
             if (getter) {
                 m_calibrationColor = getter();
@@ -386,58 +365,32 @@ void SettingsUIImpl::LoadCalibrationModules() {
     }
 }
 
-// 加载运行时数据中心。
-// SettingsUI 只读取医生/诊所/技工所等只读快照，不直接连接数据库或拼业务 SQL。
-void SettingsUIImpl::LoadRuntimeDataCenter() {
-    if (m_runtimeDataCenter) {
-        return;
-    }
-    if (m_appDir.isEmpty()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "Application directory is empty");
-        return;
+// 保存宿主注入的版本化只读数据上下文。
+// 使用“先校验、后替换”的事务式更新，输入无效时保留上一份有效快照。
+bool SettingsUIImpl::SetDataContextJson(const char* contextJsonUtf8) {
+    if (!contextJsonUtf8 || !contextJsonUtf8[0]) {
+        WriteLog(LogLevel::Warning, "SetDataContextJson", "Data context is empty");
+        return false;
     }
 
-    // RuntimeDataCenter 是进程级读模型缓存，SettingsUI 只需要接口指针。
-    // PreventUnloadHint 避免设置页关闭时卸载 DLL，减少 Qt 对象和静态单例析构顺序风险。
-    m_runtimeDataCenterLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    m_runtimeDataCenterLibrary.setFileName("MeyerScan_RuntimeDataCenter");
-    if (!m_runtimeDataCenterLibrary.load()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "RuntimeDataCenter DLL is unavailable");
-        return;
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(QByteArray(contextJsonUtf8), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        WriteLog(LogLevel::Warning,
+                 "SetDataContextJson",
+                 QString("Invalid data context JSON: %1").arg(parseError.errorString()));
+        return false;
     }
 
-    // 通过 C ABI 工厂函数拿接口，避免跨 DLL 暴露 C++ 实现类。
-    auto getter = reinterpret_cast<GetRuntimeDataCenterFunc>(
-        m_runtimeDataCenterLibrary.resolve("GetRuntimeDataCenter"));
-    if (!getter) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "GetRuntimeDataCenter export not found");
-        return;
+    const QJsonObject candidate = document.object();
+    if (!candidate.value("domains").isObject()) {
+        WriteLog(LogLevel::Warning, "SetDataContextJson", "Data context domains must be an object");
+        return false;
     }
 
-    // getter 返回 RuntimeDataCenter 内部单例，不需要 SettingsUI delete。
-    m_runtimeDataCenter = getter();
-    if (!m_runtimeDataCenter) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "RuntimeDataCenter instance is null");
-        return;
-    }
-
-    // 独立测试时 MainExe 可能没有初始化 RuntimeDataCenter，所以这里传入数据库配置路径让它可自举。
-    const QString databaseConfigPath = ResolveDatabaseConfigPath(m_appDir);
-    // QDir::fromNativeSeparators 把反斜杠转为斜杠，跨 Qt/日志/JSON 显示时更稳定。
-    const QByteArray databaseConfigBytes = QDir::fromNativeSeparators(databaseConfigPath).toUtf8();
-    const QByteArray logDirBytes = QDir::fromNativeSeparators(m_logDir).toUtf8();
-    if (!m_runtimeDataCenter->Init(databaseConfigBytes.constData(), logDirBytes.constData())) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "RuntimeDataCenter init failed");
-        m_runtimeDataCenter = nullptr;
-        return;
-    }
-
-    // SettingsUI 不在这里 ReloadAll。
-    // MainExe 启动期会做全量刷新；独立测试或缓存为空时，LoadRuntimeItems()
-    // 调用 GetDomainJson() 会按当前页面需要懒加载 local.doctors / local.clinics / local.labs。
-    WriteLog(LogLevel::Info,
-             "LoadRuntimeDataCenter",
-             "RuntimeDataCenter initialized for lazy domain reads");
+    m_dataContext = candidate;
+    WriteLog(LogLevel::Info, "SetDataContextJson", "Host data context accepted");
+    return true;
 }
 
 // 写结构化日志。
@@ -547,7 +500,7 @@ QWidget* SettingsUIImpl::CreateInfoTabPage(QWidget* parent,
     searchRow->addWidget(addBtn);
     layout->addLayout(searchRow);
 
-    // 数据表格只展示 RuntimeDataCenter 提供的只读快照。
+    // 数据表格只展示 MainExe 注入的只读快照。
     // 新增、编辑、删除按钮目前只保留入口；保存逻辑后续统一走服务层。
     auto* table = new QTableWidget(tab);
     // QTableWidget 适合当前骨架期的少量只读快照；正式大数据量应切换到 model/view + 分页。
@@ -586,7 +539,7 @@ QWidget* SettingsUIImpl::CreateInfoTabPage(QWidget* parent,
 
 // 创建"信息管理"设置页面。
 // 使用 QTabWidget 展示医生/诊所/技工所三个标签页，每个标签页包含搜索栏、
-// 数据表格和编辑/删除按钮。数据来源是 RuntimeDataCenter 的只读快照。
+// 数据表格和编辑/删除按钮。数据来源是 MainExe 注入的只读快照。
 QWidget* SettingsUIImpl::CreateInfoPage(QWidget* parent) {
     auto* page = new QWidget(parent);
     auto* layout = new QVBoxLayout(page);
@@ -603,7 +556,7 @@ QWidget* SettingsUIImpl::CreateInfoPage(QWidget* parent) {
         QStringList headers;
         // 表头是 UI 层稳定文案；真实字段名由 BuildDoctorRows 内部兼容旧库字段。
         headers << tr("Name") << tr("Gender") << tr("Phone") << tr("Department");
-        const QList<QStringList> rows = BuildDoctorRows(LoadRuntimeItems("local.doctors"));
+        const QList<QStringList> rows = BuildDoctorRows(LoadContextItems("local.doctors"));
         tabs->addTab(CreateInfoTabPage(tabs, headers, rows), tr("Doctors"));
     }
 
@@ -612,7 +565,7 @@ QWidget* SettingsUIImpl::CreateInfoPage(QWidget* parent) {
         QStringList headers;
         // 诊所页只展示常用字段，完整字段后续可在编辑弹窗或详情页按需展示。
         headers << tr("Name") << tr("Address") << tr("Phone") << tr("City");
-        const QList<QStringList> rows = BuildClinicRows(LoadRuntimeItems("local.clinics"));
+        const QList<QStringList> rows = BuildClinicRows(LoadContextItems("local.clinics"));
         tabs->addTab(CreateInfoTabPage(tabs, headers, rows), tr("Clinics"));
     }
 
@@ -621,7 +574,7 @@ QWidget* SettingsUIImpl::CreateInfoPage(QWidget* parent) {
         QStringList headers;
         // 技工所页展示合作方基础信息，云端 ID 等字段暂不直接放在列表里。
         headers << tr("Name") << tr("Contact") << tr("Phone") << tr("Address");
-        const QList<QStringList> rows = BuildLabRows(LoadRuntimeItems("local.labs"));
+        const QList<QStringList> rows = BuildLabRows(LoadContextItems("local.labs"));
         tabs->addTab(CreateInfoTabPage(tabs, headers, rows), tr("Dental Labs"));
     }
 
@@ -629,66 +582,21 @@ QWidget* SettingsUIImpl::CreateInfoPage(QWidget* parent) {
     return page;
 }
 
-// 从 RuntimeDataCenter 读取指定 domain 的 items 数组。
-QJsonArray SettingsUIImpl::LoadRuntimeItems(const char* domain) {
-    // SettingsUI 只认 RuntimeDataCenter 的 domain，不认数据库表名和 SQL。
-    // 这能保证信息页只是“读快照”，不会滑向直接操作数据库。
-    if (!m_runtimeDataCenter || !domain || !domain[0]) {
+// 从宿主注入的数据上下文读取指定 domain 的 items 数组。
+QJsonArray SettingsUIImpl::LoadContextItems(const char* domain) const {
+    // SettingsUI 只认稳定 domain，不认数据库表名、SQL 或 RuntimeDataCenter 接口。
+    if (!domain || !domain[0]) {
         return QJsonArray();
     }
-
-    QByteArray buffer;
-    RuntimeDataCenterResult result;
-    std::memset(&result, 0, sizeof(result));
-
-    // RuntimeDataCenter 要求调用方提供缓冲区。
-    // 信息管理字段后续会扩展，所以这里采用有限扩容重试，避免固定小缓冲导致误显示为空。
-    for (int bufferSize = kInitialRuntimeDomainBufferSize;
-         bufferSize <= kMaxRuntimeDomainBufferSize;
-         bufferSize *= 2) {
-        // QByteArray 填充 '\0' 后作为输出缓冲区传给 RuntimeDataCenter。
-        // 成功时缓冲区前半段是 JSON，后面仍是空字节。
-        buffer.fill('\0', bufferSize);
-        // 调用方缓冲区模式解决跨 DLL 字符串内存所有权问题。
-        result = m_runtimeDataCenter->GetDomainJson(domain, buffer.data(), buffer.size());
-        if (result.IsSuccess()) {
-            // 成功后不继续扩容，buffer 中已经包含完整 JSON。
-            break;
-        }
-        // 只有 “too small” 才表示可以扩容重试；其它错误立即返回空数组并写日志。
-        if (!QString::fromUtf8(result.message).contains("too small", Qt::CaseInsensitive)) {
-            WriteLog(LogLevel::Warning, "LoadRuntimeItems",
-                     QString("%1 failed: %2").arg(domain).arg(QString::fromUtf8(result.message)));
-            return QJsonArray();
-        }
-        // 运行到这里说明只是缓冲区太小，for 循环会把 bufferSize 翻倍后重试。
-    }
-
-    if (result.IsError()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeItems",
-                 QString("%1 failed: %2").arg(domain).arg(QString::fromUtf8(result.message)));
-        return QJsonArray();
-    }
-
-    QJsonParseError parseError;
-    // RuntimeDataCenter 写入的是以 '\0' 结尾的 UTF-8 JSON。
-    // buffer 本身比真实 JSON 大很多，必须按 C 字符串读取，避免尾部空字节导致 JSON 解析失败。
-    const QJsonDocument document = QJsonDocument::fromJson(buffer.constData(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeItems",
-                 QString("%1 returned invalid JSON").arg(domain));
-        return QJsonArray();
-    }
-
-    // RuntimeDataCenter 统一把行数据放在 items，缺失时 toArray 返回空数组，表格保持空状态。
-    return document.object().value("items").toArray();
+    const QJsonObject domains = m_dataContext.value("domains").toObject();
+    return domains.value(QString::fromUtf8(domain)).toObject().value("items").toArray();
 }
 
 // 把医生快照转换成信息管理表格行。
 QList<QStringList> SettingsUIImpl::BuildDoctorRows(const QJsonArray& items) const {
     QList<QStringList> rows;
     for (const QJsonValue& value : items) {
-        // 每个 value 是 RuntimeDataCenter 从旧表读出的单行 JSON 对象。
+        // 每个 value 是宿主快照中的单行 JSON 对象；字段可能来自旧库映射或未来新数据源。
         const QJsonObject item = value.toObject();
         if (item.isEmpty()) {
             // 非对象或空对象不展示，避免把坏数据渲染成一行空白。
@@ -1195,6 +1103,11 @@ QString SettingsUIImpl::OpenSourceName() const {
 extern "C" MEYERSCAN_SETTINGSUI_API ISettingsUI* GetSettingsUI() {
     // C 导出函数返回接口基类指针，调用方不用知道 SettingsUIImpl 的类定义。
     return &SettingsUIImpl::Instance();
+}
+
+// 返回公共虚接口版本。动态宿主必须在调用 GetSettingsUI 前校验该值。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return MEYER_SETTINGS_UI_API_VERSION;
 }
 
 // 统一版本导出函数。

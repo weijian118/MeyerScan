@@ -1,5 +1,9 @@
 ﻿# MeyerScan UIComponents 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.4.1`；新增公共接口 ABI 版本导出，Home/Case/OrderCreate/Send 等动态调用方在使用控件工厂前校验版本。
+
 ## 2026-07-13
 
 - `UIComponentsTest` 使用命名 UTF-8 应用目录缓冲区初始化共享控件模块，继续覆盖按钮、输入框、表格、等待页和标题工厂。

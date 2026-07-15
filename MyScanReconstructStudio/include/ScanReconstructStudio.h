@@ -8,6 +8,9 @@
 #  define MEYERSCAN_SCANRECONSTRUCTSTUDIO_API __declspec(dllimport)
 #endif
 
+// 扫描重建嵌入接口 ABI 版本。
+static const int MEYER_SCAN_RECONSTRUCT_STUDIO_API_VERSION = 1;
+
 // 扫描重建工作区的公开嵌入接口。
 // 同一套代码既可以编译为 DLL 嵌入 MeyerScan.exe，也可以编译为 ScanReconstructStudio.exe 独立运行。
 class MEYERSCAN_SCANRECONSTRUCTSTUDIO_API IScanReconstructStudio {

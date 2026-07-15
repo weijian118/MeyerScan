@@ -25,7 +25,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_Logger";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_Logger v1.1.0 (2026-06-24)";
+const char* Version = "MeyerScan_Logger v1.1.1 (2026-07-15)";
 }
 }
 
@@ -47,6 +47,11 @@ extern "C" MEYER_LOGGER_API ILogger* GetLogger() {
 // 不需要创建 ILogger 业务对象，也不需要链接 Logger.lib。
 extern "C" MEYER_LOGGER_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回 Logger 公共接口 ABI 版本，供动态宿主在获取 ILogger 前做兼容性检查。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }
 
 // =========================================================================

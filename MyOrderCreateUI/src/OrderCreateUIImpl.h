@@ -12,6 +12,7 @@
 #include <QStringList>
 
 #include "Logger.h"
+#include "ScanSchemaService.h"
 #include "ToothTreatmentPlanWidget.h"
 #include "UIComponents.h"
 
@@ -29,6 +30,7 @@ class QTextEdit;
 class QToolButton;
 
 using GetUIComponentsFunc = IUIComponents* (*)();
+using GetScanSchemaServiceFunc = IScanSchemaService* (*)();
 
 // OrderCreateUIImpl 是建单界面的初版实现。
 // 设计重点是把患者基本信息、扫描方案、牙位选择和订单明细放在同一个工作台内。
@@ -59,6 +61,9 @@ public:
 
     // 生成并返回当前扫描流程 JSON。
     const char* GetCurrentScanProcessJson() override;
+
+    // 生成并返回当前患者、订单、治疗方案和扫描流程上下文。
+    const char* GetCurrentOrderContextJson() override;
 
 private:
     // 构造/析构私有化，模块使用单例承载当前 UI 状态。
@@ -162,6 +167,9 @@ private:
     // 动态加载共享 UI 组件模块。
     void LoadUIComponents();
 
+    // 动态加载扫描方案服务；UI 只提供配置，不再自行生成业务步骤。
+    void LoadScanSchemaService();
+
     // 创建统一按钮；共享 UI 不可用时返回本地降级按钮。
     QPushButton* CreateStandardButton(QWidget* parent, const QString& text, int role) const;
 
@@ -192,27 +200,11 @@ private:
     // 根据当前页面控件和牙位类型推导扫描流程配置。
     QJsonObject BuildScanProcessConfigObject() const;
 
-    // 根据扫描流程配置生成完整按钮步骤数组。
-    QJsonArray BuildScanProcessSteps(const QJsonObject& configObject) const;
-
-    // 向步骤数组追加一条扫描按钮定义。
-    void AppendScanProcessStep(QJsonArray* steps,
-                               const QString& part,
-                               const QString& code,
-                               const QString& label,
-                               bool exchangeStep = false) const;
-
-    // 判断当前牙位方案是否包含上颌/下颌种植，用于决定是否生成扫描杆位点。
-    bool HasImplantTooth(bool maxilla) const;
-
-    // 判断某一颌是否应按临时牙逻辑生成流程。
-    bool IsJawTemporary(bool maxilla) const;
-
     // 当前咬合类型编码。
     QString CurrentOcclusionTypeCode() const;
 
-    // 咬合类型编码转显示文本。
-    QString OcclusionTypeText(const QString& code) const;
+    // 把服务返回的稳定步骤编码转换为当前语言的显示文本。
+    QString ScanStepDisplayText(const QString& code) const;
 
     // 扫描流程输入变化后统一刷新 JSON 缓存、预览和动作回调。
     void RefreshScanProcessPreview(bool emitAction);
@@ -232,6 +224,12 @@ private:
 
     // 缓存后的共享 UI 接口；不可用时本模块保留本地样式降级。
     IUIComponents* m_uiComponents = nullptr;
+
+    // ScanSchemaService DLL 句柄；规则服务通过 EXE 同级绝对路径加载。
+    QLibrary m_scanSchemaServiceLibrary;
+
+    // 借用的扫描方案服务接口，负责由输入配置生成步骤合同。
+    IScanSchemaService* m_scanSchemaService = nullptr;
 
     // 建单根 QWidget 弱引用，由调用方/Qt 父子树负责释放。
     QWidget* m_root = nullptr;
@@ -316,5 +314,8 @@ private:
 
     // 最近一次生成的扫描流程 JSON。GetCurrentScanProcessJson 返回该缓存的 constData()。
     QByteArray m_currentScanProcessJson;
+
+    // 最近一次生成的完整建单上下文。GetCurrentOrderContextJson 返回该缓存的 constData()。
+    QByteArray m_currentOrderContextJson;
 };
 

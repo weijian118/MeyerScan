@@ -32,7 +32,7 @@
 # =============================================================================
 cmake_minimum_required(VERSION 3.15)
 project(MeyerScan_Logger
-    VERSION     1.1.0
+    VERSION     1.1.1
     DESCRIPTION "MeyerScan structured logging infrastructure DLL"
     LANGUAGES   CXX
 )

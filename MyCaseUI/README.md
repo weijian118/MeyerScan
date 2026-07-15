@@ -11,21 +11,17 @@ CaseUI 是 MeyerScan 的 Qt Widgets 案例管理界面模块。
 - UIComponents 加载后仍需检查 `Init()`；失败时清空接口并走 CaseUI 本地控件/QSS，不能把“DLL 存在”误判为“共享工厂可用”。
 - 图标和 QSS 源文件归 `MyCaseUI/Resources` 管理，正式发布统一编译进 `MeyerScan_UIResources.dll`；公共加载器优先使用 `:/MeyerScan/Modules/MyCaseUI/...`。
 - 点击返回、导入、导出、删除、新建、打开、搜索、页签切换等客户操作时写入结构化日志。
-- 正式 `CaseUI` 不直接调用 `MeyerScan_Database.dll`；列表展示读取 `RuntimeDataCenter` 快照，测试宿主造数才允许经 `MyDatabaseQtAdapter` 准备最小 SQLite 演示数据。
-- 当前已动态加载 `MeyerScan_RuntimeDataCenter.dll`，患者页读取 `local.patients`，订单页读取 `local.orders`，用于展示运行时只读快照。
-- CaseUI 只初始化 RuntimeDataCenter，不主动 `ReloadAll()`；MainExe 启动期负责全域刷新，独立测试或缓存为空时由 `GetDomainJson()` 按需懒加载当前 domain。
-- 读取 RuntimeDataCenter domain 时采用有限扩容重试，避免字段扩展或列表稍大时固定缓冲区不足；超过上限后显示空列表并写 Warning，后续应改为分页/服务查询。
-- 如果进程级 Database 已由 MainExe 通过 DatabaseQtAdapter 初始化并连接，CaseUI 只读取 RuntimeDataCenter 快照，不重复 Init/Connect。
+- 正式 `CaseUI` 不加载 Database、DatabaseQtAdapter 或 RuntimeDataCenter，也不接收数据库配置。
+- MainExe 通过 `SetDataContextJson()` 注入 `local.patients` / `local.orders` 版本化快照；CaseUI 只读取 `domains.<name>.items` 并展示。
+- 快照先完整解析并校验 `domains` 对象，成功后一次替换；非法输入保留上一份有效状态。
 - 运行时用 `QLibrary` 加载 `MeyerScan_Logger.dll`；CaseUI 只借用进程级 Logger，`Shutdown()` 只 Flush，不关闭全局日志会话。
 - 测试宿主在创建 `QApplication` 前启用 High DPI 属性，并按当前屏幕可用区域居中显示。
 - 界面可见文字统一使用 `tr("English source text")` 包装；即使需求写中文按钮名，源码 source text 也写英文，中文显示由 `.qm` 翻译文件提供。
 - CRUD、参考数据读取、导入导出和加载订单规则后续进入 CaseOrderService、DataExport、OrderWorkflowService；CaseUI 不执行业务 SQL。
-- RuntimeDataCenter 只用于读取上下文快照；新增/编辑/删除患者订单、状态变化、保存扫描方案等动作仍必须走 CaseOrderService / ScanSchemaService / Workflow。
+- 新增/编辑/删除患者订单、状态变化、保存扫描方案等动作必须走 CaseOrderService / ScanSchemaService / Workflow；宿主快照只用于显示。
 - CaseUI 必须可被 MainExe 随时释放并重建；后续从案例管理进入扫描重建前，MainExe 必须销毁 CaseUI widget，CaseUI 不保留必须跨页面存活的大缓存。
-- 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
-- 测试宿主从 exe 所在目录向上查找 `MeyerScan_AllModules.sln` 作为仓库根，因此同时兼容单模块输出目录 `MyCaseUI\bin\Release` 和根聚合输出目录 `F:\MeyerScan\bin\Release`。
-- 测试宿主会在输出目录生成 `config/CaseUITest/db_config.json` 和独立 SQLite 测试库，不复用公共 `config/db_config.json`，避免和 RuntimeDataCenterTest、SettingsUITest 等测试互相污染表结构。
-- `CaseUITest.exe --smoke` 会在独立 SQLite 测试库中创建最小演示表，写入一条患者和多条订单，以及诊所、技工所、医生等依赖数据，用于验证“数据库 -> RuntimeDataCenter -> CaseUI”的表格/卡片链路；正式 CaseUI 不负责建表、迁移或业务写入。
+- 测试宿主根据 exe 所在目录推导日志目录，不依赖固定开发机路径。
+- `CaseUITest.exe --smoke` 直接注入隔离 JSON fixture，验证患者表、订单卡片和顶部动作回调，不连接数据库或 RuntimeDataCenter。
 - 测试宿主检查 CaseUI Init/CreateWidget 返回值；任何失败都显式 Shutdown 并用独立退出码报告，避免空指针错误掩盖真正初始化原因。
 - `CaseUITest.exe --capture-screenshot <png> --capture-size <WxH>` 用于复查 1920x1080 四列和 1366x768 三列卡片布局。
 - 模块变更记录维护在 `CHANGELOG.md`。
@@ -35,9 +31,3 @@ Build:
 ```powershell
 & 'C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe' .\MeyerScan_CaseUI.sln /p:Configuration=Release /p:Platform=x64 /m
 ```
-
-## 2026-07-01 补充说明
-
-- `CaseUITest.exe --smoke` 会准备用于链路验证的 SQLite 演示库，当前不仅写入患者、订单、诊所、技工所、医生数据，也补齐软件信息、设置、账号、设备信息最小表。
-- 这样做的目的只是让 `Database -> RuntimeDataCenter -> CaseUI/MainExe` 测试链路覆盖 RuntimeDataCenter 全部本地 domain，避免日志出现预期缺表 Warning。
-- 正式 `MeyerScan_CaseUI.dll` 不负责建表、不负责旧库迁移、不负责业务写入；新增、编辑、删除、状态变更和正式 schema 初始化仍归 `CaseOrderService` / migration / Workflow。

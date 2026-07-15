@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.5.3 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.5.4 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
@@ -15,7 +15,7 @@ meyer_add_qt_widgets_library(MeyerScan_OrderCreateUI MEYERSCAN_ORDERCREATEUI_EXP
 
 target_include_directories(MeyerScan_OrderCreateUI
     PUBLIC include
-    PRIVATE src ../MyUIComponents/include
+    PRIVATE src ../MyUIComponents/include ../MyScanSchemaService/include
 )
 
 meyer_link_sibling_module(MeyerScan_OrderCreateUI MyLogger MeyerScan_Logger)
@@ -29,6 +29,14 @@ if(TARGET MeyerScan_UIComponents)
                 "$<TARGET_FILE_DIR:MeyerScan_OrderCreateUI>/MeyerScan_UIComponents.dll"
     )
 endif()
+if(TARGET MeyerScan_ScanSchemaService)
+    add_dependencies(MeyerScan_OrderCreateUI MeyerScan_ScanSchemaService)
+    add_custom_command(TARGET MeyerScan_OrderCreateUI POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:MeyerScan_ScanSchemaService>"
+                "$<TARGET_FILE_DIR:MeyerScan_OrderCreateUI>/MeyerScan_ScanSchemaService.dll"
+    )
+endif()
 
 option(MEYER_BUILD_ORDERCREATEUITEST "Build OrderCreateUITest.exe" ON)
 if(MEYER_BUILD_ORDERCREATEUITEST)
@@ -40,6 +48,9 @@ if(MEYER_BUILD_ORDERCREATEUITEST)
     meyer_link_sibling_module(OrderCreateUITest MyLogger MeyerScan_Logger)
     if(TARGET MeyerScan_UIComponents)
         add_dependencies(OrderCreateUITest MeyerScan_UIComponents)
+    endif()
+    if(TARGET MeyerScan_ScanSchemaService)
+        add_dependencies(OrderCreateUITest MeyerScan_ScanSchemaService)
     endif()
     if(TARGET MeyerScan_UIResources)
         # 测试必须在资源 DLL 重新打包后运行，避免输出目录残留旧 QSS 遮盖当前源码。
@@ -56,6 +67,11 @@ if(MEYER_BUILD_ORDERCREATEUITEST)
     if(TARGET MeyerScan_UIComponents)
         list(APPEND order_create_test_post_build_commands
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:MeyerScan_UIComponents>" "$<TARGET_FILE_DIR:OrderCreateUITest>/MeyerScan_UIComponents.dll"
+        )
+    endif()
+    if(TARGET MeyerScan_ScanSchemaService)
+        list(APPEND order_create_test_post_build_commands
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:MeyerScan_ScanSchemaService>" "$<TARGET_FILE_DIR:OrderCreateUITest>/MeyerScan_ScanSchemaService.dll"
         )
     endif()
     add_custom_command(TARGET OrderCreateUITest POST_BUILD

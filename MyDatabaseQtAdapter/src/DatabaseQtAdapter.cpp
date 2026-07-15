@@ -34,7 +34,7 @@ const char* Name = "MeyerScan_DatabaseQtAdapter";
 
 // Adapter 自己的代码版本用于 MainExe 运行时版本清单。
 // 这里必须与 src/Version.rc 的 FILEVERSION / ProductVersion 保持同步。
-const char* Version = "MeyerScan_DatabaseQtAdapter v0.1.0 (2026-07-05)";
+const char* Version = "MeyerScan_DatabaseQtAdapter v0.1.1 (2026-07-15)";
 }
 
 // 获取底层 Database 单例。
@@ -100,6 +100,11 @@ extern "C" MEYERSCAN_DATABASEQTADAPTER_API DatabaseQtAdapter* GetDatabaseQtAdapt
 // 避免为了读取版本而创建/连接底层 Database。
 extern "C" MEYERSCAN_DATABASEQTADAPTER_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回数据库 Qt 适配器公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }
 
 // 初始化并连接底层数据库。

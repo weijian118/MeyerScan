@@ -20,7 +20,7 @@ public:
     static HomeUIImpl& Instance();
 
     // 初始化首页模块需要的日志和共享 UI。
-    bool Init(const char* databaseConfigPath, const char* logDir) override;
+    bool Init(const char* appDirUtf8, const char* logDir) override;
 
     // 注册入口点击回调，由 MainExe 统一决定页面切换和后续流程。
     void SetEntryCallback(void (*callback)(void* context, int entryId), void* context) override;
@@ -44,6 +44,9 @@ public:
     QString LastStatus() const { return m_lastStatus; }
 
 private:
+    // MeyerScan.exe 所在目录，用于按绝对路径加载模块依赖。
+    QString m_appDir;
+
     HomeUIImpl() = default;
     ~HomeUIImpl() = default;
     HomeUIImpl(const HomeUIImpl&) = delete;

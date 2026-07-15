@@ -27,7 +27,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIComponents";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_UIComponents v0.4.0 (2026-07-05)";
+const char* Version = "MeyerScan_UIComponents v0.4.1 (2026-07-15)";
 }
 
 const double kDesignWidth = 1920.0;
@@ -477,4 +477,9 @@ extern "C" MEYERSCAN_UICOMPONENTS_API IUIComponents* GetUIComponents() {
 // 版本清单通过该函数读取代码版本，不需要创建任何 QWidget 或控件实例。
 extern "C" MEYERSCAN_UICOMPONENTS_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回共享 UI 组件公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

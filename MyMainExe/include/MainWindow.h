@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include "CaseUI.h"
+#include "CaseOrderService.h"
 #include "ConfigCenter.h"
 #include "ExternalLaunchAdapter.h"
 #include "HomeUI.h"
@@ -235,6 +236,15 @@ private:
     // 读取 ConfigCenter 与 Permission 后统一下发案例管理动作规则。
     void ApplyCaseActionRules();
 
+    // 从 RuntimeDataCenter 读取指定 domain，并组装给 UI 的版本化只读数据上下文。
+    QString BuildRuntimeDataContextJson(const QStringList& domains);
+
+    // 将 CaseOrderService 的新患者/订单读模型合并到旧库快照，保证新建数据立即可见。
+    void MergeCaseOrderServiceReadModel(const QString& domain, QJsonObject* domainObject);
+
+    // 从 OrderCreateUI 获取当前表单，补齐工作流 ID，并通过 CaseOrderService 正式保存。
+    bool SaveCurrentOrderContext();
+
     // 合并“配置默认显隐”和“权限显隐”。
     bool IsFeatureVisible(const char* featureId, const char* configKey, bool defaultVisible) const;
 
@@ -273,7 +283,8 @@ private:
     QFunctionPointer ResolveFactory(QLibrary& library,
                                     const char* dllName,
                                     const char* factoryName,
-                                    QString* errorMessage = nullptr) const;
+                                    int expectedApiVersion,
+                                    QString* errorMessage = nullptr);
 
     // 以下函数分别返回各自模块的接口指针。
     // MainExe 只保存接口头文件，不链接这些自研 DLL 的 import lib。
@@ -283,6 +294,7 @@ private:
     IPermission* PermissionModule();
     IUIComponents* UIComponentsModule();
     IRuntimeDataCenter* RuntimeDataCenterModule();
+    ICaseOrderService* CaseOrderServiceModule();
     IHomeUI* HomeUIModule();
     ICaseUI* CaseUIModule();
     ISettingsUI* SettingsUIModule();
@@ -329,6 +341,7 @@ private:
     IConfigCenter* m_config = nullptr;
     IPermission* m_permission = nullptr;
     IRuntimeDataCenter* m_runtimeDataCenter = nullptr;
+    ICaseOrderService* m_caseOrderService = nullptr;
     IUIComponents* m_uiComponents = nullptr;
     ILogger* m_logger = nullptr;
     QLibrary m_loggerLibrary;
@@ -337,6 +350,7 @@ private:
     QLibrary m_permissionLibrary;
     QLibrary m_uiComponentsLibrary;
     QLibrary m_runtimeDataCenterLibrary;
+    QLibrary m_caseOrderServiceLibrary;
     QLibrary m_homeLibrary;
     QLibrary m_caseLibrary;
     QLibrary m_settingsLibrary;
@@ -364,6 +378,7 @@ private:
     QByteArray m_appDirUtf8;
     bool m_infrastructureInitialized = false;
     bool m_databaseReady = false;
+    bool m_caseOrderServiceInitialized = false;
     bool m_loginCompleted = false;
     bool m_homeInitialized = false;
     bool m_caseInitialized = false;

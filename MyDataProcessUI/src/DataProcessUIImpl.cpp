@@ -47,7 +47,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_DataProcessUI";
 
 // GetModuleVersion 返回此代码版本，必须与 CMakeLists.txt 和 Version.rc 同步。
-const char* Version = "MeyerScan_DataProcessUI v0.2.3 (2026-07-12)";
+const char* Version = "MeyerScan_DataProcessUI v0.2.4 (2026-07-15)";
 }
 }
 
@@ -409,13 +409,13 @@ QVector<DataProcessUIImpl::ProcessStepInfo> DataProcessUIImpl::ResolveScanProces
         const QJsonArray jsonSteps = scanProcess.value("steps").toArray();
         for (const QJsonValue& value : jsonSteps) {
             const QJsonObject item = value.toObject();
-            const QString label = item.value("label").toString().trimmed();
             const QString code = item.value("code").toString().trimmed();
-            if (!label.isEmpty()) {
+            if (!code.isEmpty()) {
                 ProcessStepInfo step;
                 step.part = item.value("part").toString().trimmed();
-                step.code = code.isEmpty() ? QString("step_%1").arg(steps.size() + 1) : code;
-                step.label = label;
+                step.code = code;
+                // 显示文本由当前 UI 翻译，不复用合同中可能残留的旧语言 label。
+                step.label = ScanStepDisplayText(code);
                 step.exchange = item.value("exchange").toBool(false);
                 step.enabled = item.value("enabled").toBool(true);
                 steps.append(step);
@@ -451,6 +451,26 @@ QVector<DataProcessUIImpl::ProcessStepInfo> DataProcessUIImpl::ResolveScanProces
         steps.append(occlusion);
     }
     return steps;
+}
+
+// 把稳定步骤编码转换为数据处理页显示文本。
+QString DataProcessUIImpl::ScanStepDisplayText(const QString& code) const {
+    if (code == "maxilla_natural") return tr("Natural maxilla");
+    if (code == "maxilla_diff_rod_1") return tr("Maxilla special scanbody 1");
+    if (code == "maxilla_diff_rod_2") return tr("Maxilla special scanbody 2");
+    if (code == "maxilla_cuff") return tr("Maxilla cuff");
+    if (code == "maxilla_scanbody_1") return tr("Maxilla scanbody 1");
+    if (code == "maxilla_scanbody_2") return tr("Maxilla scanbody 2");
+    if (code == "data_exchange") return tr("Exchange");
+    if (code == "mandible_natural") return tr("Natural mandible");
+    if (code == "mandible_diff_rod_1") return tr("Mandible special scanbody 1");
+    if (code == "mandible_diff_rod_2") return tr("Mandible special scanbody 2");
+    if (code == "mandible_cuff") return tr("Mandible cuff");
+    if (code == "mandible_scanbody_1") return tr("Mandible scanbody 1");
+    if (code == "mandible_scanbody_2") return tr("Mandible scanbody 2");
+    if (code == "bite_record") return tr("Bite record");
+    if (code == "natural_occlusion") return tr("Natural occlusion");
+    return code;
 }
 
 // 切换当前数据处理步骤。
@@ -725,4 +745,9 @@ extern "C" MEYERSCAN_DATAPROCESSUI_API IDataProcessUI* GetDataProcessUI() {
 // 运行时 versionList 使用的统一代码版本导出。
 extern "C" MEYERSCAN_DATAPROCESSUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回数据处理界面公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

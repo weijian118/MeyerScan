@@ -15,7 +15,7 @@ namespace ModuleInfo {
 // 模块名用于日志 [Mod:] 字段，必须与工程中的 MEYER_MODULE_NAME 保持一致。
 const char* Name = "MeyerScan_ExternalLaunchAdapter";
 // 模块版本用于版本清单和现场排查，修改 Version.rc 时要同步修改这里。
-const char* Version = "MeyerScan_ExternalLaunchAdapter v0.1.0 (2026-07-04)";
+const char* Version = "MeyerScan_ExternalLaunchAdapter v0.1.1 (2026-07-15)";
 }
 }
 
@@ -327,4 +327,9 @@ extern "C" MEYERSCAN_EXTERNALLAUNCHADAPTER_API IExternalLaunchAdapter* GetExtern
 // 版本清单通过固定符号名读取代码版本，不需要解析第三方 JSON 文件。
 extern "C" MEYERSCAN_EXTERNALLAUNCHADAPTER_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回第三方拉起适配器公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

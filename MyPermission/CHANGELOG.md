@@ -1,5 +1,9 @@
 ﻿# MeyerScan Permission 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.1.1`；新增动态 C++ 接口 ABI 版本导出。当前仍只完成 visible/enabled，六维上下文继续作为明确待办。
+
 ## 2026-07-13
 
 - `PermissionTest` 使用命名 UTF-8 目录缓冲区调用 Init，避免示例代码依赖临时 `constData()`；`visible/enabled` 规则行为不变。

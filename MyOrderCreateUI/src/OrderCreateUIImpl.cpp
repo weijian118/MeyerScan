@@ -57,7 +57,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.5.3 (2026-07-13)";
+const char* Version = "MeyerScan_OrderCreateUI v0.5.4 (2026-07-15)";
 }
 
 const char* kOcclusionNatural = "natural";
@@ -338,6 +338,13 @@ bool OrderCreateUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // UIComponents 只负责通用控件的视觉统一；建单字段、牙位状态和动作回调仍留在本模块。
     LoadUIComponents();
 
+    // 扫描步骤生成属于业务规则，必须由 ScanSchemaService 统一处理。
+    LoadScanSchemaService();
+    if (!m_scanSchemaService) {
+        WriteLog(LogLevel::Error, "Init", "ScanSchemaService is required but unavailable");
+        return false;
+    }
+
     // 初版默认选择全冠，让界面打开后有一个明确的操作上下文。
     m_currentTypeCode = "crown";
     // 清空上次可能残留的牙位状态，保证每次 Init 都从干净状态开始。
@@ -579,6 +586,62 @@ const char* OrderCreateUIImpl::GetCurrentScanProcessJson() {
     return m_currentScanProcessJson.constData();
 }
 
+// 返回用户当前编辑后的完整建单上下文。
+// UI 只负责导出表单快照；订单 ID 生成、权限复核和数据库保存仍由 MainExe/CaseOrderService 完成。
+const char* OrderCreateUIImpl::GetCurrentOrderContextJson() {
+    // 先从最近一次有效输入复制来源信息和未来扩展字段，再覆盖当前可编辑字段。
+    QJsonObject root;
+    if (m_hasPendingContext) {
+        const QJsonDocument pendingDocument = QJsonDocument::fromJson(m_pendingContextJson);
+        if (pendingDocument.isObject()) {
+            root = pendingDocument.object();
+        }
+    }
+
+    // 患者对象使用稳定业务字段，不暴露任何数据库表名。
+    QJsonObject patient = root.value("patient").toObject();
+    patient.insert("patientId", m_patientIdEdit ? m_patientIdEdit->text().trimmed() : QString());
+    patient.insert("name", m_patientNameEdit ? m_patientNameEdit->text().trimmed() : QString());
+    patient.insert("age", m_ageEdit ? m_ageEdit->text().trimmed() : QString());
+    if (m_birthDateEdit && m_birthDateEdit->date() > m_birthDateEdit->minimumDate()) {
+        patient.insert("birthDate", m_birthDateEdit->date().toString("yyyy/MM/dd"));
+    }
+    QString gender = "unknown";
+    if (m_genderMale && m_genderMale->isChecked()) {
+        gender = "male";
+    } else if (m_genderFemale && m_genderFemale->isChecked()) {
+        gender = "female";
+    }
+    patient.insert("gender", gender);
+    patient.insert("contact", m_contactEdit ? m_contactEdit->text().trimmed() : QString());
+    patient.insert("note", m_patientNoteEdit ? m_patientNoteEdit->toPlainText() : QString());
+
+    // 订单对象保存页面当前值。ID 可以为空，由宿主工作流在正式保存前生成。
+    QJsonObject order = root.value("order").toObject();
+    order.insert("orderId", m_orderIdEdit ? m_orderIdEdit->text().trimmed() : QString());
+    order.insert("doctor", m_doctorCombo ? m_doctorCombo->currentText().trimmed() : QString());
+    order.insert("lab", m_labCombo ? m_labCombo->currentText().trimmed() : QString());
+    order.insert("deliveryDate", m_deliveryDateEdit ? m_deliveryDateEdit->date().toString("yyyy/MM/dd") : QString());
+    order.insert("note", m_orderNoteEdit ? m_orderNoteEdit->toPlainText() : QString());
+
+    // 扫描配置包含牙位治疗方案；扫描流程由 ScanSchemaService 生成稳定步骤编码。
+    const QJsonObject scanConfig = BuildScanProcessConfigObject();
+    RefreshScanProcessPreview(false);
+    const QJsonDocument scanProcessDocument = QJsonDocument::fromJson(m_currentScanProcessJson);
+    root.insert("schemaVersion", root.value("schemaVersion").toInt(1));
+    root.insert("patient", patient);
+    root.insert("order", order);
+    root.insert("scanPlan", scanConfig.value("scanPlan").toObject());
+    root.insert("scanProcess", scanProcessDocument.isObject() ? scanProcessDocument.object() : QJsonObject());
+
+    // 缓存紧凑 UTF-8 文本，跨 DLL 只返回 const char*，不传递 QJsonObject/QString 所有权。
+    m_currentOrderContextJson = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    WriteLog(LogLevel::Info,
+             "GetCurrentOrderContextJson",
+             QString("Order context json bytes: %1").arg(m_currentOrderContextJson.size()));
+    return m_currentOrderContextJson.constData();
+}
+
 // 关闭模块并清理状态。
 void OrderCreateUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "Order create UI shutdown");
@@ -609,7 +672,10 @@ void OrderCreateUIImpl::Shutdown() {
     m_treatmentPlanWidget = nullptr;
     m_bridgeSummaryLabel = nullptr;
     m_currentScanProcessJson.clear();
+    m_currentOrderContextJson.clear();
     m_uiComponents = nullptr;
+    // ScanSchemaService 是模块单例，本 UI 只清借用指针，不关闭可能被其它调用方使用的服务。
+    m_scanSchemaService = nullptr;
     m_logger = nullptr;
     m_appDir.clear();
     m_logDir.clear();
@@ -1699,6 +1765,13 @@ void OrderCreateUIImpl::LoadUIComponents() {
         return;
     }
 
+    auto uiApiVersion = reinterpret_cast<int (*)()>(
+        m_uiComponentsLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!uiApiVersion || uiApiVersion() != 1) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents API version mismatch");
+        return;
+    }
+
     // GetUIComponents 使用 extern "C" 导出，resolve 后转成固定函数指针。
     // 这样 OrderCreateUI 只依赖接口头文件，不依赖 UIComponents 的实现类。
     auto getUIComponents = reinterpret_cast<GetUIComponentsFunc>(m_uiComponentsLibrary.resolve("GetUIComponents"));
@@ -1736,6 +1809,51 @@ void OrderCreateUIImpl::LoadUIComponents() {
         }
         WriteLog(LogLevel::Info, "LoadUIComponents", "UIComponents loaded for order create UI");
     }
+}
+
+// 从 MeyerScan.exe 同级目录加载扫描方案服务。
+void OrderCreateUIImpl::LoadScanSchemaService() {
+    if (m_scanSchemaService) {
+        return;
+    }
+
+    // DLL 路径必须从 Init 注入的应用目录推导，不能依赖 current directory 或 PATH。
+    const QString appDir = m_appDir.isEmpty()
+        ? QCoreApplication::applicationDirPath()
+        : QString::fromUtf8(m_appDir);
+    const QString libraryPath = QDir(appDir).filePath("MeyerScan_ScanSchemaService.dll");
+    m_scanSchemaServiceLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    m_scanSchemaServiceLibrary.setFileName(libraryPath);
+    if (!m_scanSchemaServiceLibrary.load()) {
+        WriteLog(LogLevel::Error,
+                 "LoadScanSchemaService",
+                 QString("ScanSchemaService load failed: %1").arg(m_scanSchemaServiceLibrary.errorString()));
+        return;
+    }
+
+    // 在取得 C++ 虚接口前先校验 API 版本，防止旧 DLL 的短 vtable 被新 UI 调用。
+    typedef int (*GetApiVersionFunc)();
+    const GetApiVersionFunc getApiVersion = reinterpret_cast<GetApiVersionFunc>(
+        m_scanSchemaServiceLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!getApiVersion || getApiVersion() != MEYER_SCAN_SCHEMA_SERVICE_API_VERSION) {
+        WriteLog(LogLevel::Error, "LoadScanSchemaService", "ScanSchemaService API version mismatch");
+        return;
+    }
+
+    const GetScanSchemaServiceFunc getter = reinterpret_cast<GetScanSchemaServiceFunc>(
+        m_scanSchemaServiceLibrary.resolve("GetScanSchemaService"));
+    if (!getter) {
+        WriteLog(LogLevel::Error, "LoadScanSchemaService", "GetScanSchemaService export not found");
+        return;
+    }
+
+    m_scanSchemaService = getter();
+    if (!m_scanSchemaService || !m_scanSchemaService->Init(m_logDir.constData())) {
+        m_scanSchemaService = nullptr;
+        WriteLog(LogLevel::Error, "LoadScanSchemaService", "ScanSchemaService initialization failed");
+        return;
+    }
+    WriteLog(LogLevel::Info, "LoadScanSchemaService", "ScanSchemaService loaded");
 }
 
 // 创建统一按钮；共享 UI 不可用时返回本地降级按钮。
@@ -1951,11 +2069,6 @@ QJsonObject OrderCreateUIImpl::BuildScanProcessConfigObject() const {
     config.insert("maxillaSegmentedRod", m_maxillaSegmentedRodSwitch ? m_maxillaSegmentedRodSwitch->isChecked() : false);
     config.insert("mandibleSegmentedRod", m_mandibleSegmentedRodSwitch ? m_mandibleSegmentedRodSwitch->isChecked() : false);
     config.insert("occlusionType", CurrentOcclusionTypeCode());
-    config.insert("maxillaHasImplant", HasImplantTooth(true));
-    config.insert("mandibleHasImplant", HasImplantTooth(false));
-    config.insert("maxillaTemporary", IsJawTemporary(true));
-    config.insert("mandibleTemporary", IsJawTemporary(false));
-
     // scanPlan 是当前建单页面的治疗方案快照。
     // MainExe/Scan/Process 当前只消费 steps；后续保存订单时可把 scanPlan 转交 ScanSchemaService。
     QJsonArray items;
@@ -1989,129 +2102,6 @@ QJsonObject OrderCreateUIImpl::BuildScanProcessConfigObject() const {
     return config;
 }
 
-// 根据配置生成扫描按钮步骤。
-QJsonArray OrderCreateUIImpl::BuildScanProcessSteps(const QJsonObject& configObject) const {
-    QJsonArray steps;
-    const bool maxillaDiffRod = configObject.value("maxillaDiffRod").toBool(false);
-    const bool mandibleDiffRod = configObject.value("mandibleDiffRod").toBool(false);
-    const bool maxillaSegmented = configObject.value("maxillaSegmentedRod").toBool(false);
-    const bool mandibleSegmented = configObject.value("mandibleSegmentedRod").toBool(false);
-    const bool maxillaImplant = configObject.value("maxillaHasImplant").toBool(false);
-    const bool mandibleImplant = configObject.value("mandibleHasImplant").toBool(false);
-    const bool maxillaTemporary = configObject.value("maxillaTemporary").toBool(false);
-    const bool mandibleTemporary = configObject.value("mandibleTemporary").toBool(false);
-    const QString occlusionType = configObject.value("occlusionType").toString(kOcclusionNatural);
-
-    if (maxillaDiffRod) {
-        if (maxillaTemporary) {
-            AppendScanProcessStep(&steps, "maxilla", "maxilla_natural", tr("Natural maxilla"));
-        }
-        AppendScanProcessStep(&steps, "maxilla", "maxilla_diff_rod_1", tr("Maxilla special scanbody 1"));
-        if (maxillaSegmented) {
-            AppendScanProcessStep(&steps, "maxilla", "maxilla_diff_rod_2", tr("Maxilla special scanbody 2"));
-        }
-        AppendScanProcessStep(&steps, "maxilla", "maxilla_cuff", tr("Maxilla cuff"));
-    } else {
-        AppendScanProcessStep(&steps, "maxilla", "maxilla_natural", tr("Natural maxilla"));
-        // "扫描杆分段"只表示第二扫描杆是否显示，不代表该颌一定存在种植扫描杆。
-        // 因此普通扫描杆流程仍然由牙位里的 implant 类型触发，避免用户只勾选分段时凭空生成扫描杆按钮。
-        if (maxillaImplant) {
-            if (maxillaTemporary) {
-                AppendScanProcessStep(&steps, "maxilla", "maxilla_cuff", tr("Maxilla cuff"));
-            }
-            AppendScanProcessStep(&steps, "maxilla", "maxilla_scanbody_1", tr("Maxilla scanbody 1"));
-            if (maxillaSegmented) {
-                AppendScanProcessStep(&steps, "maxilla", "maxilla_scanbody_2", tr("Maxilla scanbody 2"));
-            }
-        }
-    }
-
-    const bool needExchange = !maxillaDiffRod
-        && !mandibleDiffRod
-        && !maxillaSegmented
-        && !mandibleSegmented
-        && !maxillaTemporary
-        && !mandibleTemporary;
-    if (needExchange) {
-        AppendScanProcessStep(&steps, "exchange", "data_exchange", tr("Exchange"), true);
-    }
-
-    if (mandibleDiffRod) {
-        if (mandibleTemporary) {
-            AppendScanProcessStep(&steps, "mandible", "mandible_natural", tr("Natural mandible"));
-        }
-        AppendScanProcessStep(&steps, "mandible", "mandible_diff_rod_1", tr("Mandible special scanbody 1"));
-        if (mandibleSegmented) {
-            AppendScanProcessStep(&steps, "mandible", "mandible_diff_rod_2", tr("Mandible special scanbody 2"));
-        }
-        AppendScanProcessStep(&steps, "mandible", "mandible_cuff", tr("Mandible cuff"));
-    } else {
-        AppendScanProcessStep(&steps, "mandible", "mandible_natural", tr("Natural mandible"));
-        // 下颌规则与上颌保持完全对称：分段开关只控制第二扫描杆，不单独创建种植扫描流程。
-        if (mandibleImplant) {
-            if (mandibleTemporary) {
-                AppendScanProcessStep(&steps, "mandible", "mandible_cuff", tr("Mandible cuff"));
-            }
-            AppendScanProcessStep(&steps, "mandible", "mandible_scanbody_1", tr("Mandible scanbody 1"));
-            if (mandibleSegmented) {
-                AppendScanProcessStep(&steps, "mandible", "mandible_scanbody_2", tr("Mandible scanbody 2"));
-            }
-        }
-    }
-
-    if (occlusionType == kOcclusionRecord) {
-        AppendScanProcessStep(&steps, "occlusion", "bite_record", tr("Bite record"));
-    } else {
-        AppendScanProcessStep(&steps, "occlusion", "natural_occlusion", OcclusionTypeText(occlusionType));
-    }
-
-    return steps;
-}
-
-// 追加一条扫描流程步骤。
-void OrderCreateUIImpl::AppendScanProcessStep(QJsonArray* steps,
-                                              const QString& part,
-                                              const QString& code,
-                                              const QString& label,
-                                              bool exchangeStep) const {
-    if (!steps) {
-        return;
-    }
-
-    QJsonObject item;
-    item.insert("part", part);
-    item.insert("code", code);
-    item.insert("label", label);
-    item.insert("exchange", exchangeStep);
-    item.insert("enabled", true);
-    steps->append(item);
-}
-
-// 判断当前方案是否包含某一颌的种植牙位。
-bool OrderCreateUIImpl::HasImplantTooth(bool maxilla) const {
-    for (auto it = m_toothTypeCodes.begin(); it != m_toothTypeCodes.end(); ++it) {
-        const int tooth = it.key();
-        const bool toothInMaxilla = tooth >= 11 && tooth <= 28;
-        const bool toothInMandible = tooth >= 31 && tooth <= 48;
-        if (it.value() == "implant" && ((maxilla && toothInMaxilla) || (!maxilla && toothInMandible))) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 判断某一颌是否按临时牙逻辑处理。
-bool OrderCreateUIImpl::IsJawTemporary(bool maxilla) const {
-    const QString occlusionType = CurrentOcclusionTypeCode();
-    if (occlusionType == kOcclusionFullTemporary) {
-        return true;
-    }
-    if (maxilla) {
-        return occlusionType == kOcclusionMaxillaTemporary;
-    }
-    return occlusionType == kOcclusionMandibleTemporary;
-}
-
 // 读取当前咬合类型编码。
 QString OrderCreateUIImpl::CurrentOcclusionTypeCode() const {
     if (!m_occlusionTypeCombo) {
@@ -2121,42 +2111,69 @@ QString OrderCreateUIImpl::CurrentOcclusionTypeCode() const {
     return code.isEmpty() ? QString(kOcclusionNatural) : code;
 }
 
-// 咬合类型编码转显示文本。
-QString OrderCreateUIImpl::OcclusionTypeText(const QString& code) const {
-    if (code == kOcclusionMaxillaTemporary) {
-        return tr("Maxilla temporary occlusion");
-    }
-    if (code == kOcclusionMandibleTemporary) {
-        return tr("Mandible temporary occlusion");
-    }
-    if (code == kOcclusionFullTemporary) {
-        return tr("Full temporary occlusion");
-    }
-    if (code == kOcclusionRecord) {
-        return tr("Bite record");
-    }
-    return tr("Natural occlusion");
+// 把稳定步骤编码转换为当前语言显示文本。
+QString OrderCreateUIImpl::ScanStepDisplayText(const QString& code) const {
+    if (code == "maxilla_natural") return tr("Natural maxilla");
+    if (code == "maxilla_diff_rod_1") return tr("Maxilla special scanbody 1");
+    if (code == "maxilla_diff_rod_2") return tr("Maxilla special scanbody 2");
+    if (code == "maxilla_cuff") return tr("Maxilla cuff");
+    if (code == "maxilla_scanbody_1") return tr("Maxilla scanbody 1");
+    if (code == "maxilla_scanbody_2") return tr("Maxilla scanbody 2");
+    if (code == "data_exchange") return tr("Exchange");
+    if (code == "mandible_natural") return tr("Natural mandible");
+    if (code == "mandible_diff_rod_1") return tr("Mandible special scanbody 1");
+    if (code == "mandible_diff_rod_2") return tr("Mandible special scanbody 2");
+    if (code == "mandible_cuff") return tr("Mandible cuff");
+    if (code == "mandible_scanbody_1") return tr("Mandible scanbody 1");
+    if (code == "mandible_scanbody_2") return tr("Mandible scanbody 2");
+    if (code == "bite_record") return tr("Bite record");
+    if (code == "natural_occlusion") return tr("Natural occlusion");
+    return code;
 }
 
 // 统一刷新扫描流程 JSON 和预览。
 void OrderCreateUIImpl::RefreshScanProcessPreview(bool emitAction) {
     const QJsonObject config = BuildScanProcessConfigObject();
-    const QJsonArray steps = BuildScanProcessSteps(config);
-
+    const QByteArray configJson = QJsonDocument(config).toJson(QJsonDocument::Compact);
     QJsonObject scanProcess;
-    scanProcess.insert("schemaVersion", 1);
-    scanProcess.insert("source", "OrderCreateUI");
-    scanProcess.insert("config", config);
-    scanProcess.insert("steps", steps);
-    m_currentScanProcessJson = QJsonDocument(scanProcess).toJson(QJsonDocument::Compact);
+    int stepCount = 0;
+
+    if (m_scanSchemaService) {
+        // 先使用常规容量；服务返回 requiredSize 后只按明确大小重试一次，避免无限扩容。
+        QByteArray output(64 * 1024, '\0');
+        ScanSchemaServiceResult result = m_scanSchemaService->BuildScanProcessJson(
+            configJson.constData(), output.data(), output.size());
+        if (result.IsError() && result.requiredSize > output.size()) {
+            output.fill('\0', result.requiredSize);
+            result = m_scanSchemaService->BuildScanProcessJson(
+                configJson.constData(), output.data(), output.size());
+        }
+        if (result.IsSuccess()) {
+            const QJsonDocument outputDocument = QJsonDocument::fromJson(output.constData());
+            scanProcess = outputDocument.object();
+            m_currentScanProcessJson = outputDocument.toJson(QJsonDocument::Compact);
+            stepCount = scanProcess.value("steps").toArray().size();
+        } else {
+            m_currentScanProcessJson.clear();
+            WriteLog(LogLevel::Error,
+                     "RefreshScanProcessPreview",
+                     QString("ScanSchemaService failed: %1").arg(QString::fromUtf8(result.message)));
+        }
+    } else {
+        m_currentScanProcessJson.clear();
+        WriteLog(LogLevel::Error, "RefreshScanProcessPreview", "ScanSchemaService is unavailable");
+    }
 
     if (m_scanProcessPreviewLabel) {
         QStringList labels;
+        const QJsonArray steps = scanProcess.value("steps").toArray();
         for (const QJsonValue& value : steps) {
             const QJsonObject item = value.toObject();
-            labels << item.value("label").toString();
+            labels << ScanStepDisplayText(item.value("code").toString());
         }
-        const QString previewText = tr("Process: %1").arg(labels.join(tr(" -> ")));
+        const QString previewText = labels.isEmpty()
+            ? tr("Process unavailable")
+            : tr("Process: %1").arg(labels.join(tr(" -> ")));
         // 标签保持稳定单行；宽度不足时 Qt 会裁剪绘制，tooltip 则保留完整流程供用户查看。
         // 这种做法不会按语言或分辨率写坐标分支，也不会让动态文本反向改变牙弓区域大小。
         m_scanProcessPreviewLabel->setText(previewText);
@@ -2165,7 +2182,7 @@ void OrderCreateUIImpl::RefreshScanProcessPreview(bool emitAction) {
 
     WriteLog(LogLevel::Info,
              "RefreshScanProcessPreview",
-             QString("Scan process refreshed, steps=%1").arg(steps.size()));
+             QString("Scan process refreshed, steps=%1").arg(stepCount));
     if (emitAction) {
         EmitAction(OrderCreateActionScanProcessChanged);
     }
@@ -2181,4 +2198,9 @@ extern "C" MEYERSCAN_ORDERCREATEUI_API IOrderCreateUI* GetOrderCreateUI() {
 // 版本清单读取建单 UI 代码版本时，不创建表单控件，也不加载共享 UI。
 extern "C" MEYERSCAN_ORDERCREATEUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回建单 UI 公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return MEYER_ORDER_CREATE_UI_API_VERSION;
 }

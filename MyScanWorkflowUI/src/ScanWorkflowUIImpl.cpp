@@ -47,7 +47,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanWorkflowUI";
 
 // GetModuleVersion 返回此代码版本，必须与 CMakeLists.txt 和 Version.rc 同步。
-const char* Version = "MeyerScan_ScanWorkflowUI v0.2.3 (2026-07-12)";
+const char* Version = "MeyerScan_ScanWorkflowUI v0.2.4 (2026-07-15)";
 }
 }
 
@@ -416,13 +416,13 @@ QVector<ScanWorkflowUIImpl::ScanProcessStepInfo> ScanWorkflowUIImpl::ResolveScan
         const QJsonArray jsonSteps = scanProcess.value("steps").toArray();
         for (const QJsonValue& value : jsonSteps) {
             const QJsonObject item = value.toObject();
-            const QString label = item.value("label").toString().trimmed();
             const QString code = item.value("code").toString().trimmed();
-            if (!label.isEmpty()) {
+            if (!code.isEmpty()) {
                 ScanProcessStepInfo step;
                 step.part = item.value("part").toString().trimmed();
-                step.code = code.isEmpty() ? QString("step_%1").arg(steps.size() + 1) : code;
-                step.label = label;
+                step.code = code;
+                // 新合同只携带稳定 code；旧合同若仍有 label 也不再把已翻译文本当作权威数据。
+                step.label = ScanStepDisplayText(code);
                 step.exchange = item.value("exchange").toBool(false);
                 step.enabled = item.value("enabled").toBool(true);
                 steps.append(step);
@@ -458,6 +458,26 @@ QVector<ScanWorkflowUIImpl::ScanProcessStepInfo> ScanWorkflowUIImpl::ResolveScan
         steps.append(occlusion);
     }
     return steps;
+}
+
+// 把稳定步骤编码转换为扫描页显示文本。
+QString ScanWorkflowUIImpl::ScanStepDisplayText(const QString& code) const {
+    if (code == "maxilla_natural") return tr("Natural maxilla");
+    if (code == "maxilla_diff_rod_1") return tr("Maxilla special scanbody 1");
+    if (code == "maxilla_diff_rod_2") return tr("Maxilla special scanbody 2");
+    if (code == "maxilla_cuff") return tr("Maxilla cuff");
+    if (code == "maxilla_scanbody_1") return tr("Maxilla scanbody 1");
+    if (code == "maxilla_scanbody_2") return tr("Maxilla scanbody 2");
+    if (code == "data_exchange") return tr("Exchange");
+    if (code == "mandible_natural") return tr("Natural mandible");
+    if (code == "mandible_diff_rod_1") return tr("Mandible special scanbody 1");
+    if (code == "mandible_diff_rod_2") return tr("Mandible special scanbody 2");
+    if (code == "mandible_cuff") return tr("Mandible cuff");
+    if (code == "mandible_scanbody_1") return tr("Mandible scanbody 1");
+    if (code == "mandible_scanbody_2") return tr("Mandible scanbody 2");
+    if (code == "bite_record") return tr("Bite record");
+    if (code == "natural_occlusion") return tr("Natural occlusion");
+    return code;
 }
 
 // 切换当前扫描流程步骤。
@@ -733,5 +753,10 @@ extern "C" MEYERSCAN_SCANWORKFLOWUI_API IScanWorkflowUI* GetScanWorkflowUI() {
 // 运行时 versionList 使用的统一代码版本导出。
 extern "C" MEYERSCAN_SCANWORKFLOWUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回扫描界面公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }
         // 只读取约定的 scanProcess.steps，患者/订单其它字段在本 UI 中保持不透明。

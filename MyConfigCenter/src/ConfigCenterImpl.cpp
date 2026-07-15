@@ -13,7 +13,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ConfigCenter";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_ConfigCenter v0.1.0 (2026-06-23)";
+const char* Version = "MeyerScan_ConfigCenter v0.1.1 (2026-07-15)";
 }
 }
 
@@ -244,4 +244,9 @@ extern "C" MEYERSCAN_CONFIGCENTER_API IConfigCenter* GetConfigCenter() {
 // 不需要创建配置中心业务接口或读取配置文件。
 extern "C" MEYERSCAN_CONFIGCENTER_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回配置中心公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

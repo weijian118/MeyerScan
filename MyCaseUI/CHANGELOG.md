@@ -1,5 +1,11 @@
 ﻿# MeyerScan CaseUI 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.3.3`，公共接口版本升级为 2；新增 `SetDataContextJson()`，只展示 MainExe 注入的患者/订单 domain 快照。
+- 删除 RuntimeDataCenter、DatabaseQtAdapter、SQLite 配置和运行时依赖；模块不再连接数据库或初始化进程级读模型。
+- Logger/UIComponents 改为应用目录绝对路径加载并校验 ABI；测试宿主改用隔离 JSON fixture 验证列表和动作回调。
+
 ## 2026-07-12
 
 - 版本升级为 `v0.3.2`；UIComponents 初始化失败时清空共享接口并走 CaseUI 本地控件/QSS 降级，不保留半初始化对象。

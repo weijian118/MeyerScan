@@ -1,5 +1,9 @@
 ﻿# MeyerScan DatabaseQtAdapter 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.1.1`；新增 `GetMeyerModuleApiVersion()`，供 MainExe 在取得数据库 Qt 适配接口前校验 ABI。
+
 ## 2026-07-13
 
 - 测试宿主改用 Logger QString 重载，并在打印数据库错误前保存命名 UTF-8 缓冲区；Adapter/Database 接口和数据库行为不变。

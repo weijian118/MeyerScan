@@ -1,5 +1,11 @@
 # MyOrderCreateUI 修改记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.5.4`，公共接口版本升级为 2；新增 `GetCurrentOrderContextJson()`，导出用户当前编辑后的患者、订单、治疗方案和扫描流程快照。
+- 扫描步骤生成规则迁入独立 `MeyerScan_ScanSchemaService.dll`；OrderCreateUI 只构造输入配置并把稳定步骤编码翻译为界面文字。
+- UIComponents/ScanSchemaService 均使用应用目录绝对路径和 API 版本门禁，服务缺失或 ABI 不匹配时明确失败并写日志。
+
 ## 2026-07-13
 
 - 截图测试的 hover 类型和输出路径改为命名 UTF-8 缓冲区，补充定时 lambda 内部缓冲区生命周期注释；根 CMake 将 `OrderCreateUITest --smoke` 登记到统一 CTest 清单。

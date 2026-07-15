@@ -23,7 +23,8 @@ flowchart TD
     Main --> UI["Home / Case / Settings / Order / Workspace UI"]
     Main --> Adapter["Login / External / HIS / Qt Adapter"]
     UI --> Service["CaseOrder / ScanSchema / Workflow / DataExport 服务"]
-    UI --> Runtime["RuntimeDataCenter 只读快照"]
+    Main --> Runtime["RuntimeDataCenter 进程级只读快照"]
+    Runtime --> Main
     Adapter --> Service
     Service --> DbAdapter["DatabaseQtAdapter"]
     Runtime --> DbAdapter
@@ -44,7 +45,7 @@ flowchart TD
 | 主宿主/编排 | `MyMainExe` | 启动、单实例、登录、模块生命周期、页面挂载、轻量流程和进程调度 |
 | UI 容器 | `MyOrderScanWorkspaceShell`、`MyScanReconstructStudio` | 页面容器、步骤导航、激活/释放，不实现步骤业务 |
 | 业务 UI | Home、Case、Settings、OrderCreate、ScanWorkflow、DataProcess、Send、两校准 UI | 展示、输入、局部交互、动作上报 |
-| 业务服务 | CaseOrder；规划中的 ScanSchema、OrderWorkflow、DataExport、Statistics | 业务校验、事务、状态、结构化查询和动作结果 |
+| 业务服务 | 已落地 CaseOrder、ScanSchema；规划中的 OrderWorkflow、DataExport、Statistics | 业务校验、事务、状态、结构化查询和动作结果 |
 | 运行时读模型 | RuntimeDataCenter | 常用数据和云端信息的只读快照 |
 | 适配层 | DatabaseQtAdapter、ExternalLaunchAdapter；规划中的 Login/HIS Adapter | 类型、协议和来源差异转换 |
 | 基础设施 | Logger、Database、ConfigCenter、Permission、UIResources | 通用能力，不理解页面流程 |
@@ -89,8 +90,8 @@ flowchart TD
 
 1. 根据 `applicationDirPath()` 组成绝对路径。
 2. `QLibrary`/Win32 加载 DLL。
-3. 解析稳定的 `extern "C"` 工厂函数和 `GetMeyerModuleVersion()`。
-4. 校验接口版本、初始化参数和返回值。
+3. 解析 `GetMeyerModuleApiVersion()` 并校验公共接口 ABI；缺失或不匹配立即拒绝。
+4. 解析稳定的 `extern "C"` 工厂函数；`GetMeyerModuleVersion()` 只用于代码版本清单，不代替 ABI 门禁。
 5. 记录加载路径、版本、成功/失败和降级结果。
 6. 宿主持有 DLL 句柄，插件对象销毁后才能卸载 DLL。
 
@@ -187,7 +188,7 @@ Qt 模块调用 C ABI 时，临时 UTF-8 数据必须先保存为命名 `QByteAr
 - `scanPlan`：治疗类型、FDI 牙位、桥、咬合和材料等。
 - `scanProcess`：扫描步骤 `steps` 及生成配置。
 
-OrderCreateUI 接收标准上下文，不理解第三方私有字段。External/HIS Adapter 负责归一化；CaseOrderService/ScanSchemaService 负责正式保存；Workflow 决定后续步骤。
+OrderCreateUI 接收标准上下文，不理解第三方私有字段。External/HIS Adapter 负责归一化；ScanSchemaService 负责生成扫描步骤，CaseOrderService 负责患者/订单持久化，Workflow 决定后续步骤。
 
 ### 6.3 事务式更新
 
@@ -205,23 +206,30 @@ OrderCreateUI 接收标准上下文，不理解第三方私有字段。External/
 ### 7.1 标准访问链路
 
 ```text
-MyCaseUI / MySettingsUI / MyOrderCreateUI
-        -> RuntimeDataCenter（只读）或业务 Service（读写）
-        -> MyDatabaseQtAdapter（Qt/C++ 转换）
+MyCaseUI / MySettingsUI
+        <- MainExe 注入版本化只读 domain 快照
+        <- RuntimeDataCenter 旧库/高频只读快照（MainExe 统一读取）
+        <- CaseOrderService 患者/订单轻量读模型（MainExe 按稳定 ID 合并）
+
+MyOrderCreateUI / 其它业务 UI 动作
+        -> MainExe / Workflow 编排
+        -> CaseOrderService / ScanSchemaService
+        -> MyDatabaseQtAdapter（需要持久化时）
         -> MyDatabase（连接、SQL、事务）
 ```
 
 - Database 不知道业务表语义。
 - DatabaseQtAdapter 不知道字段含义。
 - Service 负责 SQL/schema、业务校验、事务、状态和审计。
-- RuntimeDataCenter 缓存高频只读数据，不接收 SQL 或表名。
+- RuntimeDataCenter 缓存高频只读数据，不接收 SQL 或表名；迁移期继续提供未迁移旧表记录。
+- CaseOrderService 拥有新患者/订单 schema，并通过白名单 queryName 输出轻量列表；MainExe 合并后再注入 UI。
 - UI 只消费 DTO/JSON 和提交动作。
 
 ### 7.2 数据归属
 
 | 数据 | 所有者 | 读取方式 |
 |---|---|---|
-| 患者、订单 | CaseOrderService | 列表可用 RuntimeDataCenter 快照；搜索/详情/写入走 Service |
+| 患者、订单 | CaseOrderService | 新表列表走 Service；MainExe 与 RuntimeDataCenter 旧表快照按稳定 ID 合并；搜索/详情/写入走 Service |
 | 诊所、医生、技工所 | CaseOrderService 参考数据 | RuntimeDataCenter 快照或 Service 查询 |
 | 软件设置、账号、设备 | 对应服务；骨架期由 RuntimeDataCenter 读入 | UI 不直接读表 |
 | 扫描方案 | ScanSchemaService | OrderCreate/Workflow/Scan 读取标准合同 |

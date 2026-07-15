@@ -3,11 +3,14 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QDateEdit>
+#include <QDir>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHeaderView>
 #include <QIcon>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -21,20 +24,14 @@
 #include <QVariant>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <cstring>
 
 namespace {
-// CaseUI 只展示 RuntimeDataCenter 的只读快照，不拥有数据缓存。
-// 读取 domain 时从 512KB 起步，不够则倍增到 32MB，防止患者/订单字段扩展后列表突然变空。
-const int kInitialRuntimeDomainBufferSize = 1024 * 512;
-const int kMaxRuntimeDomainBufferSize = 1024 * 1024 * 32;
-
 namespace ModuleInfo {
 // 模块名用于日志 [Mod:] 字段，必须与 vcxproj 中的 MEYER_MODULE_NAME 保持一致。
 const char* Name = "MeyerScan_CaseUI";
 
 // 模块版本用于 GetModuleVersion() 和版本清单，必须与 Version.rc 保持一致。
-const char* Version = "MeyerScan_CaseUI v0.3.2 (2026-07-12)";
+const char* Version = "MeyerScan_CaseUI v0.3.3 (2026-07-15)";
 }
 }
 
@@ -46,36 +43,21 @@ CaseUIImpl& CaseUIImpl::Instance() {
 }
 
 // 初始化案例管理 UI。
-// 这里只加载日志、共享 UI 和 RuntimeDataCenter；正式患者/订单写流程必须通过 CaseOrderService。
-bool CaseUIImpl::Init(const char* databaseConfigPath, const char* logDir) {
-    // 案例管理 UI 当前只负责界面框架和用户动作上报。
-    // 初始化时只加载日志、共享 UI 和 RuntimeDataCenter，不直接读取或连接 Database。
-    LoadLogger(logDir);
-    LoadUIComponents();
-    LoadRuntimeDataCenter();
-    if (m_runtimeDataCenter) {
-        // CaseUI 只初始化 RuntimeDataCenter，不在 UI 模块里 ReloadAll。
-        // MainExe 启动期会做全量刷新；独立测试或缓存为空时，LoadRuntimeItems()
-        // 调用 GetDomainJson() 会触发 RuntimeDataCenter 对当前 domain 的懒加载。
-        const bool runtimeInitOk = m_runtimeDataCenter->Init(databaseConfigPath ? databaseConfigPath : "",
-                                                            logDir ? logDir : "");
-        WriteLog(runtimeInitOk ? LogLevel::Info : LogLevel::Warning,
-                 "RuntimeDataCenter",
-                 runtimeInitOk
-                     ? "RuntimeDataCenter initialized for lazy domain reads"
-                     : "RuntimeDataCenter init failed");
-        m_runtimeDataReady = runtimeInitOk;
-        m_lastStatus = runtimeInitOk ? "RuntimeDataCenter ready" : "RuntimeDataCenter init failed";
-        if (!runtimeInitOk) {
-            m_runtimeDataCenter = nullptr;
-        }
-    } else {
-        m_runtimeDataReady = false;
-        m_lastStatus = "RuntimeDataCenter unavailable";
+// 这里只保存安装目录并加载日志、共享 UI；患者/订单数据必须由宿主通过 SetDataContextJson 注入。
+bool CaseUIImpl::Init(const char* appDirUtf8, const char* logDir) {
+    // 安装目录由 MainExe 基于 applicationDirPath() 显式传入。
+    // 保存该目录后，模块加载 DLL 和资源时不再受第三方启动工作目录影响。
+    m_appDir = QDir::fromNativeSeparators(QString::fromUtf8(appDirUtf8 ? appDirUtf8 : ""));
+    if (m_appDir.isEmpty()) {
+        m_lastStatus = "Application directory is empty";
+        return false;
     }
 
-    // m_lastStatus 会被日志/数据库初始化流程更新。
-    // Init 末尾统一输出一次，方便从日志里看到 CaseUI 的启动结论。
+    // 案例管理 UI 只初始化界面基础设施，不连接数据库、不初始化进程级读模型。
+    LoadLogger(logDir);
+    LoadUIComponents();
+    m_lastStatus = "Waiting for host data context";
+    // Init 只说明界面基础设施准备完成；数据是否可用由后续注入结果单独记录。
     WriteLog(LogLevel::Info, "Init", m_lastStatus);
     return true;
 }
@@ -129,9 +111,18 @@ void CaseUIImpl::LoadLogger(const char* logDir) {
     // PreventUnloadHint 用来降低进程退出阶段 DLL 卸载顺序风险。
     // 本模块 Shutdown 时只清空指针，不主动 unload Logger DLL。
     m_loggerLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    m_loggerLibrary.setFileName("MeyerScan_Logger");
+    // 使用安装目录下的绝对路径，避免 PATH 中同名 DLL 或 currentPath 变化造成误加载。
+    m_loggerLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_Logger.dll"));
     if (!m_loggerLibrary.load()) {
         m_lastStatus = "Logger unavailable; continuing without log output";
+        return;
+    }
+
+    // Logger 返回 C++ 虚接口，获取单例前必须校验 ABI 版本。
+    auto loggerApiVersion = reinterpret_cast<int (*)()>(
+        m_loggerLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!loggerApiVersion || loggerApiVersion() != 1) {
+        m_lastStatus = "Logger API version mismatch; continuing without log output";
         return;
     }
 
@@ -158,12 +149,18 @@ void CaseUIImpl::LoadUIComponents() {
         return;
     }
 
-    // QLibrary 按 DLL 名称在当前 exe 目录等 Qt 搜索路径中查找模块。
-    // 这种动态加载方式让共享 UI 组件缺失时可以降级，而不是让 CaseUI 进程启动失败。
+    // 共享 UI 是可降级能力；使用绝对路径加载，缺失时仍可使用本地 Qt 控件。
     m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    m_uiComponentsLibrary.setFileName("MeyerScan_UIComponents");
+    m_uiComponentsLibrary.setFileName(QDir(m_appDir).filePath("MeyerScan_UIComponents.dll"));
     if (!m_uiComponentsLibrary.load()) {
         WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents unavailable; fallback to local styles");
+        return;
+    }
+
+    auto uiApiVersion = reinterpret_cast<int (*)()>(
+        m_uiComponentsLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!uiApiVersion || uiApiVersion() != 1) {
+        WriteLog(LogLevel::Warning, "LoadUIComponents", "UIComponents API version mismatch");
         return;
     }
 
@@ -180,7 +177,7 @@ void CaseUIImpl::LoadUIComponents() {
     if (m_uiComponents) {
         // QByteArray 必须保存到局部变量，不能直接写 applicationDirPath().toUtf8().constData() 后跨语句使用。
         // 这里 Init 在当前语句内同步完成，所以局部 QByteArray 生命周期足够。
-        const QByteArray appDirBytes = QCoreApplication::applicationDirPath().toUtf8();
+        const QByteArray appDirBytes = m_appDir.toUtf8();
         if (!m_uiComponents->Init(appDirBytes.constData())) {
             // 初始化失败后清空接口，后续控件工厂会自动走 CaseUI 本地降级实现。
             WriteLog(LogLevel::Warning,
@@ -189,34 +186,6 @@ void CaseUIImpl::LoadUIComponents() {
             m_uiComponents = nullptr;
         }
     }
-}
-
-// 加载运行时数据中心模块。
-// 该模块把旧数据库常用表读取到内存 JSON 快照，CaseUI 后续只读 domain，不拼 SQL。
-void CaseUIImpl::LoadRuntimeDataCenter() {
-    if (m_runtimeDataCenter) {
-        return;
-    }
-
-    // RuntimeDataCenter 提供只读 JSON 快照。加载失败时 CaseUI 仍能显示空列表，
-    // 这样 UI 框架调试不被数据库读模型模块阻断。
-    m_runtimeDataCenterLibrary.setLoadHints(QLibrary::PreventUnloadHint);
-    m_runtimeDataCenterLibrary.setFileName("MeyerScan_RuntimeDataCenter");
-    if (!m_runtimeDataCenterLibrary.load()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "RuntimeDataCenter unavailable; table data will be empty");
-        return;
-    }
-
-    // 和 UIComponents 一样，通过 C ABI 工厂函数拿接口，避免 CaseUI 依赖实现类。
-    auto getRuntimeDataCenter = reinterpret_cast<GetRuntimeDataCenterFunc>(
-        m_runtimeDataCenterLibrary.resolve("GetRuntimeDataCenter"));
-    if (!getRuntimeDataCenter) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeDataCenter", "GetRuntimeDataCenter export not found");
-        return;
-    }
-
-    // 返回的是 RuntimeDataCenter 内部单例；Shutdown 时只清引用，不 unload DLL。
-    m_runtimeDataCenter = getRuntimeDataCenter();
 }
 
 // 创建案例管理主页面。
@@ -404,7 +373,7 @@ QWidget* CaseUIImpl::CreateWidget(QWidget* parent) {
     bodyLayout->addWidget(tabs, 1);
 
     auto* status = new QLabel(QString("%1: %2").arg(tr("Status")).arg(m_lastStatus), body);
-    status->setObjectName(m_runtimeDataReady ? "CaseStatusLabelReady" : "CaseStatusLabelWarning");
+    status->setObjectName(m_dataContextReady ? "CaseStatusLabelReady" : "CaseStatusLabelWarning");
     // 当前状态标签用于开发期确认只读快照链路是否可用。
     // 正式界面可由 UIComponents 提供统一状态提示样式。
     // 正式页面不显示开发状态文字；测试仍可通过 objectName 从对象树读取。
@@ -470,7 +439,7 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
     });
     layout->addLayout(toolbar);
 
-    // 表格当前读取 RuntimeDataCenter 的只读快照。
+    // 表格读取 MainExe 注入的只读快照。
     // 复杂搜索、分页、编辑和删除仍必须通过 CaseOrderService，避免 UI 直接拼 SQL 或写数据库。
     auto* table = new QTableWidget(0, 6, page);
     // QTableWidget 是 item-based 控件，适合骨架期快速展示少量行。
@@ -487,7 +456,7 @@ QWidget* CaseUIImpl::CreatePatientTab(QWidget* parent) {
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     // LoadRuntimeItems 返回 JSON 数组，FillPatientTable 负责把弱类型字段映射成可见列。
-    FillPatientTable(table, LoadRuntimeItems("local.patients"));
+    FillPatientTable(table, LoadContextItems("local.patients"));
     layout->addWidget(table, 1);
     return page;
 }
@@ -609,7 +578,7 @@ QWidget* CaseUIImpl::CreateOrderTab(QWidget* parent) {
     orderList->setUniformItemSizes(true);
     orderList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    const QJsonArray items = LoadRuntimeItems("local.orders");
+    const QJsonArray items = LoadContextItems("local.orders");
     for (int row = 0; row < items.size(); ++row) {
         const QJsonObject itemObject = items.at(row).toObject();
         const QString orderId = FirstText(itemObject, QStringList() << "ORDER_ID" << "orderId");
@@ -717,7 +686,7 @@ const char* CaseUIImpl::GetModuleVersion() const {
 }
 
 // 释放案例 UI 模块状态。
-// 不关闭全局 Logger / RuntimeDataCenter；MainExe 会统一管理基础设施生命周期。
+// 不关闭全局 Logger；MainExe 会统一管理基础设施生命周期。
 void CaseUIImpl::Shutdown() {
     WriteLog(LogLevel::Info, "Shutdown", "CaseUI shutdown");
     if (m_logger) {
@@ -725,11 +694,42 @@ void CaseUIImpl::Shutdown() {
         m_logger->Flush();
     }
     // 这些指针都不是 CaseUI 创建的对象，Shutdown 只清引用，避免误删进程级单例。
-    m_runtimeDataReady = false;
+    m_dataContextReady = false;
+    m_dataContext = QJsonObject();
+    m_appDir.clear();
     m_logger = nullptr;
     m_uiComponents = nullptr;
-    m_runtimeDataCenter = nullptr;
     // QLibrary uses PreventUnloadHint to avoid process-exit unload-order issues.
+}
+
+// 保存宿主注入的版本化只读数据上下文。
+// 先完整解析和校验临时对象，全部通过后再替换成员，避免无效 JSON 破坏上一份可用快照。
+bool CaseUIImpl::SetDataContextJson(const char* contextJsonUtf8) {
+    if (!contextJsonUtf8 || !contextJsonUtf8[0]) {
+        WriteLog(LogLevel::Warning, "SetDataContextJson", "Data context is empty");
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(QByteArray(contextJsonUtf8), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        WriteLog(LogLevel::Warning,
+                 "SetDataContextJson",
+                 QString("Invalid data context JSON: %1").arg(parseError.errorString()));
+        return false;
+    }
+
+    const QJsonObject candidate = document.object();
+    if (!candidate.value("domains").isObject()) {
+        WriteLog(LogLevel::Warning, "SetDataContextJson", "Data context domains must be an object");
+        return false;
+    }
+
+    m_dataContext = candidate;
+    m_dataContextReady = true;
+    m_lastStatus = "Host data context ready";
+    WriteLog(LogLevel::Info, "SetDataContextJson", "Host data context accepted");
+    return true;
 }
 
 // 写结构化日志。
@@ -750,56 +750,14 @@ void CaseUIImpl::NotifyAction(int actionId, const QString& actionName) {
     }
 }
 
-// 从 RuntimeDataCenter 读取指定 domain 的 items 数组。
-QJsonArray CaseUIImpl::LoadRuntimeItems(const char* domain) {
-    // 这里故意只接受 domain 字符串，不接受 SQL 或表名。
-    // 这样 CaseUI 即使要扩展列表字段，也不会越过 RuntimeDataCenter 白名单直接访问数据库。
-    if (!m_runtimeDataCenter || !domain || !domain[0]) {
+// 从宿主注入的数据上下文读取指定 domain 的 items 数组。
+QJsonArray CaseUIImpl::LoadContextItems(const char* domain) const {
+    // UI 只认稳定 domain，不接收 SQL、表名或数据库配置。
+    if (!m_dataContextReady || !domain || !domain[0]) {
         return QJsonArray();
     }
-
-    QByteArray buffer;
-    RuntimeDataCenterResult result;
-    std::memset(&result, 0, sizeof(result));
-
-    // RuntimeDataCenter 的接口由调用方提供缓冲区。
-    // 为了保持跨 DLL 内存所有权简单，CaseUI 在本模块内做有限扩容重试。
-    for (int bufferSize = kInitialRuntimeDomainBufferSize;
-         bufferSize <= kMaxRuntimeDomainBufferSize;
-         bufferSize *= 2) {
-        // buffer.fill 会调整 QByteArray 大小并填充 '\0'。
-        // 预清零能保证 RuntimeDataCenter 写入短字符串时 buffer.constData() 仍是合法 C 字符串。
-        buffer.fill('\0', bufferSize);
-        // 跨 DLL 大文本采用调用方缓冲区模式，避免“哪个 DLL 分配、哪个 DLL 释放”的 ABI 问题。
-        result = m_runtimeDataCenter->GetDomainJson(domain,
-                                                    buffer.data(),
-                                                    buffer.size());
-        if (result.IsSuccess()) {
-            break;
-        }
-
-        const QString message = QString::fromUtf8(result.message);
-        // 只有缓冲区太小才扩容重试；其它错误通常是未初始化、未知 domain 或数据库不可用。
-        if (!message.contains("too small", Qt::CaseInsensitive) ||
-            bufferSize == kMaxRuntimeDomainBufferSize) {
-            WriteLog(LogLevel::Warning, "LoadRuntimeItems",
-                     QString("%1: %2").arg(domain, message));
-            return QJsonArray();
-        }
-    }
-
-    QJsonParseError parseError;
-    // RuntimeDataCenter 写入 UTF-8 JSON 并以 '\0' 结尾。
-    // fromJson(buffer.constData()) 会按真实字符串解析，不会把 QByteArray 尾部预留空间当作 JSON 内容。
-    const QJsonDocument document = QJsonDocument::fromJson(buffer.constData(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        WriteLog(LogLevel::Warning, "LoadRuntimeItems",
-                 QString("%1 returned invalid JSON").arg(domain));
-        return QJsonArray();
-    }
-
-    // 标准快照结构约定数据行在 items 数组中；字段缺失时 toArray() 返回空数组，UI 显示空表即可。
-    return document.object().value("items").toArray();
+    const QJsonObject domains = m_dataContext.value("domains").toObject();
+    return domains.value(QString::fromUtf8(domain)).toObject().value("items").toArray();
 }
 
 // 用患者快照填充患者表。
@@ -918,6 +876,11 @@ bool CaseUIImpl::IsActionEnabled(int actionId) const {
 // MainExe 和测试宿主通过该函数获取案例管理模块接口。
 extern "C" MEYERSCAN_CASEUI_API ICaseUI* GetCaseUI() {
     return &CaseUIImpl::Instance();
+}
+
+// 返回公共虚接口版本。动态宿主必须在调用 GetCaseUI 前校验该值。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return MEYER_CASE_UI_API_VERSION;
 }
 
 // 统一版本导出函数。

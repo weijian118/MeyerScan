@@ -11,7 +11,7 @@
 namespace {
 namespace ModuleInfo {
 const char* Name = "MeyerScan_ScanReconstructStudio";
-const char* Version = "MeyerScan_ScanReconstructStudio v0.1.3 (2026-07-12)";
+const char* Version = "MeyerScan_ScanReconstructStudio v0.1.4 (2026-07-15)";
 }
 
 class ScanReconstructStudioModule : public IScanReconstructStudio {
@@ -110,4 +110,9 @@ extern "C" MEYERSCAN_SCANRECONSTRUCTSTUDIO_API IScanReconstructStudio* GetScanRe
 extern "C" MEYERSCAN_SCANRECONSTRUCTSTUDIO_API const char* GetMeyerModuleVersion() {
     // 静态字符串由 DLL 持有，versionList 只读使用。
     return ModuleInfo::Version;
+}
+
+// 返回嵌入 DLL 公共接口 ABI 版本，调用方必须先校验再获取单例。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return MEYER_SCAN_RECONSTRUCT_STUDIO_API_VERSION;
 }

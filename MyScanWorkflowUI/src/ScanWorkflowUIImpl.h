@@ -67,6 +67,9 @@ private:
     void RefreshScanProcessButtons();
     // 解析流程；缺失时返回练习模式默认四步。
     QVector<ScanProcessStepInfo> ResolveScanProcessSteps() const;
+
+    // 把稳定扫描步骤编码转换为当前 UI 语言的显示文本。
+    QString ScanStepDisplayText(const QString& code) const;
     // 切换当前扫描部位并上报动作。
     void SelectScanProcessStep(int index, const QString& reason);
     // 刷新按钮 checked/QSS 状态。

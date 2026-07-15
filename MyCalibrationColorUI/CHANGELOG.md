@@ -1,5 +1,9 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.1.1`；新增公共接口 ABI 版本导出，SettingsUI 获取校准接口前强制校验。
+
 ## 2026-07-13
 
 - 测试宿主使用命名 `QByteArray` 向 DLL Init 传入路径，明确 UTF-8 指针生命周期；颜色校准占位流程和 ABI 不变。

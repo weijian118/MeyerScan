@@ -1,5 +1,9 @@
 ﻿# MeyerScan ConfigCenter 变更记录
 
+## 2026-07-15
+
+- 版本升级为 `v0.1.1`；新增动态 C++ 接口 ABI 版本导出，MainExe 版本不匹配时拒绝调用。
+
 ## 2026-07-13
 
 - `ConfigCenterTest` 使用命名 UTF-8 目录缓冲区调用 Init，补充跨 DLL 指针生命周期注释；配置字段和模块 ABI 不变。

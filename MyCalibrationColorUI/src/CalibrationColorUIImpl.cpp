@@ -14,7 +14,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CalibrationColorUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CalibrationColorUI v0.1.0 (2026-06-24)";
+const char* Version = "MeyerScan_CalibrationColorUI v0.1.1 (2026-07-15)";
 }
 }
 
@@ -154,4 +154,9 @@ extern "C" MEYERSCAN_CALIBRATIONCOLORUI_API ICalibrationColorUI* GetCalibrationC
 // 版本清单读取颜色校准 UI 代码版本时，不加载校准页面、算法 DLL 或设备资源。
 extern "C" MEYERSCAN_CALIBRATIONCOLORUI_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回颜色校准界面公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

@@ -14,10 +14,12 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QRegExp>
+#include <QSet>
 #include <QStatusBar>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QUuid>
 #include <QVBoxLayout>
 
 #include <windows.h>
@@ -29,13 +31,69 @@
 
 namespace {
 const char* kDefaultLoginUrl = "https://myscan.meyerop.com/login";
+// RuntimeDataCenter 使用调用方缓冲区返回 JSON；宿主从 512KB 开始有限扩容到 32MB。
+const int kInitialRuntimeDomainBufferSize = 512 * 1024;
+const int kMaxRuntimeDomainBufferSize = 32 * 1024 * 1024;
 
 namespace ModuleInfo {
 // 模块名用于日志 [Mod:] 字段，必须与 vcxproj 中的 MEYER_MODULE_NAME 保持一致。
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.7 (2026-07-13)";
+const char* Version = "MeyerScan_MainExe v0.1.9 (2026-07-15)";
+}
+
+// 从患者/订单读模型行中取稳定 ID。
+// 新服务使用 camelCase，旧库快照保留大写列名；这里统一兼容两种命名，合并逻辑无需知道来源。
+QString ReadModelStableId(const QString& domain, const QJsonObject& item) {
+    const QStringList keys = domain == "local.orders"
+        ? (QStringList() << "orderId" << "ORDER_ID")
+        : (QStringList() << "patientId" << "PATIENT_ID");
+    for (int keyIndex = 0; keyIndex < keys.size(); ++keyIndex) {
+        // value.toVariant().toString() 同时兼容字符串和旧库可能返回的数字 ID。
+        const QString value = item.value(keys.at(keyIndex)).toVariant().toString().trimmed();
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return QString();
+}
+
+// 合并服务读模型和旧库快照。
+// 服务数据排在前面并按稳定 ID 去重；未迁移的旧库记录继续追加，保证迁移期间两类数据都可见。
+QJsonArray MergeReadModelItems(const QString& domain,
+                               const QJsonArray& serviceItems,
+                               const QJsonArray& legacyItems) {
+    QJsonArray mergedItems;
+    QSet<QString> seenIds;
+
+    // 服务查询已经按更新时间倒序，先加入可让刚保存的订单显示在案例页前部。
+    for (int itemIndex = 0; itemIndex < serviceItems.size(); ++itemIndex) {
+        const QJsonObject item = serviceItems.at(itemIndex).toObject();
+        const QString stableId = ReadModelStableId(domain, item);
+        if (!stableId.isEmpty() && seenIds.contains(stableId)) {
+            // 同一服务结果中出现重复稳定 ID 时保留第一条，也就是最新的一条。
+            continue;
+        }
+        mergedItems.append(item);
+        if (!stableId.isEmpty()) {
+            seenIds.insert(stableId);
+        }
+    }
+
+    for (int itemIndex = 0; itemIndex < legacyItems.size(); ++itemIndex) {
+        const QJsonObject item = legacyItems.at(itemIndex).toObject();
+        const QString stableId = ReadModelStableId(domain, item);
+        if (!stableId.isEmpty() && seenIds.contains(stableId)) {
+            // 同一个 ID 已经有服务层新格式记录时，不再展示旧表重复记录。
+            continue;
+        }
+        mergedItems.append(item);
+        if (!stableId.isEmpty()) {
+            seenIds.insert(stableId);
+        }
+    }
+    return mergedItems;
 }
 
 struct VersionModuleEntry {
@@ -57,6 +115,7 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_CaseUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_SettingsUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CaseOrderService.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_ScanSchemaService.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_RuntimeDataCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_OrderCreateUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_OrderScanWorkspaceShell.dll", "GetMeyerModuleVersion"},
@@ -148,6 +207,10 @@ MainWindow::~MainWindow() {
     if (m_externalLaunchAdapter) {
         // 第三方适配器不保存业务数据，关闭时只清路径和日志引用。
         m_externalLaunchAdapter->Shutdown();
+    }
+    if (m_caseOrderService) {
+        // 患者订单服务借用 Database/Logger，必须在这两个进程级模块关闭前释放引用。
+        m_caseOrderService->Shutdown();
     }
     if (m_runtimeDataCenter) {
         // 运行时数据中心借用 Database/Logger，必须在 Database/Logger 关闭前释放缓存引用。
@@ -460,6 +523,24 @@ void MainWindow::InitInfrastructure() {
                         databaseMessage);
     }
 
+    // 患者/订单组合服务是正式写入口。MainExe 只负责初始化和编排，不在这里拼业务 SQL。
+    m_caseOrderService = CaseOrderServiceModule();
+    if (m_caseOrderService && m_databaseReady) {
+        m_caseOrderServiceInitialized = m_caseOrderService->Init(m_databaseConfigPathUtf8.constData(),
+                                                                 m_logDirUtf8.constData());
+        if (m_caseOrderServiceInitialized) {
+            // 当前骨架先检查服务所需表；后续表结构演进应迁移为独立版本化 migration。
+            const CaseOrderServiceResult schemaResult = m_caseOrderService->EnsureSchema();
+            m_caseOrderServiceInitialized = schemaResult.IsSuccess();
+            WriteUserAction(m_caseOrderServiceInitialized ? "CaseOrderSchemaReady" : "CaseOrderSchemaFailed",
+                            QString::fromUtf8(schemaResult.message));
+        } else {
+            WriteUserAction("ModuleInitFailed", "CaseOrderService Init returned false");
+        }
+    } else if (!m_databaseReady) {
+        WriteUserAction("CaseOrderServiceSkipped", "Database is unavailable");
+    }
+
     // RuntimeDataCenter 在数据库连接后初始化。
     // 它负责把常用本地表和云端诊所信息缓存成 JSON 快照，UI/建单模块后续只读取稳定 domain。
     m_runtimeDataCenter = RuntimeDataCenterModule();
@@ -532,6 +613,7 @@ void MainWindow::ShowWaitPage(const QString& message) {
             m_waitWidget = new QLabel(message, this);
         }
     }
+
     ReplaceContentWidget(m_waitWidget, "Wait");
     ShowMainWindow();
     // 启动准备通常在同一事件循环周期内执行。
@@ -775,12 +857,27 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         ShowHome();
         break;
     case OrderCreateActionConfirm:
-        // 保存订单应由 CaseOrderService / ScanSchemaService 完成，本轮只记录流程已到达。
-        WriteStatus(tr("Order create confirmed"));
+        // UI 只导出表单快照；MainExe 在动作入口复核权限，再交给 CaseOrderService 保存。
+        if (!IsFeatureEnabled("order.create", true)) {
+            WriteUserAction("PermissionDenied", "Order create confirm is disabled");
+            WriteStatus(tr("Order creation is disabled"));
+            break;
+        }
+        WriteStatus(SaveCurrentOrderContext()
+            ? tr("Order saved")
+            : tr("Order save failed"));
         break;
     case OrderCreateActionNext:
-        // 下一步正式进入扫描前必须经过 OrderWorkflowService 决策。
-        // 当前骨架先确保扫描页可用，再切换工作台步骤，证明 Shell 可以承载后续扫描页。
+        // 进入扫描前必须先通过权限复核并成功保存，避免产生只有扫描数据、没有订单记录的孤立目录。
+        if (!IsFeatureEnabled("order.create", true)) {
+            WriteUserAction("PermissionDenied", "Order create next is disabled");
+            WriteStatus(tr("Order creation is disabled"));
+            break;
+        }
+        if (!SaveCurrentOrderContext()) {
+            WriteStatus(tr("Order save failed"));
+            break;
+        }
         if (m_orderWorkspace) {
             RefreshWorkspaceScanProcessFromOrder();
             EnsureScanWorkflowPage();
@@ -1116,7 +1213,7 @@ bool MainWindow::EnsureHomePage() {
     if (!m_homeInitialized) {
         // Init 只调用一次，CreateWidget 可以在页面释放后再次调用。
         // HomeUI 内部不拥有数据库和日志，只保存路径/接口引用。
-        m_homeInitialized = m_home->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
+        m_homeInitialized = m_home->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
     if (!m_homeInitialized) {
         // Init 失败后不能继续 CreateWidget，否则模块可能在未初始化路径上访问空资源。
@@ -1158,7 +1255,7 @@ bool MainWindow::EnsureCasePage() {
     if (!m_caseInitialized) {
         // CaseUI 初始化只做轻量基础设施检查，业务数据后续走服务层。
         // 即使数据库暂不可用，CaseUI 也应能创建空列表页面。
-        m_caseInitialized = m_case->Init(m_databaseConfigPathUtf8.constData(), m_logDirUtf8.constData());
+        m_caseInitialized = m_case->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
     if (!m_caseInitialized) {
         WriteStatus(tr("CaseUI initialize failed"));
@@ -1169,6 +1266,15 @@ bool MainWindow::EnsureCasePage() {
     m_case->SetActionCallback(&MainWindow::OnCaseAction, this);
     // 动作规则集中下发，避免权限读取/判断/设置分散在多个点击流程里。
     ApplyCaseActionRules();
+
+    // CaseUI 首次绘制前注入患者/订单快照，避免页面先显示空列表再闪动刷新。
+    const QByteArray caseContext = BuildRuntimeDataContextJson(
+        QStringList() << "local.patients" << "local.orders").toUtf8();
+    if (!m_case->SetDataContextJson(caseContext.constData())) {
+        WriteStatus(tr("Case data context is invalid"));
+        WriteUserAction("ContextRejected", "CaseUI rejected runtime data context");
+        return false;
+    }
 
     // 创建 QWidget 后由 ShowCase 挂到 MainExe 内容区显示。
     m_caseWidget = m_case->CreateWidget(this);
@@ -1197,7 +1303,7 @@ bool MainWindow::EnsureSettingsPage() {
     }
 
     if (!m_settingsInitialized) {
-        // SettingsUI 初始化会加载 Logger 和 RuntimeDataCenter，但校准模块仍然懒加载。
+        // SettingsUI 初始化只加载日志；数据由 MainExe 注入，校准模块仍然懒加载。
         m_settingsInitialized = m_settings->Init(m_appDirUtf8.constData(), m_logDirUtf8.constData());
     }
     if (!m_settingsInitialized) {
@@ -1209,6 +1315,15 @@ bool MainWindow::EnsureSettingsPage() {
     // CreateWidget 前先传一次来源上下文，确保校准页首次创建时状态正确。
     m_settings->SetOpenContext(m_settingsOpenSource,
                                IsCalibrationAllowedForSettingsSource(m_settingsOpenSource));
+
+    // 信息管理页只消费宿主快照，不知道 RuntimeDataCenter 或数据库配置。
+    const QByteArray settingsContext = BuildRuntimeDataContextJson(
+        QStringList() << "local.doctors" << "local.clinics" << "local.labs").toUtf8();
+    if (!m_settings->SetDataContextJson(settingsContext.constData())) {
+        WriteStatus(tr("Settings data context is invalid"));
+        WriteUserAction("ContextRejected", "SettingsUI rejected runtime data context");
+        return false;
+    }
 
     m_settingsWidget = m_settings->CreateWidget(this);
     if (!m_settingsWidget) {
@@ -1799,6 +1914,215 @@ void MainWindow::ApplyCaseActionRules() {
     m_case->SetActionEnabled(CaseActionOpenSettings, IsFeatureEnabled("home.settings", true));
 }
 
+// 从 RuntimeDataCenter 组装给 UI 的版本化只读上下文。
+// MainExe 是进程级数据中心的唯一 UI 编排者，CaseUI/SettingsUI 不再自行加载或初始化数据库链路。
+QString MainWindow::BuildRuntimeDataContextJson(const QStringList& domains) {
+    QJsonObject domainObjects;
+
+    for (const QString& domain : domains) {
+        // 默认对象始终包含 items，UI 即使遇到数据库不可用也能稳定显示空状态。
+        QJsonObject domainObject;
+        domainObject.insert("items", QJsonArray());
+        domainObject.insert("status", "unavailable");
+
+        if (m_runtimeDataCenter && !domain.trimmed().isEmpty()) {
+            QByteArray buffer;
+            RuntimeDataCenterResult result;
+            std::memset(&result, 0, sizeof(result));
+            const QByteArray domainBytes = domain.toUtf8();
+
+            // RuntimeDataCenter 采用调用方缓冲区，有限倍增可兼顾字段扩展和内存上限。
+            for (int bufferSize = kInitialRuntimeDomainBufferSize;
+                 bufferSize <= kMaxRuntimeDomainBufferSize;
+                 bufferSize *= 2) {
+                buffer.fill('\0', bufferSize);
+                result = m_runtimeDataCenter->GetDomainJson(domainBytes.constData(), buffer.data(), buffer.size());
+                if (result.IsSuccess()) {
+                    QJsonParseError parseError;
+                    const QJsonDocument document = QJsonDocument::fromJson(buffer.constData(), &parseError);
+                    if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+                        // 保留 domain 的 source/status/revision 等元数据，UI 当前只消费 items。
+                        domainObject = document.object();
+                    } else {
+                        WriteUserAction("RuntimeDataContextParseFailed", domain);
+                    }
+                    break;
+                }
+
+                const QString errorText = QString::fromUtf8(result.message);
+                if (!errorText.contains("too small", Qt::CaseInsensitive)) {
+                    WriteUserAction("RuntimeDataContextReadFailed",
+                                    QString("%1: %2").arg(domain, errorText));
+                    break;
+                }
+            }
+        }
+        // 患者和订单正在从旧表迁移到 CaseOrderService 自有表。
+        // 在宿主编排层合并两个读模型，可保持 UI 纯展示边界并让新建记录立即可见。
+        MergeCaseOrderServiceReadModel(domain, &domainObject);
+        domainObjects.insert(domain, domainObject);
+    }
+
+    QJsonObject root;
+    root.insert("schemaVersion", 1);
+    root.insert("generatedAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    root.insert("domains", domainObjects);
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+// 将 CaseOrderService 的患者/订单摘要合并到 RuntimeDataCenter 旧库快照。
+// 该函数只理解稳定 queryName 和 JSON，不拼 SQL，也不把服务对象传给 CaseUI。
+void MainWindow::MergeCaseOrderServiceReadModel(const QString& domain, QJsonObject* domainObject) {
+    if (!domainObject || !m_caseOrderService || !m_caseOrderServiceInitialized) {
+        // 服务不可用时保留 RuntimeDataCenter 原快照，浏览页仍可显示旧库数据或空状态。
+        return;
+    }
+
+    QString queryName;
+    if (domain == "local.orders") {
+        queryName = "patientOrder.listOrders";
+    } else if (domain == "local.patients") {
+        queryName = "patientOrder.listPatients";
+    } else {
+        // 诊所、医生、技工所等 domain 当前继续完全由 RuntimeDataCenter 提供。
+        return;
+    }
+
+    QByteArray buffer;
+    CaseOrderServiceResult result;
+    std::memset(&result, 0, sizeof(result));
+    const QByteArray queryNameUtf8 = queryName.toUtf8();
+
+    // 患者/订单列表字段可能逐步扩展，使用与 RuntimeDataCenter 相同的有限倍增策略。
+    // 到达 32MB 仍不够时必须改分页接口，不能继续扩大启动期内存占用。
+    for (int bufferSize = kInitialRuntimeDomainBufferSize;
+         bufferSize <= kMaxRuntimeDomainBufferSize;
+         bufferSize *= 2) {
+        buffer.fill('\0', bufferSize);
+        result = m_caseOrderService->QueryJson(queryNameUtf8.constData(),
+                                               "{}",
+                                               buffer.data(),
+                                               buffer.size());
+        if (result.IsSuccess()) {
+            break;
+        }
+
+        const QString errorText = QString::fromUtf8(result.message);
+        if (!errorText.contains("too small", Qt::CaseInsensitive)) {
+            // 非容量错误重试没有意义；写日志后保留旧库快照继续运行。
+            WriteUserAction("CaseOrderReadModelFailed",
+                            QString("%1: %2").arg(queryName, errorText));
+            return;
+        }
+    }
+
+    if (result.IsError()) {
+        WriteUserAction("CaseOrderReadModelFailed",
+                        QString("%1 exceeded the read model buffer limit").arg(queryName));
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(buffer.constData(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        WriteUserAction("CaseOrderReadModelParseFailed",
+                        QString("%1: %2").arg(queryName, parseError.errorString()));
+        return;
+    }
+
+    const QJsonArray serviceItems = document.object().value("items").toArray();
+    const QJsonArray legacyItems = domainObject->value("items").toArray();
+    const QJsonArray mergedItems = MergeReadModelItems(domain, serviceItems, legacyItems);
+    domainObject->insert("items", mergedItems);
+    domainObject->insert("rowCount", mergedItems.size());
+    domainObject->insert("serviceRowCount", serviceItems.size());
+    domainObject->insert("legacyRowCount", legacyItems.size());
+    domainObject->insert("source", "RuntimeDataCenter+CaseOrderService");
+    domainObject->insert("loadStatus", "ok");
+    WriteUserAction("CaseOrderReadModelMerged",
+                    QString("%1: service=%2, legacy=%3, merged=%4")
+                        .arg(domain)
+                        .arg(serviceItems.size())
+                        .arg(legacyItems.size())
+                        .arg(mergedItems.size()));
+}
+
+// 保存当前建单表单。
+// ID 由宿主工作流补齐，CaseOrderService 负责数据库规则，OrderCreateUI 不参与持久化。
+bool MainWindow::SaveCurrentOrderContext() {
+    if (!m_orderCreate || !m_caseOrderService || !m_caseOrderServiceInitialized) {
+        WriteUserAction("OrderSaveFailed", "OrderCreateUI or CaseOrderService is unavailable");
+        return false;
+    }
+
+    const char* contextText = m_orderCreate->GetCurrentOrderContextJson();
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(QByteArray(contextText ? contextText : ""), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        WriteUserAction("OrderSaveFailed", QString("Invalid order context: %1").arg(parseError.errorString()));
+        return false;
+    }
+
+    QJsonObject root = document.object();
+    QJsonObject patient = root.value("patient").toObject();
+    QJsonObject order = root.value("order").toObject();
+    if (patient.value("name").toString().trimmed().isEmpty()) {
+        WriteUserAction("OrderSaveRejected", "Patient name is empty");
+        return false;
+    }
+
+    // 手工建单可能没有外部 ID。工作流在持久化边界生成一次并回写 UI，后续重复保存保持同一 ID。
+    QString patientId = patient.value("patientId").toString().trimmed();
+    QString orderId = order.value("orderId").toString().trimmed();
+    if (patientId.isEmpty()) {
+        patientId = QString("P-%1").arg(QUuid::createUuid().toString().remove('{').remove('}'));
+        patient.insert("patientId", patientId);
+    }
+    if (orderId.isEmpty()) {
+        orderId = QString("O-%1").arg(QUuid::createUuid().toString().remove('{').remove('}'));
+        order.insert("orderId", orderId);
+    }
+    // caseId 在当前骨架中默认复用 orderId；以后若产品需要一病例多订单，可由 Workflow 单独生成。
+    if (order.value("caseId").toString().trimmed().isEmpty()) {
+        order.insert("caseId", orderId);
+    }
+    // 创建时间只在首次保存时写入，重复点击 Confirm/Next 不覆盖原始创建时间。
+    if (order.value("createdAt").toString().trimmed().isEmpty()) {
+        order.insert("createdAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    }
+    // 状态进入 order 对象，CaseOrderService 可直接提取索引；顶层 status 仅保留合同兼容。
+    const QString orderStatus = order.value("status").toString(
+        root.value("status").toString("created"));
+    order.insert("status", orderStatus);
+    root.insert("patient", patient);
+    root.insert("order", order);
+    root.insert("status", orderStatus);
+
+    const QByteArray normalizedContext = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    const CaseOrderServiceResult saveResult = m_caseOrderService->SavePatientOrderJson(normalizedContext.constData());
+    if (saveResult.IsError()) {
+        WriteUserAction("OrderSaveFailed", QString::fromUtf8(saveResult.message));
+        return false;
+    }
+
+    // 把服务接受的 ID 回写建单页和工作台上下文，保证进入 Scan/Process 后使用同一订单引用。
+    m_workspaceContextJson = QString::fromUtf8(normalizedContext);
+    m_orderCreate->SetOrderContextJson(normalizedContext.constData());
+    if (m_runtimeDataCenter) {
+        // 写成功后刷新相关读模型。刷新失败不回滚已提交订单，但必须写日志供排查。
+        const RuntimeDataCenterResult orderReload = m_runtimeDataCenter->ReloadDomain("local.orders");
+        const RuntimeDataCenterResult patientReload = m_runtimeDataCenter->ReloadDomain("local.patients");
+        if (orderReload.IsError() || patientReload.IsError()) {
+            WriteUserAction("RuntimeDataReloadWarning",
+                            QString("orders=%1, patients=%2")
+                                .arg(QString::fromUtf8(orderReload.message))
+                                .arg(QString::fromUtf8(patientReload.message)));
+        }
+    }
+    WriteUserAction("OrderSaved", QString("orderId=%1, patientId=%2").arg(orderId, patientId));
+    return true;
+}
+
 // 统一合并配置显隐和权限显隐。
 // configKey 允许为空，表示该功能暂时没有产品默认项，只读取 Permission。
 bool MainWindow::IsFeatureVisible(const char* featureId, const char* configKey, bool defaultVisible) const {
@@ -2132,7 +2456,8 @@ bool MainWindow::AreVersionsConsistent(const QString& fileVersion, const QString
 QFunctionPointer MainWindow::ResolveFactory(QLibrary& library,
                                             const char* dllName,
                                             const char* factoryName,
-                                            QString* errorMessage) const {
+                                            int expectedApiVersion,
+                                            QString* errorMessage) {
     if (errorMessage) {
         errorMessage->clear();
     }
@@ -2154,13 +2479,47 @@ QFunctionPointer MainWindow::ResolveFactory(QLibrary& library,
         if (errorMessage) {
             *errorMessage = library.errorString();
         }
+        WriteUserAction("ModuleLoadFailed",
+                        QString("%1: %2").arg(dllName, library.errorString()));
+        return nullptr;
+    }
+
+    // C++ 虚接口的布局可能随函数增删而变化。必须先校验 API 版本，再获取并调用工厂返回的对象。
+    typedef int (*ApiVersionFunction)();
+    QFunctionPointer apiPointer = library.resolve("GetMeyerModuleApiVersion");
+    if (!apiPointer) {
+        if (errorMessage) {
+            *errorMessage = QString("API version export not found in %1").arg(dllName);
+        }
+        WriteUserAction("ModuleApiRejected", QString("%1: missing API version export").arg(dllName));
+        return nullptr;
+    }
+    const int actualApiVersion = reinterpret_cast<ApiVersionFunction>(apiPointer)();
+    if (actualApiVersion != expectedApiVersion) {
+        if (errorMessage) {
+            *errorMessage = QString("API version mismatch in %1: expected %2, actual %3")
+                .arg(dllName)
+                .arg(expectedApiVersion)
+                .arg(actualApiVersion);
+        }
+        WriteUserAction("ModuleApiRejected",
+                        QString("%1 expected=%2 actual=%3")
+                            .arg(dllName)
+                            .arg(expectedApiVersion)
+                            .arg(actualApiVersion));
         return nullptr;
     }
 
     QFunctionPointer pointer = library.resolve(factoryName);
-    if (!pointer && errorMessage) {
-        *errorMessage = QString("Factory not found: %1 in %2").arg(factoryName).arg(dllName);
+    if (!pointer) {
+        if (errorMessage) {
+            *errorMessage = QString("Factory not found: %1 in %2").arg(factoryName).arg(dllName);
+        }
+        WriteUserAction("ModuleFactoryMissing", QString("%1:%2").arg(dllName, factoryName));
+        return nullptr;
     }
+    WriteUserAction("ModuleFactoryResolved",
+                    QString("%1:%2 api=%3").arg(dllName, factoryName).arg(actualApiVersion));
     return pointer;
 }
 
@@ -2170,7 +2529,7 @@ ILogger* MainWindow::LoggerModule() {
         return m_logger;
     }
     QString error;
-    QFunctionPointer pointer = ResolveFactory(m_loggerLibrary, "MeyerScan_Logger.dll", "GetLogger", &error);
+    QFunctionPointer pointer = ResolveFactory(m_loggerLibrary, "MeyerScan_Logger.dll", "GetLogger", 1, &error);
     if (!pointer) {
         WriteStatus(tr("Logger unavailable"));
         return nullptr;
@@ -2185,6 +2544,7 @@ IDatabaseQtAdapter* MainWindow::DatabaseAdapterModule() {
     QFunctionPointer pointer = ResolveFactory(m_databaseAdapterLibrary,
                                               "MeyerScan_DatabaseQtAdapter.dll",
                                               "GetDatabaseQtAdapter",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Database adapter unavailable"));
@@ -2200,6 +2560,7 @@ IConfigCenter* MainWindow::ConfigCenterModule() {
     QFunctionPointer pointer = ResolveFactory(m_configLibrary,
                                               "MeyerScan_ConfigCenter.dll",
                                               "GetConfigCenter",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Config center unavailable"));
@@ -2215,6 +2576,7 @@ IPermission* MainWindow::PermissionModule() {
     QFunctionPointer pointer = ResolveFactory(m_permissionLibrary,
                                               "MeyerScan_Permission.dll",
                                               "GetPermission",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Permission unavailable"));
@@ -2233,6 +2595,7 @@ IUIComponents* MainWindow::UIComponentsModule() {
     QFunctionPointer pointer = ResolveFactory(m_uiComponentsLibrary,
                                               "MeyerScan_UIComponents.dll",
                                               "GetUIComponents",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("UI components unavailable"));
@@ -2248,6 +2611,7 @@ IRuntimeDataCenter* MainWindow::RuntimeDataCenterModule() {
     QFunctionPointer pointer = ResolveFactory(m_runtimeDataCenterLibrary,
                                               "MeyerScan_RuntimeDataCenter.dll",
                                               "GetRuntimeDataCenter",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Runtime data center unavailable"));
@@ -2257,13 +2621,33 @@ IRuntimeDataCenter* MainWindow::RuntimeDataCenterModule() {
     return reinterpret_cast<Factory>(pointer)();
 }
 
+// 动态加载 CaseOrderService.dll。
+ICaseOrderService* MainWindow::CaseOrderServiceModule() {
+    if (m_caseOrderService) {
+        return m_caseOrderService;
+    }
+    QString error;
+    QFunctionPointer pointer = ResolveFactory(m_caseOrderServiceLibrary,
+                                              "MeyerScan_CaseOrderService.dll",
+                                              "GetCaseOrderService",
+                                              1,
+                                              &error);
+    if (!pointer) {
+        WriteStatus(tr("Case/order service unavailable"));
+        WriteUserAction("ModuleLoadFailed", QString("CaseOrderService: %1").arg(error));
+        return nullptr;
+    }
+    typedef ICaseOrderService* (*Factory)();
+    return reinterpret_cast<Factory>(pointer)();
+}
+
 // 动态加载 HomeUI.dll。
 IHomeUI* MainWindow::HomeUIModule() {
     if (m_home) {
         return m_home;
     }
     QString error;
-    QFunctionPointer pointer = ResolveFactory(m_homeLibrary, "MeyerScan_HomeUI.dll", "GetHomeUI", &error);
+    QFunctionPointer pointer = ResolveFactory(m_homeLibrary, "MeyerScan_HomeUI.dll", "GetHomeUI", 2, &error);
     if (!pointer) {
         WriteStatus(tr("HomeUI unavailable"));
         return nullptr;
@@ -2278,7 +2662,7 @@ ICaseUI* MainWindow::CaseUIModule() {
         return m_case;
     }
     QString error;
-    QFunctionPointer pointer = ResolveFactory(m_caseLibrary, "MeyerScan_CaseUI.dll", "GetCaseUI", &error);
+    QFunctionPointer pointer = ResolveFactory(m_caseLibrary, "MeyerScan_CaseUI.dll", "GetCaseUI", 2, &error);
     if (!pointer) {
         WriteStatus(tr("CaseUI unavailable"));
         return nullptr;
@@ -2296,6 +2680,7 @@ ISettingsUI* MainWindow::SettingsUIModule() {
     QFunctionPointer pointer = ResolveFactory(m_settingsLibrary,
                                               "MeyerScan_SettingsUI.dll",
                                               "GetSettingsUI",
+                                              2,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("SettingsUI unavailable"));
@@ -2314,6 +2699,7 @@ IOrderScanWorkspaceShell* MainWindow::OrderWorkspaceModule() {
     QFunctionPointer pointer = ResolveFactory(m_orderWorkspaceLibrary,
                                               "MeyerScan_OrderScanWorkspaceShell.dll",
                                               "GetOrderScanWorkspaceShell",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Order workspace unavailable"));
@@ -2332,6 +2718,7 @@ IOrderCreateUI* MainWindow::OrderCreateUIModule() {
     QFunctionPointer pointer = ResolveFactory(m_orderCreateLibrary,
                                               "MeyerScan_OrderCreateUI.dll",
                                               "GetOrderCreateUI",
+                                              2,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("OrderCreateUI unavailable"));
@@ -2350,6 +2737,7 @@ IScanWorkflowUI* MainWindow::ScanWorkflowModule() {
     QFunctionPointer pointer = ResolveFactory(m_scanWorkflowLibrary,
                                               "MeyerScan_ScanWorkflowUI.dll",
                                               "GetScanWorkflowUI",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Scan workflow unavailable"));
@@ -2368,6 +2756,7 @@ IDataProcessUI* MainWindow::DataProcessModule() {
     QFunctionPointer pointer = ResolveFactory(m_dataProcessLibrary,
                                               "MeyerScan_DataProcessUI.dll",
                                               "GetDataProcessUI",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("Data process unavailable"));
@@ -2386,6 +2775,7 @@ ISendUI* MainWindow::SendUIModule() {
     QFunctionPointer pointer = ResolveFactory(m_sendLibrary,
                                               "MeyerScan_SendUI.dll",
                                               "GetSendUI",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("SendUI unavailable"));
@@ -2404,6 +2794,7 @@ IExternalLaunchAdapter* MainWindow::ExternalLaunchAdapterModule() {
     QFunctionPointer pointer = ResolveFactory(m_externalLaunchAdapterLibrary,
                                               "MeyerScan_ExternalLaunchAdapter.dll",
                                               "GetExternalLaunchAdapter",
+                                              1,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("External launch adapter unavailable"));
@@ -2451,20 +2842,21 @@ QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const 
 QJsonObject MainWindow::BuildDefaultScanProcessObject() const {
     QJsonArray steps;
 
-    auto appendStep = [&steps](const QString& part, const QString& code, const QString& label, bool exchange) {
+    auto appendStep = [&steps](const QString& part, const QString& code, bool exchange) {
         QJsonObject item;
         item.insert("part", part);
         item.insert("code", code);
-        item.insert("label", label);
+        // 跨模块合同只保存稳定编码；Scan/Process UI 根据 code 使用自己的 tr() 显示文本。
+        item.insert("labelKey", code);
         item.insert("exchange", exchange);
         item.insert("enabled", true);
         steps.append(item);
     };
 
-    appendStep("maxilla", "maxilla_natural", tr("Natural maxilla"), false);
-    appendStep("exchange", "data_exchange", tr("Exchange"), true);
-    appendStep("mandible", "mandible_natural", tr("Natural mandible"), false);
-    appendStep("occlusion", "natural_occlusion", tr("Natural occlusion"), false);
+    appendStep("maxilla", "maxilla_natural", false);
+    appendStep("exchange", "data_exchange", true);
+    appendStep("mandible", "mandible_natural", false);
+    appendStep("occlusion", "natural_occlusion", false);
 
     QJsonObject config;
     config.insert("occlusionType", "natural");

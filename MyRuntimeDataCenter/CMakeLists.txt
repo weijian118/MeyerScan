@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_RuntimeDataCenter VERSION 0.1.0 LANGUAGES CXX)
+project(MeyerScan_RuntimeDataCenter VERSION 0.1.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core)

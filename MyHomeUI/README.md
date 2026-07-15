@@ -14,11 +14,12 @@ HomeUI 是 MeyerScan 的 Qt Widgets 首页入口模块。
 - 点击入口时写入结构化日志，MainExe 再记录跨模块导航和页面切换日志。
 - HomeUI 不直接调用 `MeyerScan_Database.dll`；首页只做入口展示和动作上报，数据库健康检查由 MainExe 通过 `MyDatabaseQtAdapter` 统一完成。
 - HomeUI 不重复 Init/Connect 数据库，也不读取 RuntimeDataCenter 快照。
+- `Init(appDir, logDir)` 不再接收数据库配置；Logger/UIComponents 使用 appDir 下绝对路径，并在获取虚接口前校验 API 版本。
 - 运行时用 `QLibrary` 加载 `MeyerScan_Logger.dll`；HomeUI 只借用进程级 Logger，`Shutdown()` 只 Flush，不关闭全局日志会话。
 - 测试宿主在创建 `QApplication` 前启用 High DPI 属性，并按当前屏幕可用区域居中显示。
 - 界面可见文字统一使用 `tr("English source text")` 包装；即使需求写中文按钮名，源码 source text 也写英文，中文显示由 `.qm` 翻译文件提供。
 - 业务规则保留在 Permission 和 OrderWorkflowService；HomeUI 不执行 SQL、不判断加载订单流程。
-- 测试宿主根据 exe 所在目录推导日志目录和数据库配置路径，不依赖固定开发机路径。
+- 测试宿主根据 exe 所在目录推导应用目录和日志目录，不依赖固定开发机路径。
 - 测试宿主必须检查 HomeUI 的 Init/CreateWidget 返回值，失败时 Shutdown 并返回独立错误码，不能对空 QWidget 继续查找控件。
 - 模块变更记录维护在 `CHANGELOG.md`。
 

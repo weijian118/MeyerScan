@@ -120,13 +120,13 @@ int main(int argc, char* argv[]) {
     // 字段未来增删时只改 JSON 内容和服务层解析，不必修改 DLL 函数签名。
     const char* patientOrderJson =
         "{"
-        "\"orderId\":\"COS-001\","
-        "\"patientId\":\"P001\","
-        "\"caseId\":\"C001\","
+        "\"schemaVersion\":1,"
         "\"status\":\"created\","
-        "\"patientName\":\"Patient Demo\""
+        "\"patient\":{\"patientId\":\"P001\",\"name\":\"Patient Demo\"},"
+        "\"order\":{\"orderId\":\"COS-001\",\"caseId\":\"C001\"},"
+        "\"extensions\":{}"
         "}";
-    // SavePatientOrderJson 会从 JSON 中提取 orderId，并把完整 JSON 存入数据库。
+    // SavePatientOrderJson 从标准嵌套 order/patient 对象提取索引字段，并把完整 JSON 存入数据库。
     if (!Check(service->SavePatientOrderJson(patientOrderJson).IsSuccess(),
                "SavePatientOrderJson 能保存患者/订单组合 JSON")) {
         return 4;
@@ -190,6 +190,30 @@ int main(int argc, char* argv[]) {
     if (!Check(std::strstr(buffer, "COS-001") != nullptr,
                "QueryJson 读取结果包含订单号")) {
         return 12;
+    }
+
+    // 查询案例管理使用的轻量订单读模型，验证完整 payload 已经转换成稳定摘要字段。
+    std::memset(buffer, 0, sizeof(buffer));
+    if (!Check(service->QueryJson("patientOrder.listOrders", "{}", buffer, sizeof(buffer)).IsSuccess(),
+               "QueryJson 能返回轻量订单列表")) {
+        return 13;
+    }
+    if (!Check(std::strstr(buffer, "Patient Demo") != nullptr &&
+               std::strstr(buffer, "COS-001") != nullptr,
+               "订单列表包含患者名称和订单号")) {
+        return 14;
+    }
+
+    // 患者读模型由患者/订单组合表按 patientId 归并，并统计该患者的订单数量。
+    std::memset(buffer, 0, sizeof(buffer));
+    if (!Check(service->QueryJson("patientOrder.listPatients", "{}", buffer, sizeof(buffer)).IsSuccess(),
+               "QueryJson 能返回归并后的患者列表")) {
+        return 15;
+    }
+    if (!Check(std::strstr(buffer, "P001") != nullptr &&
+               std::strstr(buffer, "\"orderCount\":1") != nullptr,
+               "患者列表包含患者号和订单计数")) {
+        return 16;
     }
 
     // 先关闭服务层，再关闭 Adapter/Logger，避免服务层析构阶段仍写日志或访问数据库。

@@ -19,7 +19,7 @@ namespace ModuleInfo {
 const char* Name = "ScanReconstructStudio";
 
 // GetMeyerModuleVersion() 返回的代码版本，必须与 Version.rc 保持同步。
-const char* Version = "ScanReconstructStudio v0.1.3 (2026-07-12)";
+const char* Version = "ScanReconstructStudio v0.1.4 (2026-07-15)";
 }
 
 // 从子 DLL 解析出来的 C ABI 工厂函数类型。
@@ -264,6 +264,12 @@ bool ScanReconstructStudioWindow::LoadScanModule() {
     }
     WriteLog(LogLevel::Info, "LoadScanModule", "Scan workflow DLL loaded");
 
+    auto apiVersion = reinterpret_cast<int (*)()>(m_scanLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!apiVersion || apiVersion() != 1) {
+        WriteLog(LogLevel::Error, "LoadScanModule", "Scan workflow API version mismatch");
+        return false;
+    }
+
     GetScanWorkflowUIFunc getter =
         reinterpret_cast<GetScanWorkflowUIFunc>(m_scanLibrary.resolve("GetScanWorkflowUI"));
     if (!getter) {
@@ -303,6 +309,12 @@ bool ScanReconstructStudioWindow::LoadDataProcessModule() {
         return false;
     }
     WriteLog(LogLevel::Info, "LoadDataProcessModule", "Data process DLL loaded");
+
+    auto apiVersion = reinterpret_cast<int (*)()>(m_processLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!apiVersion || apiVersion() != 1) {
+        WriteLog(LogLevel::Error, "LoadDataProcessModule", "Data process API version mismatch");
+        return false;
+    }
 
     GetDataProcessUIFunc getter =
         reinterpret_cast<GetDataProcessUIFunc>(m_processLibrary.resolve("GetDataProcessUI"));

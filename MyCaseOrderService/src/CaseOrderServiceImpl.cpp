@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QHash>
 #include <QStringList>
 #include <cstring>
 
@@ -14,7 +15,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CaseOrderService";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CaseOrderService v0.2.0 (2026-06-23)";
+const char* Version = "MeyerScan_CaseOrderService v0.2.2 (2026-07-15)";
 }
 
 // 将短消息复制到固定长度返回结构中。
@@ -157,19 +158,26 @@ CaseOrderServiceResult CaseOrderServiceImpl::SavePatientOrderJson(const char* pa
         return Fail(2, "patientOrderJsonUtf8 must be a JSON object");
     }
 
-    // document.object() 得到 JSON 根对象；后续字段不存在时 toString() 返回空字符串。
+    // document.object() 得到 JSON 根对象；标准建单合同把患者和订单分别放在嵌套对象中。
     const QJsonObject root = document.object();
+    const QJsonObject orderObject = root.value("order").toObject();
+    const QJsonObject patientObject = root.value("patient").toObject();
     // orderId 是当前骨架表的主键，也是 UI/扫描流程之间最稳定的引用 ID。
-    const QString orderId = root.value("orderId").toString().trimmed();
+    // 顶层字段只作为旧测试/旧调用方兼容回退，新代码统一使用 order.orderId。
+    const QString orderId = orderObject.value("orderId").toString(
+        root.value("orderId").toString()).trimmed();
     if (orderId.isEmpty()) {
-        return Fail(2, "patientOrderJsonUtf8.orderId is empty");
+        return Fail(2, "patientOrderJsonUtf8.order.orderId is empty");
     }
 
     // patientId/caseId/status 提取成索引候选字段，方便列表和过滤；
     // 原始完整 JSON 仍保存在 payload_json，保证字段新增时不用马上改表。
-    const QString patientId = root.value("patientId").toString().trimmed();
-    const QString caseId = root.value("caseId").toString().trimmed();
-    const QString status = root.value("status").toString("created").trimmed();
+    const QString patientId = patientObject.value("patientId").toString(
+        root.value("patientId").toString()).trimmed();
+    const QString caseId = orderObject.value("caseId").toString(
+        root.value("caseId").toString()).trimmed();
+    const QString status = orderObject.value("status").toString(
+        root.value("status").toString("created")).trimmed();
     // Compact 保留完整 JSON 语义但去掉空白，适合存库和跨模块传输。
     const QString payload = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
     const QString escapedPayload = DatabaseQtAdapter::EscapeSqlText(payload);
@@ -331,8 +339,153 @@ CaseOrderServiceResult CaseOrderServiceImpl::QueryJson(const char* queryNameUtf8
         return ListReferenceDataJson(categoryUtf8.constData(), buffer, bufferSize);
     }
 
+    if (queryName == "patientOrder.listOrders") {
+        // 列表查询不接收 SQL、表名或分页表达式；当前骨架只返回案例页需要的轻量订单摘要。
+        return ListPatientOrderReadModelJson("orders", buffer, bufferSize);
+    }
+
+    if (queryName == "patientOrder.listPatients") {
+        // 患者列表由同一批患者/订单组合数据归并得到，保证新建订单保存后能立即形成患者读模型。
+        return ListPatientOrderReadModelJson("patients", buffer, bufferSize);
+    }
+
     // 未登记的 queryName 直接拒绝，防止服务层变成任意查询通道。
     return Fail(2, "Unsupported queryNameUtf8");
+}
+
+// 查询服务自有患者/订单表，并转换成 UI 可消费的轻量列表。
+// 该函数是写模型到读模型的适配边界：数据库仍保存完整 payload_json，UI 只接收稳定摘要字段。
+CaseOrderServiceResult CaseOrderServiceImpl::ListPatientOrderReadModelJson(const QString& queryKind,
+                                                                           char* buffer,
+                                                                           int bufferSize) {
+    if (queryKind != "orders" && queryKind != "patients") {
+        // 内部调用也保留白名单校验，避免后续重构时误把任意类型带到 SQL 分支。
+        return Fail(2, "Unsupported patient/order read model kind");
+    }
+
+    // 只读取列表转换需要的索引列和完整 JSON，不读取任何扫描模型或二进制文件。
+    // updated_at 倒序保证新创建/新修改记录优先出现在案例页前部。
+    const QString sql =
+        "SELECT order_id, patient_id, case_id, status, payload_json, created_at, updated_at "
+        "FROM ms_patient_order ORDER BY updated_at DESC, order_id DESC";
+
+    QByteArray tableJson;
+    QString queryError;
+    if (!m_databaseAdapter->ExecuteQueryJson(sql,
+                                             &tableJson,
+                                             &queryError,
+                                             1024 * 256,
+                                             1024 * 1024 * 32)) {
+        // Adapter 已经把底层数据库错误转换为 QString；服务层记录后再复制进固定返回结构。
+        WriteLog(LogLevel::Error, "ListPatientOrderReadModelJson", queryError);
+        const QByteArray queryErrorUtf8 = queryError.toUtf8();
+        return Fail(10002, queryErrorUtf8.constData());
+    }
+
+    // DatabaseQtAdapter 返回 {columns, rows} 表格 JSON；这里逐行解析 payload_json，
+    // 把数据库列名和存储形式留在服务内部，不泄漏给 MainExe 或 CaseUI。
+    const QJsonArray rows = DatabaseQtAdapter::RowsFromTableJson(tableJson);
+    QJsonArray orderItems;
+    QHash<QString, QJsonObject> patientItemsById;
+    QStringList patientOrder;
+    QHash<QString, int> patientOrderCounts;
+
+    for (int rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const QJsonObject databaseRow = rows.at(rowIndex).toObject();
+        const QByteArray payloadBytes = databaseRow.value("payload_json").toString().toUtf8();
+        QJsonParseError parseError;
+        const QJsonDocument payloadDocument = QJsonDocument::fromJson(payloadBytes, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !payloadDocument.isObject()) {
+            // 单条历史脏数据不能阻断整个列表；跳过该行并写 Warning，便于后续修复数据。
+            WriteLog(LogLevel::Warning,
+                     "ListPatientOrderReadModelJson",
+                     QString("Skip invalid payload for orderId=%1: %2")
+                         .arg(databaseRow.value("order_id").toString(), parseError.errorString()));
+            continue;
+        }
+
+        const QJsonObject payload = payloadDocument.object();
+        const QJsonObject patient = payload.value("patient").toObject();
+        const QJsonObject order = payload.value("order").toObject();
+
+        // 数据库索引列是最终回退值，标准 JSON 对象中的业务字段优先。
+        const QString orderId = order.value("orderId").toString(
+            databaseRow.value("order_id").toString()).trimmed();
+        const QString patientId = patient.value("patientId").toString(
+            databaseRow.value("patient_id").toString()).trimmed();
+        const QString caseId = order.value("caseId").toString(
+            databaseRow.value("case_id").toString()).trimmed();
+        const QString status = order.value("status").toString(
+            payload.value("status").toString(databaseRow.value("status").toString())).trimmed();
+        const QString createdAt = order.value("createdAt").toString(
+            payload.value("createdAt").toString(databaseRow.value("created_at").toString())).trimmed();
+        const QString updatedAt = databaseRow.value("updated_at").toString().trimmed();
+
+        // 订单读模型只保留案例卡片和搜索需要的轻量字段。
+        QJsonObject orderItem;
+        orderItem.insert("orderId", orderId);
+        orderItem.insert("patientId", patientId);
+        orderItem.insert("patientName", patient.value("name").toString());
+        orderItem.insert("caseId", caseId);
+        orderItem.insert("doctorName", order.value("doctor").toString());
+        orderItem.insert("labName", order.value("lab").toString());
+        orderItem.insert("orderType", order.value("orderType").toString("Restoration"));
+        orderItem.insert("status", status.isEmpty() ? "created" : status);
+        orderItem.insert("createdAt", createdAt);
+        orderItem.insert("updatedAt", updatedAt);
+        orderItem.insert("savePath", order.value("savePath").toString());
+        orderItems.append(orderItem);
+
+        if (patientId.isEmpty()) {
+            // MainExe 正常保存时一定会生成 patientId；这里只跳过无法稳定归并的旧脏记录。
+            continue;
+        }
+
+        if (!patientItemsById.contains(patientId)) {
+            // rows 已按更新时间倒序，第一次遇到某患者时就是该患者最新的一份基本信息。
+            QJsonObject patientItem;
+            patientItem.insert("patientId", patientId);
+            patientItem.insert("patientName", patient.value("name").toString());
+            patientItem.insert("gender", patient.value("gender").toString());
+            patientItem.insert("age", patient.value("age"));
+            patientItem.insert("caseId", caseId);
+            patientItem.insert("register_date", createdAt);
+            patientItem.insert("updatedAt", updatedAt);
+            patientItemsById.insert(patientId, patientItem);
+            patientOrder.append(patientId);
+            patientOrderCounts.insert(patientId, 0);
+        }
+        // 同一患者可能有多个订单；计数在归并时累加，供患者列表显示。
+        patientOrderCounts.insert(patientId, patientOrderCounts.value(patientId) + 1);
+    }
+
+    QJsonArray items;
+    if (queryKind == "orders") {
+        items = orderItems;
+    } else {
+        // 使用 patientOrder 保存首次出现顺序，避免直接遍历 QHash 导致患者列表顺序随机变化。
+        for (int patientIndex = 0; patientIndex < patientOrder.size(); ++patientIndex) {
+            const QString patientId = patientOrder.at(patientIndex);
+            QJsonObject patientItem = patientItemsById.value(patientId);
+            patientItem.insert("orderCount", patientOrderCounts.value(patientId));
+            items.append(patientItem);
+        }
+    }
+
+    QJsonObject root;
+    root.insert("schemaVersion", 1);
+    root.insert("source", "CaseOrderService");
+    root.insert("query", queryKind == "orders" ? "patientOrder.listOrders" : "patientOrder.listPatients");
+    root.insert("generatedAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    root.insert("rowCount", items.size());
+    root.insert("items", items);
+
+    WriteLog(LogLevel::Info,
+             "ListPatientOrderReadModelJson",
+             QString("kind=%1, rowCount=%2").arg(queryKind).arg(items.size()));
+    return CopyToBuffer(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)),
+                        buffer,
+                        bufferSize);
 }
 
 // 返回模块版本字符串。
@@ -443,4 +596,9 @@ extern "C" MEYERSCAN_CASEORDERSERVICE_API ICaseOrderService* GetCaseOrderService
 // 版本清单读取服务代码版本时不需要初始化数据库适配器或 Logger。
 extern "C" MEYERSCAN_CASEORDERSERVICE_API const char* GetMeyerModuleVersion() {
     return ModuleInfo::Version;
+}
+
+// 返回患者订单服务公共接口 ABI 版本。
+extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
+    return 1;
 }

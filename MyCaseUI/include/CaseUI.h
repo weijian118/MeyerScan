@@ -8,6 +8,9 @@
 #  define MEYERSCAN_CASEUI_API __declspec(dllimport)
 #endif
 
+// CaseUI 公共虚接口版本；新增宿主数据注入接口后升级为 2。
+static const int MEYER_CASE_UI_API_VERSION = 2;
+
 // ICaseUI 是案例管理 UI 模块的公共接口。
 // 模块边界:
 //   - 负责患者/订单列表界面、按钮和用户操作通知。
@@ -18,10 +21,9 @@ public:
     // 虚析构函数用于保持跨 DLL 多态接口安全。
     virtual ~ICaseUI() = default;
 
-    // 初始化案例管理 UI。
-    // databaseConfigPath 仅向 RuntimeDataCenter 透传，用于读取患者/订单只读快照；
-    // CaseUI 自身不连接 Database、不做数据库健康检查、不执行业务 SQL。
-    virtual bool Init(const char* databaseConfigPath, const char* logDir) = 0;
+    // 初始化案例管理 UI。appDirUtf8 是 MeyerScan.exe 所在目录。
+    // CaseUI 不再接收数据库配置，也不初始化 RuntimeDataCenter。
+    virtual bool Init(const char* appDirUtf8, const char* logDir) = 0;
 
     // 设置案例管理动作回调。
     // callback 由 MainExe 提供，UI 只负责把 actionId 通知出去。
@@ -44,6 +46,10 @@ public:
 
     // 关闭案例管理模块，释放模块缓存引用。
     virtual void Shutdown() = 0;
+
+    // 接收 MainExe 注入的只读 domain 快照。
+    // JSON 结构为 {schemaVersion, domains:{"local.patients":{items:[]}, ...}}。
+    virtual bool SetDataContextJson(const char* contextJsonUtf8) = 0;
 };
 
 // 案例管理动作 ID。
