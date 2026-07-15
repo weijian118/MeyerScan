@@ -136,6 +136,7 @@ $excludeFiles = @(
     "qhull*.dll",
     "OpenNI*.dll",
     "tbb*.dll",
+    "*.rar",
     "aws-*.dll",
     "zlib*.dll",
     "zlib1.dll",
