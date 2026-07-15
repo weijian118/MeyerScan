@@ -182,6 +182,8 @@ $excludeFiles = @(
     "*.MYI"
 )
 
+# 历史压缩归档不属于当前源码，但本地仓库已有该归档时必须保留，避免 /MIR 删除人工留存文件。
+# 它不参与复制，也不进入后面的排除内容清理列表。
 $robocopyArgs = @(
     "/MIR",
     "/R:1",
@@ -190,7 +192,7 @@ $robocopyArgs = @(
     "/NDL",
     "/NP",
     "/XD"
-) + $excludeDirs + @("/XF") + $excludeFiles
+) + $excludeDirs + @("/XF", "*.rar") + $excludeFiles
 
 Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
 
