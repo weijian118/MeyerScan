@@ -101,6 +101,5 @@ XmlExport.dll
 
 # 压缩包和系统缩略图不进入备份。
 *.zip
-*.rar
 .DS_Store
 Thumbs.db
