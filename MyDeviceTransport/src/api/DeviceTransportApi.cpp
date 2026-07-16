@@ -971,6 +971,12 @@ extern "C"
         return ModuleInfo::ApiVersion;
     }
 
+    // DeviceCmd/MainExe 在解析业务函数前先读取整数 ABI 版本。
+    std::int32_t GetMeyerModuleApiVersion()
+    {
+        return ModuleInfo::ApiVersionNumber;
+    }
+
     // 根版本管理器按统一导出名读取代码版本。
     const char* GetMeyerModuleVersion()
     {

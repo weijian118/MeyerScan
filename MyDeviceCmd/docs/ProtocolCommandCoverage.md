@@ -1,0 +1,82 @@
+# 设备协议命令覆盖表
+
+本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf`。`MyDeviceCmd 0.2.0`
+已经为协议表中的 48 个命令码提供语义接口或对应的响应解析路径。
+
+状态含义：
+
+- **已实现**：命令编码、固定长度校验、响应码校验和公共结构转换已经完成。
+- **模拟通过**：`DeviceCmdTest --smoke` 已通过确定性模拟后端验证。
+- **待实机**：尚未连接 MyScan 6 Wireless 验证设备时序、Flash 写入和长时间稳定性。
+
+## 控制与基础信息
+
+| 命令 | 响应 | 语义接口 | 当前状态 |
+|---|---|---|---|
+| `0x0A` 开始传图 | 无 | `MeyerDeviceCmd_StartCapture` | 已实现、模拟通过、待实机 |
+| `0x0B` 停止传图 | 无 | `MeyerDeviceCmd_StopCapture` | 已实现、模拟通过、待实机 |
+| `0xFF` 控制器复位 | 无 | `MeyerDeviceCmd_ResetController` | 已实现、模拟通过、待实机 |
+| `0x0D` 固化机器码 | `0x1D` | `MeyerDeviceCmd_StoreMachineCode` | 已实现、模拟通过、待实机 |
+| `0xD4` 读取机器码 | `0xD9` | `MeyerDeviceCmd_RefreshBasicState`；原始命令接口 | 已实现、模拟通过、待实机 |
+| `0x0E` 开关灯 | 无 | `MeyerDeviceCmd_SetLight` | 已实现、模拟通过、待实机 |
+| `0x0C` 强制开灯 | 无 | `MeyerDeviceCmd_SetForceLight` | 已实现、模拟通过、待实机 |
+| `0x14` 读取主板版本 | `0x15` | `MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、待实机 |
+| `0x1A` 读取电池状态 | `0x1C` | `MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、待实机 |
+
+## 相机与采集参数
+
+| 命令 | 响应 | 语义接口 | 当前状态 |
+|---|---|---|---|
+| `0xA0` 读取相机参数 | `0xA1` | `MeyerDeviceCmd_ReadCameraParameters` | 已实现、模拟通过、待实机 |
+| `0xA8` 固化相机参数 | `0xA9` | `MeyerDeviceCmd_StoreCameraParameters` | 已实现、模拟通过、待实机 |
+| `0xA5` 在线设置开窗位置 | 无 | `MeyerDeviceCmd_SetCameraWindowPosition` | 已实现、模拟通过、待实机 |
+| `0xAA` 读取温度原始值 | `0xAB` | `MeyerDeviceCmd_ReadTemperature` | 已实现、模拟通过、待实机 |
+| `0xAD` 设置帧率 | 无 | `MeyerDeviceCmd_SetFrameRate` | 已实现、模拟通过、待实机 |
+| `0xDB` 在线设置曝光 | 无 | `MeyerDeviceCmd_SetExposureParameters` | 已实现、模拟通过、待实机 |
+| `0xDC` 读取曝光 | `0xDE` | `MeyerDeviceCmd_ReadExposureParameters` | 已实现、模拟通过、待实机 |
+
+温度命令返回热敏电阻采集电压，单位为 mV；设备层不擅自换算摄氏温度。
+曝光和相机参数中的单字节小数保留协议原始编码，业务 UI 不直接解释原始字节。
+
+## 标定参数
+
+| 命令 | 响应 | 语义接口 | 当前状态 |
+|---|---|---|---|
+| `0xA3` 读取 416 字节颜色矩阵 | `0xA4` | `MeyerDeviceCmd_ReadColorMatrix` | 已实现、模拟通过、待实机 |
+| `0xA7` 固化颜色矩阵 | `0xAE` | `MeyerDeviceCmd_StoreColorMatrix` | 已实现、模拟通过、待实机 |
+| `0xC2` 读取相机 1 标定 | `0xC7` | `MeyerDeviceCmd_ReadCamera1Calibration` | 已实现、模拟通过、待实机 |
+| `0xC3` 固化相机 1 标定 | `0xC5` | `MeyerDeviceCmd_StoreCamera1Calibration` | 已实现、模拟通过、待实机 |
+| `0xD2` 读取相机 2 标定 | `0xD7` | `MeyerDeviceCmd_ReadCamera2Calibration` | 已实现、模拟通过、待实机 |
+| `0xD0` 固化相机 2 标定 | `0xD5` | `MeyerDeviceCmd_StoreCamera2Calibration` | 已实现、模拟通过、待实机 |
+| `0xD3` 读取 72 字节颜色标定 | `0xD8` | `MeyerDeviceCmd_ReadColorCalibration` | 已实现、模拟通过、待实机 |
+| `0xD1` 固化颜色标定 | `0xD6` | `MeyerDeviceCmd_StoreColorCalibration` | 已实现、模拟通过、待实机 |
+
+标定数组以调用方管理的固定 POD 缓冲区跨 DLL 边界，不传递 `std::vector`、
+Qt 容器或算法对象。标定算法和 UI 仍属于 Calibration3DUI/CalibrationColorUI，
+DeviceCmd 只负责协议读写。
+
+## 设备授权信息
+
+| 命令 | 响应 | 语义接口 | 当前状态 |
+|---|---|---|---|
+| `0xCD` 读取设备信息 | `0xCE` | `MeyerDeviceCmd_ReadDeviceInfo`；基础状态刷新 | 已实现、模拟通过、待实机 |
+| `0xC9` 固化设备信息 | `0xCB` | `MeyerDeviceCmd_StoreDeviceInfo` | 已实现、模拟通过、待实机 |
+
+设备信息包括加密标志、加密类型、13 位设备编号、30 字节期限码和 337 字节
+预留区。期限码只保存和传递原始字节，授权/加解密模块负责业务解释。
+
+## 主板固件升级
+
+| 命令 | 响应 | 语义接口 | 当前状态 |
+|---|---|---|---|
+| `0xB6` 擦除主板固件 | `0xB7` | `MeyerDeviceCmd_EraseFirmware` | 已实现单次进度响应、模拟通过、待实机 |
+| `0xB4` 烧写 256 字节分包 | `0xB5` | `MeyerDeviceCmd_WriteFirmwarePacket` | 已实现包序核对、模拟通过、待实机 |
+
+DeviceCmd 只提供安全的擦除和分包烧写原语，不读取固件文件、不决定升级版本、
+不处理断点续传，也不负责整体升级 UI。完整升级流程由后续固件升级宿主按
+“校验文件 -> 擦除 -> 分包写入 -> 核对应答 -> 复位 -> 重连 -> 版本复核”编排。
+
+## 通用原始命令
+
+`MeyerDeviceCmd_ExecuteRawCommand` 保留用于协议诊断和未来新增命令。已登记命令仍受
+型号能力门禁、A 类帧校验和采集中响应互斥约束，不能借原始接口绕过这些保护。

@@ -40,6 +40,7 @@ target_include_directories(MeyerScan PRIVATE
     ../MyDatabase/include
     ../MyCaseOrderService/include
     ../MyScanSchemaService/include
+    ../MyDeviceCmd/include
     ../MyCalibration3DUI/include
     ../MyCalibrationColorUI/include
     ../MyLogger/include
@@ -69,6 +70,7 @@ foreach(_meyer_runtime_target
         MeyerScan_DatabaseQtAdapter
         MeyerScan_Database
         MeyerScan_DeviceTransport
+        MeyerScan_DeviceCmd
         MeyerScan_CaseOrderService
         MeyerScan_ScanSchemaService
         MeyerScan_Calibration3DUI

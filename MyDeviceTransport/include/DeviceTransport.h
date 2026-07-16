@@ -238,6 +238,8 @@ extern "C"
     MEYERSCAN_DEVICE_TRANSPORT_API const char* MeyerDeviceTransport_GetModuleName();
     // 返回公共 API 语义版本。
     MEYERSCAN_DEVICE_TRANSPORT_API const char* MeyerDeviceTransport_GetApiVersion();
+    // 返回自研 DLL 动态加载门禁使用的整数 ABI 版本。
+    MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t GetMeyerModuleApiVersion();
     // 返回版本清单统一读取的代码版本。
     MEYERSCAN_DEVICE_TRANSPORT_API const char* GetMeyerModuleVersion();
 }

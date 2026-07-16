@@ -19,6 +19,28 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-16：设备命令层和单设备会话所有权
+
+- 问题：设置、校准、扫描入口和扫描页面都需要设备信息/命令；若各模块直接加载 DeviceTransport，会形成多 USB 句柄、命令交叉、状态不一致和难以复现的释放问题。
+- 结论：新增纯 C++ `MyDeviceCmd / MeyerScan_DeviceCmd.dll`，负责 A 类协议、型号能力目录、状态快照、灯光和采集启停；`MyDeviceTransport` 只保留原始字节/流和组帧。
+- 结论：MainExe 嵌入形态或独立 ScanReconstructStudio 宿主各自只维护一个 DeviceSessionHost/DeviceCmd 句柄；UI 只提交动作并读取带 `validFields` 的快照，采集中禁止需要 A 类响应的查询。
+- 结论：MyScan 6 Wireless 协议按 2025-08-08 文档核对；3/5/5H/6 先建立可扩展目录并明确待验证。测试模拟后端只证明软件链路，不代表硬件成功。
+- 影响：设置设备信息、校准和扫描后续统一接入 DeviceSessionHost；任何页面直接包含 DeviceTransport 头或打开 USB 都视为架构偏移。
+
+### 2026-07-16：按正式协议扩展设备命令覆盖
+
+- 问题：初版 DeviceCmd 只实现机器码、版本、电池、设备信息、灯光和采集启停，协议中相机参数、标定、曝光、帧率和固件命令尚未形成稳定接口。
+- 结论：依据 `美亚无线口内扫描仪通讯协议-20250808.pdf`，补齐协议表 48 组 A 类命令的命令码、响应码、固定长度检查和语义 API；大块数据使用调用方管理的固定 POD 结构，不把 STL/Qt 容器穿过 ABI。
+- 结论：固化类统一检查 `0xFF/0x00` 状态，固件模块只提供擦除进度和分包烧写原语，不把固件文件读取、版本策略、断点续传和升级 UI 混入 DeviceCmd。
+- 验证：模拟后端覆盖基础状态、相机参数、颜色矩阵、窗口位置、温度、帧率、两路相机标定、颜色标定、设备信息、曝光和固件分包；`DeviceCmdTest --smoke` 全部通过。
+- 影响：SettingsUI、Calibration3DUI、CalibrationColorUI 和 ScanWorkflowUI 后续仍只接入 DeviceSessionHost，不得直接调用协议函数或创建自己的 USB 会话；真实设备和多机型验证仍是后续工作。
+
+### 2026-07-16：新增设备命令代码中文注释复核
+
+- 对 `MyDeviceCmd` 公共 ABI、协议编解码、动态 Transport 适配、模拟后端和测试程序补充函数级及关键代码中文注释。
+- 注释重点说明固定 POD 跨 DLL、Windows 绝对路径加载、线程锁和异常边界、大小端转换、固定长度响应、资源释放顺序及测试断言目的。
+- 验证：`CheckSourceCommentSafety.ps1` 为 0 错误/0 警告，MyDeviceCmd CMake Release 和 CTest `1/1` 通过。
+
 ### 2026-07-15：UI 数据注入、服务读模型和动态 ABI 门禁
 
 - 问题：CaseUI/SettingsUI 自行连接 RuntimeDataCenter/Database 会让 UI、数据读取和基础设施生命周期耦合；CaseOrderService 写入新表后，旧表快照又无法显示新订单。

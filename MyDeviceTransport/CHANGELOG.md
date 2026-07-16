@@ -1,5 +1,11 @@
 ﻿# 修改记录
 
+## 2026-07-16 - 1.1.0
+
+- 增加统一整数 ABI 导出 `GetMeyerModuleApiVersion()`，使 `MyDeviceCmd` 能在解析 Transport 函数表前完成版本门禁。
+- 日志 DLL 改为按 `MeyerScan_DeviceTransport.dll` 自身目录的绝对路径加载，不再受第三方拉起时 current directory 影响。
+- 公共 API 语义版本仍为 `1.0.0`；新增导出向后兼容，文件/代码模块版本提升到 `1.1.0`。
+
 ## 2026-07-14 - 1.0.0
 
 - 将项目、DLL、公共符号和测试统一命名为 `MyDeviceTransport`、`MeyerScan_DeviceTransport.dll`、`MeyerDeviceTransport_*` 和 `DeviceTransportTest.exe`。

@@ -211,8 +211,10 @@ namespace
                     "module name is stable");
         test.Expect(std::strcmp(MeyerDeviceTransport_GetApiVersion(), "1.0.0") == 0,
                     "API version is 1.0.0");
+        test.Expect(GetMeyerModuleApiVersion() == 1,
+                    "generic module ABI gate reports version 1");
         test.Expect(std::strcmp(GetMeyerModuleVersion(),
-                                "MeyerScan_DeviceTransport v1.0.0 (2026-07-14)") == 0,
+                                "MeyerScan_DeviceTransport v1.1.0 (2026-07-16)") == 0,
                     "code version follows the repository module format");
 
         test.Expect(MeyerDeviceTransport_InitOpenParams(nullptr) ==

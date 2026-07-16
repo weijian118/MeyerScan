@@ -1,9 +1,9 @@
 ﻿// =============================================================================
 // 文件: ModuleLogger.cpp
-// 作用: 通过 LoadLibrary/GetProcAddress 获取进程级 ILogger，避免设备模块在
-//       编译期依赖 Logger.lib，同时复用全软件同一日志文件。
+// 作用: 从 DeviceCmd DLL 自身目录动态加载 MeyerScan_Logger.dll，复用进程日志。
 // =============================================================================
 #include "ModuleLogger.h"
+
 #include "ModuleInfo.h"
 
 #include <windows.h>
@@ -14,7 +14,6 @@
 
 namespace
 {
-    // 此枚举和 ILogger 前缀布局必须与 MyLogger/include/Logger.h 保持一致。
     enum class LogLevel : int
     {
         Debug = 0,
@@ -24,7 +23,7 @@ namespace
         Fatal = 4
     };
 
-    // 这里只声明调用所需的稳定虚接口，不在本模块创建或销毁 Logger 对象。
+    // 该最小虚接口前缀必须与 MyLogger/include/Logger.h 保持一致。
     class ILogger
     {
     public:
@@ -50,7 +49,7 @@ namespace
     HMODULE g_loggerModule = nullptr;
     ILogger* g_logger = nullptr;
 
-    // 获取 DeviceTransport DLL 自身目录，不能使用进程 current directory。
+    // 获取当前 DeviceCmd DLL 文件夹，不能依赖进程 current directory。
     bool GetOwnDirectory(std::wstring& directory)
     {
         HMODULE ownModule = nullptr;
@@ -81,7 +80,7 @@ namespace
         return true;
     }
 
-    // 第一次写日志时加载 Logger。模块句柄保留到进程结束，避免静态析构顺序问题。
+    // 第一次写日志时解析全局 Logger；失败只影响日志，不中断设备流程。
     ILogger* ResolveLogger()
     {
         std::lock_guard<std::mutex> lock(g_loggerMutex);
@@ -97,8 +96,6 @@ namespace
             {
                 return nullptr;
             }
-
-            // 使用当前 DLL 同级绝对路径，第三方程序从其它目录拉起时也不会加载错日志 DLL。
             const std::wstring loggerPath = moduleDirectory + L"\\MeyerScan_Logger.dll";
             g_loggerModule = ::LoadLibraryW(loggerPath.c_str());
             if (g_loggerModule == nullptr)
@@ -117,7 +114,7 @@ namespace
         return g_logger;
     }
 
-    // 统一补充模块名，设备号/病例号/操作员由更高层会话日志记录。
+    // 模块名由 ModuleInfo 自动补充，调用点只提供操作 key 和内容。
     void Write(LogLevel level, const char* operation, const char* content)
     {
         ILogger* logger = ResolveLogger();
@@ -137,19 +134,25 @@ namespace
 
 namespace meyer
 {
-    namespace device
+    namespace devicecmd
     {
         namespace logging
         {
-            // 写入 Info 级别成功事件。
             void WriteInfo(const char* operation, const char* content)
             {
+                // 通过统一内部函数补充模块名，并把空指针转换为空字符串。
                 Write(LogLevel::Info, operation, content);
             }
 
-            // 写入 Error 级别失败事件。
+            void WriteWarning(const char* operation, const char* content)
+            {
+                // 警告和普通信息共用同一动态 Logger，避免模块各自维护文件句柄。
+                Write(LogLevel::Warning, operation, content);
+            }
+
             void WriteError(const char* operation, const char* content)
             {
+                // 错误日志只提供诊断能力，不改变调用方正在处理的返回值。
                 Write(LogLevel::Error, operation, content);
             }
         }

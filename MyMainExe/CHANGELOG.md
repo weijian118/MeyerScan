@@ -1,5 +1,10 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-16（设备命令接入准备）
+
+- 根构建、VS2015 总解决方案、MainExe PostBuild 和 `version_modules.json` 纳入 `MeyerScan_DeviceCmd.dll`。
+- MainExe 暂不直接持有 USB；下一步由单一 DeviceSessionHost 动态加载 DeviceCmd，设置、校准和扫描通过宿主共享状态与动作。
+
 ## 2026-07-15（v0.1.9）
 
 - 案例页数据上下文新增 CaseOrderService 读模型合并：服务新记录优先，旧库快照按订单号/患者号去重补充。

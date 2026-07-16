@@ -1,6 +1,6 @@
 ﻿# MyDeviceTransport
 
-`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。模块版本为 `1.0.0`。
+`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。模块版本为 `1.1.0`。
 
 ## 职责边界
 
@@ -14,7 +14,7 @@
 
 本模块不负责：
 
-- 曝光、开灯、固件等命令的业务组装与响应语义，该职责属于后续 `MyDeviceCmd`。
+- 曝光、开灯、固件等命令的业务组装与响应语义，该职责属于已拆分的 `MyDeviceCmd`。
 - 扫描 UI、扫描流程、重建算法、模型显示和订单逻辑。
 - 串口、WinUSB 和网络传输。未实现能力不会以空类或成功返回值占位。
 
@@ -90,11 +90,12 @@ bin\Release\DeviceTransportTest.exe --capture 1024 440 6 28 1
 
 ## 日志和版本
 
-模块按需从进程运行目录加载 `MeyerScan_Logger.dll`，不依赖 current directory。连接、命令发送、流和采集启停会写关键日志；轮询未就绪不会刷屏。
+模块按需从 `MeyerScan_DeviceTransport.dll` 自身目录的绝对路径加载 `MeyerScan_Logger.dll`，不依赖 current directory。连接、命令发送、流和采集启停会写关键日志；轮询未就绪不会刷屏。
 
-- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.0.0 (2026-07-14)`。
+- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.1.0 (2026-07-16)`。
 - API 版本：`MeyerDeviceTransport_GetApiVersion()` 返回纯语义版本 `1.0.0`。
-- 文件版本：`src/Version.rc` 为 `1.0.0.0`。
+- ABI 门禁：`GetMeyerModuleApiVersion()` 返回整数 `1`，供 DeviceCmd/MainExe 动态加载前检查。
+- 文件版本：`src/Version.rc` 为 `1.1.0.0`。
 - 修改版本时必须同时修改 CMake project 版本、代码常量、Version.rc、README 和 CHANGELOG。
 
 ## 当前未完成
