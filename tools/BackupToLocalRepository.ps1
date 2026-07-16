@@ -181,8 +181,6 @@ $excludeFiles = @(
     "*.MYI"
 )
 
-# 历史压缩归档不属于当前源码，但本地仓库已有该归档时必须保留，避免 /MIR 删除人工留存文件。
-# 它不参与复制，也不进入后面的排除内容清理列表。
 $robocopyArgs = @(
     "/MIR",
     "/R:1",
@@ -191,32 +189,9 @@ $robocopyArgs = @(
     "/NDL",
     "/NP",
     "/XD"
-) + $excludeDirs + @("/XF", "*.rar") + $excludeFiles
+) + $excludeDirs + @("/XF") + $excludeFiles
 
-# robocopy /MIR 即使配合 /XF 也可能删除目标中的额外文件。
-# 这里先保护本地仓库已有的历史归档，镜像完成后恢复，避免备份脚本误删人工留存资料。
-$preserveDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("MeyerScanBackupPreserve_" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $preserveDirectory | Out-Null
-$preservedFiles = @("MyDeviceManager.rar")
-foreach ($fileName in $preservedFiles) {
-    $sourceFile = Join-Path $backup $fileName
-    if (Test-Path -LiteralPath $sourceFile) {
-        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $preserveDirectory $fileName) -Force
-    }
-}
-
-try {
-    Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
-}
-finally {
-    foreach ($fileName in $preservedFiles) {
-        $preservedFile = Join-Path $preserveDirectory $fileName
-        if (Test-Path -LiteralPath $preservedFile) {
-            Copy-Item -LiteralPath $preservedFile -Destination (Join-Path $backup $fileName) -Force
-        }
-    }
-    Remove-Item -LiteralPath $preserveDirectory -Recurse -Force
-}
+Invoke-RobocopyChecked -From $source -To $backup -CopyArgs $robocopyArgs
 
 # /MIR 与 /XF、/XD 同时使用时不会清理目标中早期提交留下的排除内容。
 # 这里补做一次受路径校验保护的清理，保证本地仓库长期满足“只备份自研文件”。
