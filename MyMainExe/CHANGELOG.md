@@ -1,5 +1,12 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-17（v0.2.0，颜色校准设备链路）
+
+- 新增 `src/device/DeviceSessionHost`，通过绝对路径动态加载 DeviceCmd/DeviceTransport，进程内只持有一个 `MeyerDeviceCmdHandle`。
+- SettingsUI 颜色校准入口同步执行工作台占用、设备连接、USB2/USB3、`0xCD/0xCE` 设备信息和型号检查，成功后才创建校准弹窗。
+- DeviceSessionHost 缓存 `MeyerDeviceStateSnapshot` POD 副本，SettingsUI/CalibrationColorUI 不获得设备句柄；弹窗关闭后立即关闭会话。
+- SettingsUI 动态接口门禁升级为 ABI 3；MainExe、VS2015、CMake 工程同步加入宿主源码。
+
 ## 2026-07-16（设备命令接入准备）
 
 - 根构建、VS2015 总解决方案、MainExe PostBuild 和 `version_modules.json` 纳入 `MeyerScan_DeviceCmd.dll`。

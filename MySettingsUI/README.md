@@ -65,7 +65,7 @@
 
 ### 设置持久化策略
 
-- **骨架期（当前 v0.2.4）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
+- **骨架期（当前 v0.3.0）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
   修改后暂不持久化，仅停留在 UI 控件层面。
 - **正式阶段（规划）**：设置项的读写统一走 `ConfigCenter.dll` 的 `runtime_config.json`，由 ConfigCenter 负责配置的版本校验、迁移回滚和变更通知。设置模块不直接访问文件系统或数据库。
 - **路径字段备注**：订单存储路径和打包路径在正式阶段应从 ConfigCenter 读取用户/客户配置，
@@ -75,8 +75,9 @@
 
 - 3D Calibration 和 Color Calibration 通过 `QLibrary` 按需动态加载（懒加载）。
 - DLL 加载、工厂解析和 `Init()` 是三个独立成功条件；Init 返回 false 时 SettingsUI 调用子模块 Shutdown、清空接口并显示不可用占位，不影响其它设置页。
-- 颜色校准使用全窗口半透明遮罩和居中面板，关闭后仍停留在 Calibration 分类；三维校准当前使用设置内部页面和返回按钮。
-- `SettingsUITest --capture-color-calibration <png>` 可验证颜色校准 DLL 加载、遮罩层、居中布局和动作回调。
+- 颜色校准按钮先同步调用 MainExe 的 `DeviceSessionHost`：创建/练习工作台占用设备、未连接、USB2、`0xCD/0xCE` 读取失败或型号未知时只显示对应提示，不加载颜色校准 DLL。
+- 预检通过后，SettingsUI 把只读设备 POD 快照注入 CalibrationColorUI，再显示全窗口半透明遮罩和居中面板；关闭时上报独立动作让宿主释放设备会话。
+- `SettingsUITest --capture-color-calibration <png>` 验证成功链路；`--test-preflight-status 2/3/4/7` 分别验证工作台、未连接、USB2 和型号未知提示。
 - 加载失败时记录 Warning；三维校准显示不可用占位，颜色校准不创建空白遮罩。
 - 正式阶段需考虑：
   - 加载超时机制（如 `QTimer::singleShot` 兜底）

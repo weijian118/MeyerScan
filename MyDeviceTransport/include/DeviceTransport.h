@@ -39,6 +39,10 @@ static const std::uint32_t MEYER_DEVICE_TRANSPORT_MAX_TIMEOUT_MS = 300000U;
 static const std::uint64_t MEYER_DEVICE_TRANSPORT_MAX_FRAME_BYTES = 256ULL * 1024ULL * 1024ULL;
 static const std::uint64_t MEYER_DEVICE_TRANSPORT_MAX_CAPTURE_MEMORY = 512ULL * 1024ULL * 1024ULL;
 
+// deviceIndex 使用该值时，CyAPI 后端会按枚举顺序尝试全部设备，直到找到
+// VID/PID 和 USB 速度都符合要求的设备。显式索引仍用于现场诊断指定设备。
+static const std::uint32_t MEYER_DEVICE_TRANSPORT_AUTO_DEVICE_INDEX = 0xFFFFFFFFU;
+
 // 设备传输接口的结果码。0 表示成功，负数表示失败或尚未就绪。
 enum MeyerDeviceTransportResult : std::int32_t
 {

@@ -214,7 +214,7 @@ namespace
         test.Expect(GetMeyerModuleApiVersion() == 1,
                     "generic module ABI gate reports version 1");
         test.Expect(std::strcmp(GetMeyerModuleVersion(),
-                                "MeyerScan_DeviceTransport v1.1.0 (2026-07-16)") == 0,
+                                "MeyerScan_DeviceTransport v1.2.0 (2026-07-17)") == 0,
                     "code version follows the repository module format");
 
         test.Expect(MeyerDeviceTransport_InitOpenParams(nullptr) ==
@@ -232,6 +232,8 @@ namespace
                     "open parameter structSize is initialized");
         test.Expect(openParams.schemaVersion == MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION,
                     "open parameter schema version is initialized");
+        test.Expect(openParams.deviceIndex == MEYER_DEVICE_TRANSPORT_AUTO_DEVICE_INDEX,
+                    "open parameters default to automatic device enumeration");
         test.Expect(openParams.transportType == MeyerDeviceTransportType_CyApiUsb,
                     "CyAPI USB is the default transport");
 
@@ -401,6 +403,10 @@ namespace
             PrintFailure("SendCommand", result, device.Get());
             return 2;
         }
+
+        // 旧软件的低频 A 类命令在 Bulk OUT 完成后固定等待 200 ms，再提交
+        // Bulk IN 接收。保留该间隔便于用测试宿主逐字节对照旧链路时序。
+        Sleep(200U);
 
         std::vector<unsigned char> response(512U, 0U);
         std::size_t receivedSize = 0;

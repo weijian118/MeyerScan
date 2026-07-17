@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#include <limits>
 #include <windows.h>
 
 namespace
@@ -356,7 +357,7 @@ namespace meyer
             return m_device != nullptr;
         }
 
-        // 打开指定索引并核对 VID/PID 和 USB 速度描述符。
+        // 自动遍历或打开指定索引，并核对 VID/PID 和 USB 速度描述符。
         bool CyApiTransport::OpenMatchingDevice(const TransportConfig& config)
         {
             if (m_device == nullptr)
@@ -371,14 +372,18 @@ namespace meyer
                 return false;
             }
 
-            const long preferredIndex = static_cast<long>(config.deviceIndex);
-            if (preferredIndex < 0 || preferredIndex >= deviceCount)
+            // UINT32_MAX 是公共 ABI 约定的“自动选择”。不能先转成 long 再判断，
+            // 因为 Windows x64 的 long 仍是 32 位，UINT32_MAX 会变成 -1。
+            const bool autoSelect =
+                config.deviceIndex == std::numeric_limits<std::uint32_t>::max();
+            if (!autoSelect && config.deviceIndex >= static_cast<std::uint32_t>(deviceCount))
             {
                 return false;
             }
             for (int index = 0; index < deviceCount; ++index)
             {
-                if (index != preferredIndex)
+                if (!autoSelect &&
+                    static_cast<std::uint32_t>(index) != config.deviceIndex)
                 {
                     continue;
                 }
@@ -406,12 +411,16 @@ namespace meyer
                 const int bcdUsb = m_device->BcdUSB;
                 const int superSpeed = m_device->bSuperSpeed;
 
-                if ((highSpeed == 1) && (bcdUsb == 528 || bcdUsb == 512))
+                // 旧软件把 bHighSpeed + USB 2.x BCD 判断为 USB2。这里使用
+                // [0x0200, 0x0300) 范围，同时兼容截图中的 0x0200/0x0210。
+                if ((highSpeed == 1) && (bcdUsb >= 512) && (bcdUsb < 768))
                 {
                     m_isUsb2 = true;
                     return true;
                 }
 
+                // bSuperSpeed + USB 3.x BCD 才能判为 USB3；未知速度必须关闭
+                // 当前句柄继续枚举，不能把默认 false 当成 USB3。
                 if ((superSpeed == 1) && (bcdUsb >= 768))
                 {
                     m_isUsb2 = false;

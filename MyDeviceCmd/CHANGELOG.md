@@ -1,5 +1,15 @@
 # MyDeviceCmd 变更记录
 
+## 2026-07-17 - 0.3.0
+
+- 新增 `MeyerDeviceCmd_PrepareColorCalibration`：统一打开设备、读取 USB 速率、发送 `0xCD`、解析 `0xCE`，并通过 `MeyerDeviceCalibrationPreflight` 返回连接、USB2、型号未知等稳定状态。
+- `MyScan3/5/5H/6` 共用当前 Cypress 探测链路；MyScan 6 Wireless 的连接方法尚未开发，显式指定时返回 `WirelessProbeUnsupported`，不伪装成功。
+- `0xCE` 正式协议没有独立机型字段，只在 337 字节预留区存在明确型号标记时返回 `DeviceReported`；不按设备编号前缀猜测机型。
+- 模拟后端增加未连接、USB2、无型号标记和 USB3/型号成功四个分支；成功预检保留唯一会话，失败预检主动关闭。
+- 测试宿主新增 `--preflight-real` 只读实机模式，可直接验收颜色校准设备链路且不修改设备参数。
+- 当前实机验证通过 Cypress/USB3 两层检查，`0xCD` 发送成功但 `0xCE` 接收超时；模块按预期返回 `DeviceInfoReadFailed` 并关闭会话，未伪造型号或继续进入校准。
+- 模块代码版本升级为 `0.3.0`，公共语义 API 为 `1.2.0`，整数 ABI 门禁仍为 `1`。
+
 ## 2026-07-16 - 中文注释完善
 
 - 补充公共 ABI、设备命令服务、协议编解码、动态 Transport 加载、模拟后端和测试入口的函数级中文注释。

@@ -1,6 +1,13 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
-## 2026-07-17
+## 2026-07-17 - 0.3.0 设备快照接入
+
+- 公共接口 ABI 升级为 2，新增 `SetDeviceContext`；只接收 MainExe 已验证的固定 POD 快照，不持有 DeviceCmd 句柄。
+- `CreateWidget` 在没有设备快照、设备未打开、USB2 或未知型号时拒绝创建，防止绕过 SettingsUI 入口门禁。
+- 根控件记录只读 `deviceModel/deviceId` 动态属性并输出型号、来源和设备编号日志，便于后续按机型接入采集参数。
+- 独立测试宿主注入确定性 USB3/MyScan6 快照，继续支持 smoke、拖动和截图验证。
+
+## 2026-07-17 - 标题栏拖动
 
 - 增加自定义标题栏拖动：独立测试窗口可整体移动，SettingsUI 模态遮罩中只移动颜色校准面板，并限制面板不会拖出宿主可见区域。
 - 移除 SettingsUI 对颜色校准面板的布局托管，改为打开时手动居中，使拖动位置不会被 Qt Layout 重置。

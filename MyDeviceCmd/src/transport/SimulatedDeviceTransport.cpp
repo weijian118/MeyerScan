@@ -17,6 +17,8 @@ namespace meyer
         // 构造模拟后端时先准备所有固定长度响应，后续读命令只复制状态数据。
         SimulatedDeviceTransport::SimulatedDeviceTransport()
             : m_open(false), m_captureActive(false), m_frameReady(false), m_lightOn(false),
+              m_isUsb2(false), m_omitModelMarker(false),
+              m_model(MeyerDeviceModel_MyScan6Wireless),
               m_deviceId("6200005301203"), m_frameRate(0x14U)
         {
             std::memset(&m_frameInfo, 0, sizeof(m_frameInfo));
@@ -32,10 +34,22 @@ namespace meyer
         // 模拟后端必须由调用方显式选择；它不会枚举或打开任何真实 USB 设备。
         std::int32_t SimulatedDeviceTransport::Open(const MeyerDeviceCmdOpenParams& params)
         {
+            if ((params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_DeviceNotConnected) != 0U)
+            {
+                m_open = false;
+                m_lastError = "Simulated device is not connected";
+                return MeyerDeviceCmdResult_DeviceNotFound;
+            }
             if (params.simulatedDeviceIdUtf8[0] != '\0')
             {
                 m_deviceId.assign(params.simulatedDeviceIdUtf8);
             }
+            // 测试标志在打开时转换为后端状态，使一次 Prepare 调用即可覆盖各分支。
+            m_isUsb2 = (params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_Usb2Connected) != 0U;
+            m_omitModelMarker =
+                (params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_OmitModelMarker) != 0U;
+            m_model = params.modelHint;
+            BuildDefaultPayloads();
             m_open = true;
             m_lastError.clear();
             return MeyerDeviceCmdResult_Ok;
@@ -211,7 +225,7 @@ namespace meyer
         // 使用 USB3 标志模拟协议文档中的高速传输场景。
         std::int32_t SimulatedDeviceTransport::GetIsUsb2(std::int32_t& isUsb2)
         {
-            isUsb2 = 0;
+            isUsb2 = m_isUsb2 ? 1 : 0;
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -490,6 +504,17 @@ namespace meyer
             BuildMachineCodePayload(machineCode);
             std::copy(machineCode.begin(), machineCode.end(), m_deviceInfo.begin() + 2U);
             std::fill(m_deviceInfo.begin() + 15U, m_deviceInfo.begin() + 45U, 0x78U);
+
+            // 正式协议把后 337 字节定义为预留区。模拟后端在这里写入一个明确
+            // 的可读扩展标记，用于验证“设备上报型号”解析，不用设备编号猜型号。
+            if (!m_omitModelMarker && m_model != MeyerDeviceModel_Unknown)
+            {
+                const std::string marker =
+                    std::string("MEYERSCAN_MODEL=") + std::to_string(m_model);
+                const std::size_t copySize =
+                    (std::min)(marker.size(), static_cast<std::size_t>(337U));
+                std::copy(marker.begin(), marker.begin() + copySize, m_deviceInfo.begin() + 45U);
+            }
 
             m_exposureParameters.assign(17U, 0x11U);
             m_exposureParameters[16] = 0U;

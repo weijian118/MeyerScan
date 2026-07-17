@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.1.9 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.2.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
@@ -12,6 +12,8 @@ set(MEYER_LOGIN_ROOT "D:/wj/My-wj/MyLogin" CACHE PATH
 
 add_executable(MeyerScan WIN32
     src/MainWindow.cpp
+    src/device/DeviceSessionHost.cpp
+    src/device/DeviceSessionHost.h
     test/main.cpp
     src/Version.rc
 )

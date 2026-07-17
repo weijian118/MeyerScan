@@ -302,6 +302,9 @@ extern "C"
         params->transportType = MeyerDeviceTransportType_CyApiUsb;
         params->vendorId = 0x04B4;
         params->productId = 0x00F1;
+        // 正式入口默认遍历全部 CyAPI 设备，避免其它 Cypress 设备占用索引 0
+        // 时漏掉实际口扫设备；测试工具仍可覆盖为明确索引。
+        params->deviceIndex = MEYER_DEVICE_TRANSPORT_AUTO_DEVICE_INDEX;
         params->commandTimeoutMs = 1500U;
         params->streamTimeoutMs = 1500U;
         return MeyerDeviceTransportResult_Ok;

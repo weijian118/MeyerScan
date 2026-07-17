@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QWidget>
 #include <cstdio>
+#include <cstring>
 
 namespace {
 
@@ -65,19 +66,36 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
+    // 独立测试没有真实设备，由测试宿主注入一份已经通过预检的确定性设备快照。
+    // 正式 MeyerScan.exe 中该结构来自 DeviceSessionHost -> DeviceCmd -> DeviceTransport。
+    CalibrationColorDeviceContext deviceContext = {};
+    deviceContext.structSize = sizeof(deviceContext);
+    deviceContext.schemaVersion = 1U;
+    deviceContext.deviceModel = 6;
+    deviceContext.modelSource = 3;
+    deviceContext.connectionState = 1;
+    deviceContext.isUsb2 = 0;
+    std::strcpy(deviceContext.modelNameUtf8, "MyScan 6");
+    std::strcpy(deviceContext.deviceIdUtf8, "6200005301203");
+    if (!Check(calibration->SetDeviceContext(&deviceContext),
+               "CalibrationColorUI 接受已验证设备快照")) {
+        calibration->Shutdown();
+        return 3;
+    }
+
     // 由模块创建根 QWidget，调用方只负责嵌入或显示，保持 UI 资源边界清晰。
     QWidget* widget = calibration->CreateWidget();
     if (!Check(widget != nullptr, "CalibrationColorUI 能创建根 QWidget")) {
         // 即使页面创建失败，也要让 DLL 释放已经初始化的日志和路径状态。
         calibration->Shutdown();
-        return 3;
+        return 4;
     }
     // objectName 是测试和样式定位的稳定锚点，不能随意修改。
     if (!Check(widget->objectName() == "MeyerScanCalibrationColorUIRoot", "颜色校准根对象名正确")) {
         // 失败路径同样显式释放 QWidget，便于反复运行测试时检查资源生命周期。
         delete widget;
         calibration->Shutdown();
-        return 4;
+        return 5;
     }
 
     // 通过 objectName 验证参考界面的四个关键控件，避免未来误退回只有空白根控件的骨架实现。
@@ -94,7 +112,7 @@ int main(int argc, char* argv[]) {
     if (!Check(structureValid, "颜色校准参考界面关键控件完整")) {
         delete widget;
         calibration->Shutdown();
-        return 5;
+        return 6;
     }
 
     if (dragTestMode) {
@@ -110,7 +128,7 @@ int main(int argc, char* argv[]) {
         if (!titleBar) {
             delete widget;
             calibration->Shutdown();
-            return 6;
+            return 7;
         }
 
         // 依次发送按下、移动、释放三个事件，模拟用户拖动标题栏的完整鼠标手势。
@@ -143,7 +161,7 @@ int main(int argc, char* argv[]) {
         Check(moved, "颜色校准标题栏拖动会改变窗口位置");
         delete widget;
         calibration->Shutdown();
-        return moved ? 0 : 7;
+        return moved ? 0 : 8;
     }
 
     // smoke 模式不显示窗口、不进入事件循环，只验证 DLL 链路和页面生命周期。

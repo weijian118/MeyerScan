@@ -38,6 +38,10 @@ public:
     // 保存 MainExe 传入的设置动作回调。
     void SetActionCallback(void (*callback)(void* context, int actionId), void* context) override;
 
+    // 保存 MainExe 传入的校准设备同步预检回调。
+    void SetCalibrationPreflightCallback(SettingsCalibrationPreflightCallback callback,
+                                          void* context) override;
+
     // 保存本次打开来源和校准入口可用性。
     void SetOpenContext(int openSource, bool allowCalibration) override;
 
@@ -123,10 +127,18 @@ private:
 
     // 打开设置内部页面或嵌入的校准页面。
     void SwitchToPage(int pageIndex, const QString& pageName);
-    void ShowEmbeddedCalibration(int actionId);
+    void ShowEmbeddedCalibration(int actionId,
+                                 const SettingsCalibrationDeviceContext* deviceContext = nullptr);
 
     // 在设置窗口上方显示颜色校准遮罩弹窗；颜色校准不占用设置分类页索引。
-    void ShowColorCalibrationDialog();
+    void ShowColorCalibrationDialog(const SettingsCalibrationDeviceContext& deviceContext);
+
+    // 同步请求 MainExe 检查工作台、设备连接、USB 速率和设备型号。
+    int RunCalibrationPreflight(int actionId,
+                                SettingsCalibrationDeviceContext* deviceContext);
+
+    // 根据预检状态显示客户可读提示；所有源文本保持英文并使用 tr()。
+    void ShowCalibrationPreflightMessage(int status);
 
     void RestoreSettingsOverview();
 
@@ -163,5 +175,9 @@ private:
     // MainExe 注册的动作回调。
     void (*m_actionCallback)(void* context, int actionId) = nullptr;
     void* m_actionCallbackContext = nullptr;
+
+    // 设备预检由 MainExe 设备会话宿主实现，SettingsUI 只保存函数和上下文地址。
+    SettingsCalibrationPreflightCallback m_calibrationPreflightCallback = nullptr;
+    void* m_calibrationPreflightContext = nullptr;
 };
 

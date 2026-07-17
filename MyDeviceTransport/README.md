@@ -1,6 +1,6 @@
 ﻿# MyDeviceTransport
 
-`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。模块版本为 `1.1.0`。
+`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。模块版本为 `1.2.0`。
 
 ## 职责边界
 
@@ -40,6 +40,8 @@ MyDeviceTransport/
 ## 公共接口
 
 公共头为 `include/DeviceTransport.h`，导出函数统一使用 `MeyerDeviceTransport_*`。结构体必须先调用对应 `Init*` 函数，DLL 会校验 `structSize` 和 `schemaVersion`。尺寸、队列、超时和内存预算使用公共头中的 `MEYER_DEVICE_TRANSPORT_MAX_*` 常量约束，非法参数会在访问硬件和分配大块内存前返回 `InvalidArgument`。
+
+`MeyerDeviceTransport_InitOpenParams` 默认写入 `MEYER_DEVICE_TRANSPORT_AUTO_DEVICE_INDEX`。CyAPI 后端会遍历全部枚举项，逐个核对 VID/PID 和 USB 速度；显式覆盖 `deviceIndex` 时只尝试指定项。只有明确的 USB2/USB3 描述符才允许打开，未知速度不按 USB3 处理。
 
 返回值 `0` 表示成功，负数表示失败或尚未就绪。失败后可用两次缓冲区调用读取错误文本：
 
@@ -84,22 +86,22 @@ bin\Release\DeviceTransportTest.exe --stream 10 16384 8
 bin\Release\DeviceTransportTest.exe --capture 1024 440 6 28 1
 ```
 
-无参数和 `--smoke` 不访问硬件，适合 CTest。其余模式会连接真实设备，无设备时明确返回非零，不会伪装通过。硬件命令必须由了解当前设备协议的人员提供，测试宿主不再内置自动发送命令。
+无参数和 `--smoke` 不访问硬件，适合 CTest。其余模式会连接真实设备，无设备时明确返回非零，不会伪装通过。`--command` 在发送后按旧软件时序等待 200 ms 再接收；硬件命令必须由了解当前设备协议的人员提供，测试宿主不内置自动写入命令。
 
-当前无硬件 smoke 共 30 项，覆盖公共版本、参数结构、错误码、异常采集尺寸/队列、末包一致性、合法配置状态推进和 IMU 数值稳定性。
+当前无硬件 smoke 共 32 项，覆盖公共版本、自动枚举默认值、参数结构、错误码、异常采集尺寸/队列、末包一致性、合法配置状态推进和 IMU 数值稳定性。
 
 ## 日志和版本
 
 模块按需从 `MeyerScan_DeviceTransport.dll` 自身目录的绝对路径加载 `MeyerScan_Logger.dll`，不依赖 current directory。连接、命令发送、流和采集启停会写关键日志；轮询未就绪不会刷屏。
 
-- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.1.0 (2026-07-16)`。
+- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.2.0 (2026-07-17)`。
 - API 版本：`MeyerDeviceTransport_GetApiVersion()` 返回纯语义版本 `1.0.0`。
 - ABI 门禁：`GetMeyerModuleApiVersion()` 返回整数 `1`，供 DeviceCmd/MainExe 动态加载前检查。
-- 文件版本：`src/Version.rc` 为 `1.1.0.0`。
+- 文件版本：`src/Version.rc` 为 `1.2.0.0`。
 - 修改版本时必须同时修改 CMake project 版本、代码常量、Version.rc、README 和 CHANGELOG。
 
 ## 当前未完成
 
-- 尚未在本轮环境连接真实设备，CyAPI 枚举、拔插重连、长时间流和真实组帧仍需硬件联调。
+- 已在当前环境实测枚举到 1 个匹配 VID/PID 的 Cypress 设备并正确判定为 USB3；发送只读 `0xCD` 成功，但设备在 1.5 秒内未返回 `0xCE`。拔插重连、长时间流和真实组帧仍需硬件联调。
 - 温度字段沿用原始帧合同，当前协议解析未提供有效温度来源。
 - ScanWorkflow/扫描算法尚未调用本 DLL；接入时应通过公共 C ABI，不得包含 `src` 内部头文件。

@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.2.0
+// 版本: 0.3.0
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -213,6 +213,31 @@ enum MeyerDeviceStateField : std::uint64_t
     MeyerDeviceStateField_FrameTelemetry = 1ULL << 9
 };
 
+// 颜色校准入口预检的业务状态。函数调用本身返回 DeviceCmdResult，调用成功后
+// 再读取本枚举，区分“设备未连接”“USB2”和“型号未识别”等正常拦截原因。
+enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
+{
+    MeyerDeviceCalibrationPreflight_NotRun = 0,
+    MeyerDeviceCalibrationPreflight_Ready = 1,
+    MeyerDeviceCalibrationPreflight_WorkspaceOwnsDevice = 2,
+    MeyerDeviceCalibrationPreflight_DeviceNotConnected = 3,
+    MeyerDeviceCalibrationPreflight_Usb2Connected = 4,
+    MeyerDeviceCalibrationPreflight_WirelessProbeUnsupported = 5,
+    MeyerDeviceCalibrationPreflight_DeviceInfoReadFailed = 6,
+    MeyerDeviceCalibrationPreflight_ModelUnknown = 7,
+    MeyerDeviceCalibrationPreflight_InternalError = 8
+};
+
+// 模拟后端专用标志，只允许测试程序使用。正式 DeviceTransport 后端忽略这些值，
+// 因此测试能够稳定覆盖未连接、USB2 和没有型号标记等分支。
+enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
+{
+    MeyerDeviceCmdSimulatedFlag_None = 0U,
+    MeyerDeviceCmdSimulatedFlag_DeviceNotConnected = 1U << 0,
+    MeyerDeviceCmdSimulatedFlag_Usb2Connected = 1U << 1,
+    MeyerDeviceCmdSimulatedFlag_OmitModelMarker = 1U << 2
+};
+
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，
 // 以免第三方软件从其它 current directory 拉起 MeyerScan.exe 时加载错文件。
 struct MeyerDeviceCmdOpenParams
@@ -228,7 +253,9 @@ struct MeyerDeviceCmdOpenParams
     std::uint32_t streamTimeoutMs;
     char transportLibraryPathUtf8[1024];
     char simulatedDeviceIdUtf8[32];
-    std::uint32_t reserved[8];
+    // simulatedFlags 只供 SimulatorForTest 构造确定性分支，正式后端必须保持 0。
+    std::uint32_t simulatedFlags;
+    std::uint32_t reserved[7];
 };
 
 // 型号描述由模块内部目录统一维护。protocolVerified=1 只表示当前命令协议已按
@@ -450,6 +477,20 @@ struct MeyerDeviceCmdDeviceInfo
     std::uint32_t reserved[8];
 };
 
+// 校准预检结果同时保存设备运行状态和 0xCD/0xCE 设备信息副本。
+// 多个 UI/业务模块只复制该 POD，不共享 DeviceCmd 内部对象或 USB 句柄。
+struct MeyerDeviceCalibrationPreflight
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t status;
+    std::int32_t commandResult;
+    MeyerDeviceStateSnapshot state;
+    MeyerDeviceCmdDeviceInfo deviceInfo;
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
 // 0xDB/0xDC/0xDE 使用的曝光参数。前 16 个字段对应设置命令，读取响应额外
 // 带一个协议预留字节，模块会自动忽略该字节。
 struct MeyerDeviceCmdExposureParameters
@@ -524,6 +565,8 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitColorCalibration(MeyerDeviceCmdColorCalibration* calibration);
     // 初始化设备授权信息结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitDeviceInfo(MeyerDeviceCmdDeviceInfo* info);
+    // 初始化颜色校准设备预检结果。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCalibrationPreflight(MeyerDeviceCalibrationPreflight* preflight);
     // 初始化曝光参数结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitExposureParameters(MeyerDeviceCmdExposureParameters* parameters);
     // 读取指定产品型号的协议族和能力目录。
@@ -542,6 +585,13 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IsOpen(MeyerDeviceCmdHandle handle);
     // 使用最近一次打开参数恢复连接。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_Reconnect(MeyerDeviceCmdHandle handle);
+
+    // 打开唯一设备会话、检查 USB 速率、读取 0xCD/0xCE 设备信息并识别型号。
+    // Ready 时保持会话打开供颜色校准继续使用；其它状态会主动关闭会话。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_PrepareColorCalibration(
+        MeyerDeviceCmdHandle handle,
+        const MeyerDeviceCmdOpenParams* params,
+        MeyerDeviceCalibrationPreflight* preflight);
 
     // 串行读取机器码、主板版本、电池和设备期限原始信息；采集中返回 Busy。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_RefreshBasicState(MeyerDeviceCmdHandle handle);

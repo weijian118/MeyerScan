@@ -11,13 +11,13 @@ namespace meyer
     {
         struct TransportConfig
         {
-            // 默认连接第 0 个 Cypress VID/PID 设备，超时均为 1500 ms。
+            // 默认遍历全部 Cypress 设备，超时均为 1500 ms。
             TransportConfig()
                 : type(TransportType::CyApiUsb)
                 , preferredDeviceType(DeviceType::Unknown)
                 , vendorId(0x04B4)
                 , productId(0x00F1)
-                , deviceIndex(0)
+                , deviceIndex(0xFFFFFFFFU)
                 , commandTimeoutMs(1500)
                 , streamTimeoutMs(1500)
                 , host("")

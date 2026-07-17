@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMessageBox>
 #include <QPoint>
 #include <QProgressBar>
 #include <QPushButton>
@@ -27,6 +28,8 @@
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QVBoxLayout>
+
+#include <cstring>
 
 // =============================================================================
 // 文件说明:
@@ -51,7 +54,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.2.4 (2026-07-16)";
+const char* Version = "MeyerScan_SettingsUI v0.3.0 (2026-07-17)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -91,6 +94,19 @@ void SettingsUIImpl::SetActionCallback(void (*callback)(void* context, int actio
     // SettingsUI 不直接依赖 MainWindow 类型，只保存 C ABI 回调和不透明上下文指针。
     m_actionCallback = callback;
     m_actionCallbackContext = context;
+}
+
+// 保存宿主提供的校准设备预检回调。
+// 回调是同步函数，SettingsUI 不创建线程，也不持有 DeviceCmd/Transport 句柄。
+void SettingsUIImpl::SetCalibrationPreflightCallback(
+    SettingsCalibrationPreflightCallback callback,
+    void* context) {
+    m_calibrationPreflightCallback = callback;
+    m_calibrationPreflightContext = context;
+    WriteLog(LogLevel::Info,
+             "SetCalibrationPreflightCallback",
+             callback ? "Calibration preflight callback registered"
+                      : "Calibration preflight callback cleared");
 }
 
 // 保存打开设置的来源。
@@ -253,6 +269,10 @@ void SettingsUIImpl::Shutdown() {
     }
     // 数据快照由宿主拥有。设置页关闭时清除本地副本，防止下次打开误用旧数据。
     m_dataContext = QJsonObject();
+    m_actionCallback = nullptr;
+    m_actionCallbackContext = nullptr;
+    m_calibrationPreflightCallback = nullptr;
+    m_calibrationPreflightContext = nullptr;
     DestroyWidget();
 }
 
@@ -341,7 +361,8 @@ void SettingsUIImpl::LoadCalibrationModules() {
         if (m_calibrationColorLibrary.load()) {
             auto apiVersion = reinterpret_cast<int (*)()>(
                 m_calibrationColorLibrary.resolve("GetMeyerModuleApiVersion"));
-            if (!apiVersion || apiVersion() != 1) {
+            if (!apiVersion ||
+                apiVersion() != MEYER_CALIBRATION_COLOR_UI_API_VERSION) {
                 WriteLog(LogLevel::Warning, "LoadCalibrationModules", "CalibrationColorUI API version mismatch");
                 return;
             }
@@ -979,16 +1000,37 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
     }
     // role 属性让不同 objectName 的校准按钮继续复用同一主按钮视觉规则。
     button->setProperty("settingsRole", "primary");
-    // 按钮初始可用态来自当前打开来源，ApplyCalibrationAvailability 后还会统一刷新分类入口。
-    button->setEnabled(m_allowCalibration);
-    QObject::connect(button, &QPushButton::clicked, [this, actionId, title]() {
-        if (!m_allowCalibration) {
-            // 扫描重建来源禁止校准，即使按钮状态异常也要在执行前拦截。
-            WriteLog(LogLevel::Warning, "CalibrationBlocked", "Calibration is blocked for current open source");
+    // 按钮保持可点击，禁止原因在执行点用提示说明；只做 disabled 会导致客户点击无反馈。
+    button->setEnabled(true);
+    QObject::connect(button, &QPushButton::clicked, [this, actionId, title, button]() {
+        SettingsCalibrationDeviceContext deviceContext = {};
+        if (actionId == SettingsActionOpenColorCalibration) {
+            // 颜色校准必须先完成工作台、连接、USB3 和型号四层检查。
+            // DeviceSessionHost 等待期间会继续处理 Qt 事件，因此临时禁用按钮防止重复点击重入。
+            button->setEnabled(false);
+            const int status = RunCalibrationPreflight(actionId, &deviceContext);
+            button->setEnabled(true);
+            if (status != SettingsCalibrationPreflightReady) {
+                WriteLog(LogLevel::Warning,
+                         "CalibrationBlocked",
+                         QString("Color calibration preflight blocked: %1").arg(status));
+                ShowCalibrationPreflightMessage(status);
+                return;
+            }
+
+            // 打开和关闭使用两个动作，MainExe 才能在弹窗整个生命周期内保留唯一设备会话。
+            NotifyAction(actionId, title);
+            ShowEmbeddedCalibration(actionId, &deviceContext);
+            NotifyAction(SettingsActionColorCalibrationClosed, "ColorCalibrationClosed");
             return;
         }
-        // 先在设置模块内嵌入校准页面，再上报动作给 MainExe 记录跨模块行为。
-        ShowEmbeddedCalibration(actionId);
+
+        if (!m_allowCalibration) {
+            // 三维校准暂时复用工作台门禁，具体设备预检随后在三维模块接入。
+            ShowCalibrationPreflightMessage(SettingsCalibrationPreflightWorkspaceOwnsDevice);
+            return;
+        }
+        ShowEmbeddedCalibration(actionId, nullptr);
         NotifyAction(actionId, title);
     });
     layout->addWidget(button);
@@ -1013,7 +1055,8 @@ void SettingsUIImpl::SwitchToPage(int pageIndex, const QString& pageName) {
 
 // 在设置窗口上方显示颜色校准遮罩弹窗。
 // 参考软件的颜色校准是临时模态流程，不属于设置 QStackedWidget 的并列分类页。
-void SettingsUIImpl::ShowColorCalibrationDialog() {
+void SettingsUIImpl::ShowColorCalibrationDialog(
+    const SettingsCalibrationDeviceContext& deviceContext) {
     if (!m_pages || !m_calibrationColor) {
         WriteLog(LogLevel::Warning,
                  "ShowColorCalibrationDialog",
@@ -1032,6 +1075,27 @@ void SettingsUIImpl::ShowColorCalibrationDialog() {
     overlay.setProperty("meyerCalibrationDialogHost", true);
     // QDialog 是新的顶层样式作用域，显式加载设置 QSS 才能稳定绘制半透明遮罩。
     MeyerQtModule::ApplyModuleQss(&overlay, "MySettingsUI", "settings.qss", m_logger);
+
+    // 把 SettingsUI 的宿主快照转换为颜色校准模块自己的稳定 POD。
+    CalibrationColorDeviceContext colorContext = {};
+    colorContext.structSize = sizeof(colorContext);
+    colorContext.schemaVersion = 1U;
+    colorContext.deviceModel = deviceContext.deviceModel;
+    colorContext.modelSource = deviceContext.modelSource;
+    colorContext.connectionState = deviceContext.connectionState;
+    colorContext.isUsb2 = deviceContext.isUsb2;
+    std::strncpy(colorContext.modelNameUtf8,
+                 deviceContext.modelNameUtf8,
+                 sizeof(colorContext.modelNameUtf8) - 1U);
+    std::strncpy(colorContext.deviceIdUtf8,
+                 deviceContext.deviceIdUtf8,
+                 sizeof(colorContext.deviceIdUtf8) - 1U);
+    if (!m_calibrationColor->SetDeviceContext(&colorContext)) {
+        WriteLog(LogLevel::Warning,
+                 "ShowColorCalibrationDialog",
+                 "CalibrationColorUI rejected the verified device context");
+        return;
+    }
 
     // 颜色校准 DLL 只创建自己的面板内容；遮罩、居中和模态生命周期由 SettingsUI 管理。
     QWidget* calibrationWidget = m_calibrationColor->CreateWidget(&overlay);
@@ -1082,12 +1146,14 @@ void SettingsUIImpl::ShowColorCalibrationDialog() {
 
 // 在设置页面内部嵌入校准模块页面。
 // 三维校准当前保留嵌入式工作流；颜色校准按参考软件改由独立遮罩弹窗承载。
-void SettingsUIImpl::ShowEmbeddedCalibration(int actionId) {
+void SettingsUIImpl::ShowEmbeddedCalibration(
+    int actionId,
+    const SettingsCalibrationDeviceContext* deviceContext) {
     if (!m_pages) {
         // 没有页面容器时无法嵌入校准 UI，直接返回避免空指针。
         return;
     }
-    if (!m_allowCalibration) {
+    if (!m_allowCalibration && actionId != SettingsActionOpenColorCalibration) {
         // 扫描重建来源打开设置时，不允许进入三维/颜色校准。
         WriteLog(LogLevel::Warning, "ShowEmbeddedCalibration", "Calibration is blocked for current open source");
         return;
@@ -1096,8 +1162,14 @@ void SettingsUIImpl::ShowEmbeddedCalibration(int actionId) {
     LoadCalibrationModules();
 
     if (actionId == SettingsActionOpenColorCalibration) {
+        if (!deviceContext || deviceContext->status != SettingsCalibrationPreflightReady) {
+            WriteLog(LogLevel::Warning,
+                     "ShowEmbeddedCalibration",
+                     "Verified color calibration device context is missing");
+            return;
+        }
         // 颜色校准是短时模态操作，不创建动态 QStackedWidget 页面和返回按钮。
-        ShowColorCalibrationDialog();
+        ShowColorCalibrationDialog(*deviceContext);
         return;
     }
 
@@ -1149,23 +1221,82 @@ void SettingsUIImpl::RestoreSettingsOverview() {
 }
 
 // 根据打开来源刷新校准入口。
-// 当前策略是扫描重建来源直接隐藏左侧 Calibration 分类，并禁用已创建的校准页。
+// 分类保持可见，真正设备动作在按钮执行点拦截并说明原因，避免 disabled 无反馈。
 void SettingsUIImpl::ApplyCalibrationAvailability() {
     if (m_calibrationNavButton) {
-        // 扫描重建来源不仅禁用按钮，还直接隐藏左侧分类，减少误操作可能。
-        m_calibrationNavButton->setVisible(m_allowCalibration);
-        m_calibrationNavButton->setEnabled(m_allowCalibration);
+        m_calibrationNavButton->setVisible(true);
+        m_calibrationNavButton->setEnabled(true);
+        m_calibrationNavButton->setProperty("calibrationAllowed", m_allowCalibration);
     }
 
     if (m_calibrationPage) {
-        // 禁用页面本身可以让页面内已有按钮也无法响应鼠标/键盘输入。
-        m_calibrationPage->setEnabled(m_allowCalibration);
+        m_calibrationPage->setEnabled(true);
+        m_calibrationPage->setProperty("calibrationAllowed", m_allowCalibration);
+    }
+}
+
+// 执行颜色校准入口的同步宿主预检。
+int SettingsUIImpl::RunCalibrationPreflight(
+    int actionId,
+    SettingsCalibrationDeviceContext* deviceContext) {
+    if (!deviceContext) {
+        return SettingsCalibrationPreflightInternalError;
+    }
+    std::memset(deviceContext, 0, sizeof(*deviceContext));
+    deviceContext->structSize = sizeof(*deviceContext);
+    deviceContext->schemaVersion = 1U;
+
+    // 创建、练习工作台已经持有设备连接，必须在访问 DeviceCmd 前直接拦截。
+    if (!m_allowCalibration || m_openSource == SettingsOpenSourceScanReconstruct) {
+        deviceContext->status = SettingsCalibrationPreflightWorkspaceOwnsDevice;
+        std::strncpy(deviceContext->detailUtf8,
+                     "Order/practice workspace owns the device session",
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        return deviceContext->status;
     }
 
-    if (!m_allowCalibration && m_pages && m_pages->currentIndex() == PageCalibration) {
-        // 如果来源切换后当前正停在校准页，立即退回 General，避免用户继续操作旧页面。
-        SwitchToPage(PageGeneral, "General");
+    if (!m_calibrationPreflightCallback) {
+        deviceContext->status = SettingsCalibrationPreflightInternalError;
+        std::strncpy(deviceContext->detailUtf8,
+                     "Calibration preflight callback is not registered",
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        return deviceContext->status;
     }
+
+    const int callbackStatus = m_calibrationPreflightCallback(
+        m_calibrationPreflightContext, actionId, deviceContext);
+    // 宿主返回值和结构状态应一致；不一致时按更保守的回调返回值处理。
+    deviceContext->status = callbackStatus;
+    return callbackStatus;
+}
+
+// 显示颜色校准预检失败原因。
+void SettingsUIImpl::ShowCalibrationPreflightMessage(int status) {
+    QString message;
+    switch (status) {
+    case SettingsCalibrationPreflightWorkspaceOwnsDevice:
+        message = tr("Please exit the scan module before calibration.");
+        break;
+    case SettingsCalibrationPreflightDeviceNotConnected:
+        message = tr("Device is not connected.");
+        break;
+    case SettingsCalibrationPreflightUsb2Connected:
+        message = tr("Please reconnect the device to a USB 3.0 port.");
+        break;
+    case SettingsCalibrationPreflightWirelessUnsupported:
+        message = tr("The connected device type is not supported for calibration yet.");
+        break;
+    case SettingsCalibrationPreflightDeviceInfoReadFailed:
+    case SettingsCalibrationPreflightModelUnknown:
+        message = tr("Unable to read the device model.");
+        break;
+    default:
+        message = tr("Unable to prepare the device for calibration.");
+        break;
+    }
+
+    QWidget* parent = m_pages ? m_pages->window() : nullptr;
+    QMessageBox::information(parent, tr("Notice"), message, QMessageBox::Ok);
 }
 
 // 把来源枚举转为日志可读文本。

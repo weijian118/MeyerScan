@@ -19,6 +19,13 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-17：颜色校准设备预检链路
+
+- 问题：颜色校准打开前必须排除创建/练习工作台占用设备，检查连接与 USB2/USB3，并读取设备信息和型号；任何 UI 自行打开 USB 都会破坏单会话边界。
+- 结论：MainExe 落地 `DeviceSessionHost`，工作线程动态调用 DeviceCmd -> DeviceTransport；SettingsUI 只执行同步预检回调并传 POD，CalibrationColorUI 无有效快照拒绝创建。
+- 结论：Cypress 有线机型共用自动枚举与速度检测；MyScan 6 Wireless 连接方法未开发时明确返回未支持。`0xCD/0xCE` 正式协议无独立机型字段，只识别预留区明确标记，不按设备编号猜测。
+- 验证：Transport 32 项 smoke、DeviceCmd 全链路 smoke、SettingsUI 成功截图和工作台/未连接/USB2/型号未知四个提示测试、CalibrationColorUI smoke、MainExe smoke 均通过；当前实机已确认 Cypress 自动枚举和 USB3 判断，`0xCD` 发送成功但 1.5 秒内未收到 `0xCE`，系统返回 `DeviceInfoReadFailed` 并关闭会话。后续需核对固件支持或命令通道前置初始化。
+
 ### 2026-07-16：设备命令层和单设备会话所有权
 
 - 问题：设置、校准、扫描入口和扫描页面都需要设备信息/命令；若各模块直接加载 DeviceTransport，会形成多 USB 句柄、命令交叉、状态不一致和难以复现的释放问题。

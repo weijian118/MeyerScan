@@ -28,6 +28,7 @@ class QLabel;
 class QVBoxLayout;
 class IDatabaseQtAdapter;
 class ILogger;
+class DeviceSessionHost;
 
 // MainWindow 是 MeyerScan.exe 的主窗口和轻量编排层。
 // 它只负责启动流程、登录衔接、页面容器切换和资源释放，
@@ -70,6 +71,11 @@ private:
     // SettingsUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
     static void OnSettingsAction(void* context, int actionId);
 
+    // SettingsUI 在创建校准弹窗前同步调用，MainExe 在这里执行工作台和设备门禁。
+    static int OnCalibrationPreflight(void* context,
+                                      int actionId,
+                                      SettingsCalibrationDeviceContext* deviceContext);
+
     // OrderCreateUI 是 C ABI 回调，必须用静态函数把 context 转回 MainWindow。
     static void OnOrderCreateAction(void* context, int actionId);
 
@@ -96,6 +102,10 @@ private:
 
     // 处理设置页面动作，例如关闭、确认、应用和校准入口。
     void HandleSettingsAction(int actionId);
+
+    // 通过进程唯一 DeviceSessionHost 完成颜色校准设备预检并复制 POD 快照。
+    int HandleCalibrationPreflight(int actionId,
+                                   SettingsCalibrationDeviceContext* deviceContext);
 
     // 处理建单页面动作，例如取消、确认、下一步或牙位变化。
     void HandleOrderCreateAction(int actionId);
@@ -344,6 +354,8 @@ private:
     ICaseOrderService* m_caseOrderService = nullptr;
     IUIComponents* m_uiComponents = nullptr;
     ILogger* m_logger = nullptr;
+    // MainExe 进程内唯一设备命令会话宿主；UI 模块不得自行创建 DeviceCmd 句柄。
+    DeviceSessionHost* m_deviceSessionHost = nullptr;
     QLibrary m_loggerLibrary;
     QLibrary m_databaseAdapterLibrary;
     QLibrary m_configLibrary;
@@ -391,6 +403,8 @@ private:
     bool m_externalLaunchAdapterInitialized = false;
     bool m_loggerInitialized = false;
     int m_settingsOpenSource = SettingsOpenSourceHome;
+    // 记录打开设置时工作台是否仍是来源页；即使设置页释放工作台 QWidget，门禁仍保持有效。
+    bool m_settingsOpenedFromActiveWorkspace = false;
     int m_currentWorkspaceMode = WorkspaceModeOrderCreate;
     QString m_workspaceContextJson;
 };

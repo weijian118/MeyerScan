@@ -7,10 +7,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\MainWindow.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\device\DeviceSessionHost.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="test\main.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\MainWindow.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\device\DeviceSessionHost.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\Version.rc"><Filter>Resource Files</Filter></ResourceCompile>

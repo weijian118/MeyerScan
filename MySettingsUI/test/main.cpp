@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QList>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPoint>
@@ -16,6 +17,7 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QWidget>
+#include <cstring>
 #include <memory>
 
 // =============================================================================
@@ -98,6 +100,49 @@ void OnSettingsAction(void* context, int actionId) {
     }
 }
 
+// 模拟 MainExe 设备会话宿主返回“USB3 + MyScan 6 + 型号已由设备上报”。
+// 该回调只供 UI 测试，不访问 DeviceCmd 或真实 USB。
+int OnCalibrationPreflight(void* context,
+                           int actionId,
+                           SettingsCalibrationDeviceContext* deviceContext) {
+    if (!deviceContext || actionId != SettingsActionOpenColorCalibration) {
+        return SettingsCalibrationPreflightInternalError;
+    }
+    const int requestedStatus = context
+        ? *static_cast<int*>(context)
+        : SettingsCalibrationPreflightReady;
+    if (requestedStatus != SettingsCalibrationPreflightReady) {
+        deviceContext->status = requestedStatus;
+        std::strcpy(deviceContext->detailUtf8, "Simulated calibration preflight blocked");
+        return deviceContext->status;
+    }
+    deviceContext->status = SettingsCalibrationPreflightReady;
+    deviceContext->deviceModel = 6;
+    deviceContext->modelSource = 3;
+    deviceContext->connectionState = 1;
+    deviceContext->isUsb2 = 0;
+    std::strcpy(deviceContext->modelNameUtf8, "MyScan 6");
+    std::strcpy(deviceContext->deviceIdUtf8, "6200005301203");
+    std::strcpy(deviceContext->detailUtf8, "Simulated calibration preflight passed");
+    return deviceContext->status;
+}
+
+// 返回各预检状态应显示的英文源文本，测试不依赖系统当前语言或按钮位置。
+QString ExpectedPreflightMessage(int status) {
+    switch (status) {
+    case SettingsCalibrationPreflightWorkspaceOwnsDevice:
+        return "Please exit the scan module before calibration.";
+    case SettingsCalibrationPreflightDeviceNotConnected:
+        return "Device is not connected.";
+    case SettingsCalibrationPreflightUsb2Connected:
+        return "Please reconnect the device to a USB 3.0 port.";
+    case SettingsCalibrationPreflightModelUnknown:
+        return "Unable to read the device model.";
+    default:
+        return "Unable to prepare the device for calibration.";
+    }
+}
+
 } // namespace
 
 // SettingsUI 测试程序入口。
@@ -105,6 +150,12 @@ int main(int argc, char* argv[]) {
     // SettingsUI 创建 QWidget，因此必须使用 QApplication。
     QApplication app(argc, argv);
     const bool smokeMode = app.arguments().contains("--smoke");
+    // --test-preflight-status <n> 验证指定失败分支的提示且不会创建校准遮罩。
+    int requestedPreflightStatus = SettingsCalibrationPreflightReady;
+    const int preflightArgumentIndex = app.arguments().indexOf("--test-preflight-status");
+    if (preflightArgumentIndex >= 0 && preflightArgumentIndex + 1 < app.arguments().size()) {
+        requestedPreflightStatus = app.arguments().at(preflightArgumentIndex + 1).toInt();
+    }
     // --capture-color-calibration <png> 打开真实设置入口并抓取遮罩弹窗，用于视觉回归。
     QString colorCalibrationCapturePath;
     const int captureArgumentIndex = app.arguments().indexOf("--capture-color-calibration");
@@ -130,6 +181,8 @@ int main(int argc, char* argv[]) {
 
     int lastAction = 0;
     settings->SetActionCallback(&OnSettingsAction, &lastAction);
+    settings->SetCalibrationPreflightCallback(
+        &OnCalibrationPreflight, &requestedPreflightStatus);
     // 模拟从首页打开设置；该来源允许校准入口显示。
     settings->SetOpenContext(SettingsOpenSourceHome, true);
 
@@ -160,6 +213,52 @@ int main(int argc, char* argv[]) {
         QTimer::singleShot(250, &app, [&app, widget]() {
             // 页面在事件循环中完成布局后再检查表格，降低时序相关误报。
             app.exit(HasInformationRows(widget) ? 0 : 5);
+        });
+    } else if (preflightArgumentIndex >= 0) {
+        QTimer::singleShot(250, &app, [&app,
+                                      widget,
+                                      requestedPreflightStatus]() {
+            QPushButton* openButton = widget->findChild<QPushButton*>(
+                "SettingsColorCalibrationButton");
+            if (!openButton) {
+                app.exit(10);
+                return;
+            }
+
+            const std::shared_ptr<int> result = std::make_shared<int>(11);
+            // QMessageBox::information 使用嵌套事件循环，提前安排验证和关闭任务。
+            QTimer::singleShot(150, &app, [result, requestedPreflightStatus]() {
+                QMessageBox* messageBox = nullptr;
+                const QWidgetList topLevels = QApplication::topLevelWidgets();
+                for (QWidget* candidate : topLevels) {
+                    messageBox = qobject_cast<QMessageBox*>(candidate);
+                    if (messageBox) {
+                        break;
+                    }
+                }
+                if (!messageBox) {
+                    *result = 12;
+                    return;
+                }
+
+                const bool textMatches =
+                    messageBox->text() == ExpectedPreflightMessage(requestedPreflightStatus);
+                const bool noCalibrationOverlay = [&]() {
+                    const QWidgetList widgets = QApplication::topLevelWidgets();
+                    for (QWidget* candidate : widgets) {
+                        if (candidate &&
+                            candidate->objectName() == "SettingsCalibrationModalOverlay") {
+                            return false;
+                        }
+                    }
+                    return true;
+                }();
+                *result = textMatches && noCalibrationOverlay ? 0 : 13;
+                messageBox->accept();
+            });
+
+            openButton->click();
+            app.exit(*result);
         });
     } else if (!colorCalibrationCapturePath.isEmpty()) {
         QTimer::singleShot(250, &app, [&app,
@@ -209,8 +308,8 @@ int main(int argc, char* argv[]) {
             });
 
             openButton->click();
-            // 设置动作回调应在弹窗关闭后收到 ColorCalibration 动作，顺便验证模块交互链路。
-            if (*captureResult == 0 && lastAction != SettingsActionOpenColorCalibration) {
+            // 弹窗关闭后必须收到独立释放动作，MainExe 据此关闭唯一设备会话。
+            if (*captureResult == 0 && lastAction != SettingsActionColorCalibrationClosed) {
                 *captureResult = 9;
             }
             app.exit(*captureResult);

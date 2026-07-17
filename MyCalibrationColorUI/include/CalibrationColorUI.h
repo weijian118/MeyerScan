@@ -1,12 +1,30 @@
 ﻿#pragma once
 
 #include <QWidget>
+#include <cstdint>
 
 #ifdef MEYERSCAN_CALIBRATIONCOLORUI_EXPORTS
 #  define MEYERSCAN_CALIBRATIONCOLORUI_API __declspec(dllexport)
 #else
 #  define MEYERSCAN_CALIBRATIONCOLORUI_API __declspec(dllimport)
 #endif
+
+// 颜色校准 UI 公共虚接口版本。增加设备快照注入后升级为 2。
+static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 2;
+
+// MainExe/SettingsUI 传入的只读设备快照。它不包含 DeviceCmd 句柄，因而可以
+// 安全复制并在多个 UI 模块间传递；后续新增字段只能追加在 reserved 之前。
+struct CalibrationColorDeviceContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t deviceModel;
+    std::int32_t modelSource;
+    std::int32_t connectionState;
+    std::int32_t isUsb2;
+    char modelNameUtf8[32];
+    char deviceIdUtf8[32];
+    std::uint32_t reserved[8];
+};
 
 // ICalibrationColorUI 是颜色校准 UI 模块的公共接口。
 // 模块边界:
@@ -21,6 +39,10 @@ public:
     // 初始化颜色校准模块。
     // appDirUtf8 必须来自 QApplication::applicationDirPath() 或 MainExe 显式传入。
     virtual bool Init(const char* appDirUtf8, const char* logDirUtf8) = 0;
+
+    // 注入已经通过 MainExe 设备会话宿主校验的设备快照。
+    // 必须在 CreateWidget 前调用；本模块只保存副本，不持有调用方内存。
+    virtual bool SetDeviceContext(const CalibrationColorDeviceContext* context) = 0;
 
     // 创建颜色校准 QWidget。
     // 返回对象一般由调用方页面容器接管父子关系。

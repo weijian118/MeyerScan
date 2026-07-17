@@ -31,6 +31,7 @@
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
+- `src/device/DeviceSessionHost` 是 MainExe 进程内唯一设备会话所有者。颜色校准从首页/浏览设置进入时依次检查工作台占用、Cypress 连接、USB3、`0xCD/0xCE` 设备信息和明确型号标记；校准关闭后释放会话。
 - CaseUI/SettingsUI 不直接持有 RuntimeDataCenter。MainExe 从进程级缓存读取指定 domain，组装 `{schemaVersion, generatedAtUtc, domains}` 后在 CreateWidget 前注入。
 - 患者/订单快照由 MainExe 编排合并：CaseOrderService 新表摘要优先，RuntimeDataCenter 旧表记录按稳定 ID 补充；新建订单保存后无需硬写不稳定旧表即可在案例页显示。
 - CaseOrderService 是患者/订单正式写入口；MainExe 只补齐工作流 ID、复核权限和编排保存，不在主程序中拼患者/订单 SQL。

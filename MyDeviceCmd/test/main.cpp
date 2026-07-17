@@ -313,6 +313,54 @@ namespace
         }
     }
 
+    // 验证颜色校准入口的四个关键设备分支。每次调用都由 DeviceCmd 自己
+    // 关闭旧会话并重建模拟会话，行为与 MainExe 的单会话宿主一致。
+    void TestColorCalibrationPreflight(MeyerDeviceCmdHandle handle, TestContext& test)
+    {
+        MeyerDeviceCmdOpenParams params;
+        MeyerDeviceCmd_InitOpenParams(&params);
+        params.backendType = MeyerDeviceCmdBackend_SimulatorForTest;
+        params.modelHint = MeyerDeviceModel_MyScan6;
+        std::strcpy(params.simulatedDeviceIdUtf8, "6200005301203");
+
+        MeyerDeviceCalibrationPreflight preflight;
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+
+        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_DeviceNotConnected;
+        std::int32_t result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_DeviceNotConnected,
+                    "color calibration preflight reports disconnected device");
+
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_Usb2Connected;
+        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Usb2Connected &&
+                    preflight.state.isUsb2 == 1,
+                    "color calibration preflight rejects USB 2.x connection");
+
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_OmitModelMarker;
+        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_ModelUnknown,
+                    "color calibration preflight keeps unreported model unknown");
+
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_None;
+        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.state.model == MeyerDeviceModel_MyScan6 &&
+                    preflight.state.modelSource == MeyerDeviceModelSource_DeviceReported &&
+                    std::strcmp(preflight.deviceInfo.deviceIdUtf8, "6200005301203") == 0,
+                    "color calibration preflight reads device information and reported model");
+        test.Expect(MeyerDeviceCmd_IsOpen(handle) == 1,
+                    "successful color calibration preflight keeps one device session open");
+        MeyerDeviceCmd_Close(handle);
+    }
+
     // 运行无硬件模拟全链路。
     int RunSmoke()
     {
@@ -345,6 +393,7 @@ namespace
             TestCalibrationAndDeviceInfo(handle, test);
             TestExposureFirmwareAndControl(handle, test);
             TestCapture(handle, test);
+            TestColorCalibrationPreflight(handle, test);
             test.Expect(MeyerDeviceCmd_Close(handle) == MeyerDeviceCmdResult_Ok,
                         "device session closes safely");
         }
@@ -396,12 +445,82 @@ namespace
         return 0;
     }
 
+    // 使用真实 DeviceTransport 执行颜色校准入口的只读预检。
+    // 与 --probe-real 只验证 DLL/ABI 不同，本模式会继续发送 0xCD 请求并接收
+    // 0xCE 设备信息，从而验证“连接 -> USB 速率 -> 设备信息 -> 型号解析”完整链路。
+    // 本函数不会调用任何 Store/Set/Flash 接口，因此不会修改设备参数。
+    int RunRealCalibrationPreflight(const char* transportPath)
+    {
+        if (transportPath == nullptr || transportPath[0] == '\0')
+        {
+            std::cerr << "Transport DLL path is required.\n";
+            return 1;
+        }
+
+        // 测试宿主持有一个 DeviceCmd 句柄，作用等同于 MainExe 中的 DeviceSessionHost。
+        MeyerDeviceCmdHandle handle = MeyerDeviceCmd_Create();
+        if (handle == nullptr)
+        {
+            std::cerr << "Failed to create DeviceCmd context.\n";
+            return 1;
+        }
+
+        // 必须先使用初始化函数写入结构版本和默认超时，不能依赖栈内存初始值。
+        MeyerDeviceCmdOpenParams params;
+        MeyerDeviceCmd_InitOpenParams(&params);
+        // Unknown 表示不由宿主猜测机型，而是等待 0xCE 数据提供明确型号标记。
+        params.modelHint = MeyerDeviceModel_Unknown;
+        std::strncpy(params.transportLibraryPathUtf8,
+                     transportPath,
+                     sizeof(params.transportLibraryPathUtf8) - 1U);
+
+        MeyerDeviceCalibrationPreflight preflight;
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+        const std::int32_t apiResult =
+            MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+
+        // isUsb2=0 既可能表示 USB3，也可能只是结构默认值；必须结合 validFields
+        // 判断该字段是否由 Transport 真实填充，避免未连接时误报为 USB3。
+        const char* usbDescription = "unknown";
+        if ((preflight.state.validFields & MeyerDeviceStateField_UsbSpeed) != 0U)
+        {
+            usbDescription = preflight.state.isUsb2 != 0 ? "2.x" : "3.x";
+        }
+
+        // 按字段逐项输出，现场调试时可以区分“API 调用失败”和“业务门禁未通过”。
+        std::cout << "Calibration preflight API result: " << apiResult << "\n"
+                  << "Calibration preflight status: " << preflight.status << "\n"
+                  << "Command result: " << preflight.commandResult << "\n"
+                  << "Connection state: " << preflight.state.connectionState << "\n"
+                  << "USB: " << usbDescription << "\n"
+                  << "Device model: " << preflight.state.model << "\n"
+                  << "Model source: " << preflight.state.modelSource << "\n"
+                  << "Model name: " << preflight.state.modelNameUtf8 << "\n"
+                  << "Device ID: " << preflight.deviceInfo.deviceIdUtf8 << "\n"
+                  << "Detail: " << preflight.detailUtf8 << "\n";
+
+        if (apiResult != MeyerDeviceCmdResult_Ok)
+        {
+            // API 层失败时补充句柄中的详细错误，便于定位 DLL、ABI 或传输层问题。
+            PrintLastError(handle);
+            MeyerDeviceCmd_Destroy(handle);
+            return 2;
+        }
+
+        const bool ready = preflight.status == MeyerDeviceCalibrationPreflight_Ready;
+        // Ready 分支会按设计保留连接；手工测试结束时必须显式关闭并销毁句柄。
+        MeyerDeviceCmd_Close(handle);
+        MeyerDeviceCmd_Destroy(handle);
+        return ready ? 0 : 3;
+    }
+
     // 输出测试宿主支持的模式，避免直接运行 exe 时只能看到空白窗口。
     void PrintUsage()
     {
         std::cout << "DeviceCmdTest usage:\n"
                   << "  DeviceCmdTest --smoke\n"
                   << "  DeviceCmdTest --probe-real <absolute-transport-dll-path>\n"
+                  << "  DeviceCmdTest --preflight-real <absolute-transport-dll-path>\n"
                   << "  DeviceCmdTest --help\n";
     }
 }
@@ -421,6 +540,10 @@ int main(int argc, char* argv[])
     if (std::string(argv[1]) == "--probe-real" && argc >= 3)
     {
         return RunRealTransportProbe(argv[2]);
+    }
+    if (std::string(argv[1]) == "--preflight-real" && argc >= 3)
+    {
+        return RunRealCalibrationPreflight(argv[2]);
     }
     PrintUsage();
     return 1;

@@ -6,7 +6,7 @@
 
 ## 1. 最新验证基线
 
-验证日期：2026-07-16。
+验证日期：2026-07-17。
 
 | 检查 | 结果 |
 |---|---|
@@ -14,7 +14,8 @@
 | 根 CTest | 27/27 通过，覆盖 25 个模块测试和 2 个 MainExe 集成 smoke；新增 DeviceCmd smoke |
 | MainExe smoke | `--smoke`、`--smoke-main`、`--smoke-external-order` 已通过 |
 | VS2015 根方案 | 最近一轮 Release x64 通过；仅保留既有外部登录头文件编码/声明警告 |
-| 版本清单 | `versionList_20260716_112818_578.json`：27 项，0 缺失，0 文件/代码版本不一致，0 `codeVersionError`；DeviceTransport `1.1.0`、DeviceCmd `0.2.0` 均匹配 |
+| 版本清单 | `versionList_20260717_173409_944.json`：27 项，0 缺失，0 文件/代码版本不一致，0 `codeVersionError`；MainExe `0.2.0`、DeviceTransport `1.2.0`、DeviceCmd `0.3.0`、SettingsUI `0.3.0`、CalibrationColorUI `0.3.0` 均匹配 |
+| 设备实机预检 | 枚举到 1 个匹配 VID/PID 的 Cypress 设备并判定为 USB3；只读 `0xCD` 发送成功，1.5 秒内未收到 `0xCE`，稳定返回 `DeviceInfoReadFailed` 并关闭会话 |
 | 注释安全 | 0 错误、0 警告 |
 | 文档备份脚本 | PowerShell 5.1 AST、BOM 和两次隔离幂等执行通过 |
 
@@ -33,12 +34,12 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 | 模块 | 版本 | 当前成熟度 |
 |---|---:|---|
-| MainExe | 0.1.9 | 启动、登录、API 门禁、快照注入、新旧患者订单读模型合并、最小建单保存、导航和 smoke 已接通；真实业务编排仍在完善 |
+| MainExe | 0.2.0 | 启动、登录、API 门禁、数据快照、患者订单读模型、建单导航和设备单会话宿主已接通；真实设备和完整校准业务待联调 |
 | Logger | 1.1.1 | 基础能力可用；已提供 API 版本导出 |
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.1 | 转换链路可用；已提供 API 版本导出 |
-| DeviceTransport | 1.1.0 | VS2015/CMake 和 31 项无硬件 smoke 可用；增加统一 ABI 门禁和绝对路径日志加载；CyAPI 真实设备、长时间采集和拔插恢复待联调 |
-| DeviceCmd | 0.2.0 | 按协议覆盖 48 组 A 类命令，新增相机/标定/曝光/设备信息/固件分包等固定 POD 接口；全量模拟 smoke 和真实 Transport 动态加载已通；多机型协议、MainExe 会话宿主、Flash 写入和实机命令待联调 |
+| DeviceTransport | 1.2.0 | 默认自动遍历 CyAPI 设备，严格区分 USB2/USB3；32 项无硬件 smoke 通过，实机枚举和 USB3 判断已确认；长时间采集和拔插恢复待联调 |
+| DeviceCmd | 0.3.0 | 48 组 A 类命令可用；颜色校准未连接/USB2/`0xCD-0xCE`/型号预检及四分支模拟已通；当前实机 `0xCE` 接收超时，固件/前置初始化、预留区型号格式、Wireless 连接和 Flash 写入待联调 |
 | ConfigCenter | 0.1.1 | 读取骨架可用；迁移、通知、加密待完成 |
 | Permission | 0.1.1 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.1 | 本地/云端 JSON 快照骨架可用；由 MainExe 统一读取并注入 UI |
@@ -48,12 +49,12 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | UIResources | 0.1.4 | 统一资源 DLL 可用；已收录颜色校准 QSS、预览图和关闭按钮状态资源 |
 | HomeUI | 0.3.3 | 页面和入口动作可用；只接收应用目录，不再带数据库语义 |
 | CaseUI | 0.3.3 | 宿主快照列表和动作上报可用；真实 CRUD/Workflow 未闭环 |
-| SettingsUI | 0.2.4 | 宿主快照页面、三维校准入口和可拖动颜色校准模态遮罩可用；Windows 透明窗口蒙层已修复；配置保存/刷新未闭环 |
+| SettingsUI | 0.3.0 | 颜色校准工作台/连接/USB3/型号预检、失败提示、设备快照注入和可拖动模态遮罩可用；配置保存/刷新未闭环 |
 | OrderCreateUI | 0.5.4 | 建单 UI、牙位/桥、完整上下文导出可用；字段校验仍需完善 |
 | OrderScanWorkspaceShell | 0.1.4 | 创建/练习容器和步骤切换可用 |
 | ExternalLaunchAdapter | 0.1.1 | CMD JSON 第三方建单归一化链路可用 |
 | Calibration3DUI | 0.1.1 | UI/流程骨架；设备与计算未接入 |
-| CalibrationColorUI | 0.2.0 | 参考软件弹窗、可拖动标题栏、预览资源、共享按钮和设置遮罩链路可用；设备取图与计算未接入 |
+| CalibrationColorUI | 0.3.0 | 只接受已验证 USB3/型号 POD 快照；参考弹窗、拖动、资源、共享按钮和设置遮罩可用；设备取图与计算未接入 |
 | ScanWorkflowUI | 0.2.4 | QVTK 页面、稳定 code 流程按钮和资源释放骨架可用 |
 | DataProcessUI | 0.2.4 | QVTK 页面、稳定 code 处理入口和资源释放骨架可用 |
 | SendUI | 0.1.3 | 页面和动作上报可用；导出/上传未实现 |
@@ -72,7 +73,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | 建单 | 五种修复类型、FDI 牙位、桥、ScanSchemaService、完整上下文导出、第三方上下文 | 字段校验、跨表事务、HIS/Worklist |
 | 设置 | 分类页面、来源页参数、两校准入口、只读参考数据 | ConfigCenter 上下文、Apply/Confirm/Restore、保存后刷新 |
 | 权限 | JSON 读取、visible/enabled、首页/浏览示例 | 六维快照、PermissionConfigUI、服务/工作流/IPC 复核、绕过测试 |
-| 扫描/处理 | DLL/EXE 壳、QVTK 占位、流程按钮、鼠标中心缩放、重资源释放；DeviceTransport + DeviceCmd 分层和无硬件最小采集链路 | DeviceSessionHost、真实硬件命令/采集联调、ScanDataIO、重建、真实模型、编辑/分析算法、异常恢复、独立进程 IPC |
+| 扫描/处理 | DLL/EXE 壳、QVTK 占位、流程按钮、鼠标中心缩放、重资源释放；DeviceTransport + DeviceCmd 分层、无硬件最小采集链路和 MainExe 单会话 `DeviceSessionHost` | 独立 ScanReconstructStudio 设备宿主、真实硬件命令/采集联调、ScanDataIO、重建、真实模型、编辑/分析算法、异常恢复、独立进程 IPC |
 | 校准 | 两个独立 UI DLL 骨架 | 设备采集、算法、结果保存和失败恢复 |
 | 发送 | UI 展示和动作回调 | DataExport、压缩、邮件、云上传、重试和状态持久化 |
 | 资源与样式 | UIResources DLL、模块 QSS、通用控件 | LanguageManager、Common qm、完整资源签名/修复 |
@@ -104,7 +105,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 ### P2：扫描真实能力
 
 1. 只为独立 ScanReconstructStudio EXE 建立最小版本化 IPC。
-2. 在 MainExe/独立扫描宿主实现单一 DeviceSessionHost，把已开发 DeviceCmd -> DeviceTransport 接入设置、入口检查、校准和扫描；随后完成多机型真实设备联调。
+2. MainExe 单一 `DeviceSessionHost` 已接入设置和颜色校准入口；独立 ScanReconstructStudio 复用同一所有权规则实现自己的进程内宿主，再接入扫描并完成多机型真实设备联调。
 3. 继续开发 ScanDataIO 和采集/重建算法；采集数据落盘、预处理和重建不得回填到 UI 或 DeviceCmd。
 4. 按实际需求拆出编辑、手动配准、测量、颈缘、倒凹、咬合、底座等处理 DLL。
 5. 增加重复 Scan/Process 切换、模型加载和异常退出稳定性测试。

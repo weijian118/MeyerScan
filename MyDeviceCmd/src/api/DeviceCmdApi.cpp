@@ -270,6 +270,24 @@ extern "C"
         return InitializeStructure(info);
     }
 
+    // 初始化校准预检结果及其两个嵌套公共结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCalibrationPreflight(
+        MeyerDeviceCalibrationPreflight* preflight)
+    {
+        if (preflight == nullptr)
+        {
+            return MeyerDeviceCmdResult_InvalidArgument;
+        }
+        std::memset(preflight, 0, sizeof(*preflight));
+        preflight->structSize = sizeof(*preflight);
+        preflight->schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+        preflight->status = MeyerDeviceCalibrationPreflight_NotRun;
+        preflight->commandResult = MeyerDeviceCmdResult_Ok;
+        MeyerDeviceCmd_InitStateSnapshot(&preflight->state);
+        MeyerDeviceCmd_InitDeviceInfo(&preflight->deviceInfo);
+        return MeyerDeviceCmdResult_Ok;
+    }
+
     // 初始化曝光参数结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitExposureParameters(
         MeyerDeviceCmdExposureParameters* parameters)
@@ -350,6 +368,28 @@ extern "C"
     {
         return Invoke(handle, [](DeviceCmdContext& context) {
             return context.service.Reconnect();
+        });
+    }
+
+    // 颜色校准预检是一个原子宿主操作：打开连接、检查 USB、读取 0xCD/0xCE
+    // 并识别型号。业务拦截原因写入 preflight.status，不与 API 错误码混用。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_PrepareColorCalibration(
+        MeyerDeviceCmdHandle handle,
+        const MeyerDeviceCmdOpenParams* params,
+        MeyerDeviceCalibrationPreflight* preflight)
+    {
+        return Invoke(handle, [params, preflight](DeviceCmdContext& context) -> std::int32_t {
+            if (!HasValidHeader(params) || !HasValidHeader(preflight) ||
+                !HasValidHeader(&preflight->state) || !HasValidHeader(&preflight->deviceInfo))
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            if (params->backendType == MeyerDeviceCmdBackend_DeviceTransport &&
+                params->transportLibraryPathUtf8[0] == '\0')
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            return context.service.PrepareColorCalibration(*params, *preflight);
         });
     }
 

@@ -5,7 +5,7 @@
 namespace ModuleInfo
 {
     static const char* const Name = "MeyerScan_DeviceTransport";
-    static const char* const Version = "MeyerScan_DeviceTransport v1.1.0 (2026-07-16)";
+    static const char* const Version = "MeyerScan_DeviceTransport v1.2.0 (2026-07-17)";
     static const char* const ApiVersion = "1.0.0";
     static const int ApiVersionNumber = 1;
 }

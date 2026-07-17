@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <QWidget>
+#include <cstdint>
 
 #ifdef MEYERSCAN_SETTINGSUI_EXPORTS
 #  define MEYERSCAN_SETTINGSUI_API __declspec(dllexport)
@@ -8,8 +9,44 @@
 #  define MEYERSCAN_SETTINGSUI_API __declspec(dllimport)
 #endif
 
-// SettingsUI 公共虚接口版本；新增宿主数据注入接口后升级为 2。
-static const int MEYER_SETTINGS_UI_API_VERSION = 2;
+// SettingsUI 公共虚接口版本；新增校准设备预检回调后升级为 3。
+static const int MEYER_SETTINGS_UI_API_VERSION = 3;
+
+// 校准入口设备预检状态。数值与 DeviceCmd 的预检状态保持一致，但 SettingsUI
+// 只依赖本地 POD 合同，不包含 DeviceCmd 头或持有设备句柄。
+enum SettingsCalibrationPreflightStatus {
+    SettingsCalibrationPreflightNotRun = 0,
+    SettingsCalibrationPreflightReady = 1,
+    SettingsCalibrationPreflightWorkspaceOwnsDevice = 2,
+    SettingsCalibrationPreflightDeviceNotConnected = 3,
+    SettingsCalibrationPreflightUsb2Connected = 4,
+    SettingsCalibrationPreflightWirelessUnsupported = 5,
+    SettingsCalibrationPreflightDeviceInfoReadFailed = 6,
+    SettingsCalibrationPreflightModelUnknown = 7,
+    SettingsCalibrationPreflightInternalError = 8,
+};
+
+// MainExe 在预检成功后填充的设备上下文。SettingsUI 只负责把副本继续注入
+// CalibrationColorUI，不解释机型差异，也不共享 MainExe 的 DeviceCmd 句柄。
+struct SettingsCalibrationDeviceContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t status;
+    std::int32_t deviceModel;
+    std::int32_t modelSource;
+    std::int32_t connectionState;
+    std::int32_t isUsb2;
+    char modelNameUtf8[32];
+    char deviceIdUtf8[32];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+// 同步回调必须在返回前完成预检并写满 context；返回值使用
+// SettingsCalibrationPreflightStatus。同步调用保证弹窗不会在检查完成前闪现。
+typedef int (*SettingsCalibrationPreflightCallback)(void* context,
+                                                     int actionId,
+                                                     SettingsCalibrationDeviceContext* deviceContext);
 
 // ISettingsUI 是设置模块的公共接口。
 // 模块边界:
@@ -28,6 +65,10 @@ public:
     // 设置动作回调。
     // callback 由 MainExe 提供，SettingsUI 只上报稳定 actionId。
     virtual void SetActionCallback(void (*callback)(void* context, int actionId), void* context) = 0;
+
+    // 注册校准设备预检回调。设备会话由 MainExe 持有，SettingsUI 不加载 DeviceCmd。
+    virtual void SetCalibrationPreflightCallback(SettingsCalibrationPreflightCallback callback,
+                                                  void* context) = 0;
 
     // 设置本次打开设置界面的来源上下文。
     // openSource 使用 SettingsOpenSource；allowCalibration=false 时必须隐藏/禁用校准入口。
@@ -62,6 +103,7 @@ enum SettingsActionId {
     SettingsActionRestore = 4,        // 恢复默认设置
     SettingsActionOpen3DCalibration = 101,    // 打开三维校准页面
     SettingsActionOpenColorCalibration = 102, // 打开颜色校准页面
+    SettingsActionColorCalibrationClosed = 103, // 颜色校准关闭，宿主释放设备会话
 };
 
 // 设置界面打开来源。

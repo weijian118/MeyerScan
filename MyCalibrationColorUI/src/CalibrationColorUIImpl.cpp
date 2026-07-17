@@ -16,13 +16,15 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <cstring>
+
 namespace {
 namespace ModuleInfo {
 // 模块名用于日志 [Mod:] 字段，必须与 vcxproj 中的 MEYER_MODULE_NAME 保持一致。
 const char* Name = "MeyerScan_CalibrationColorUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CalibrationColorUI v0.2.0 (2026-07-16)";
+const char* Version = "MeyerScan_CalibrationColorUI v0.3.0 (2026-07-17)";
 }
 
 // CalibrationPreviewWidget 保持预览区域为正方形，并按比例绘制色卡采集图片。
@@ -181,13 +183,52 @@ bool CalibrationColorUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8
     return true;
 }
 
+// 保存颜色校准使用的设备快照。
+// MainExe 已经完成连接、USB3 和型号检查，本模块仍重复校验关键字段，避免错误宿主绕过门禁。
+bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContext* context) {
+    if (!context ||
+        context->structSize != sizeof(CalibrationColorDeviceContext) ||
+        context->schemaVersion != 1U ||
+        context->connectionState != 1 ||
+        context->isUsb2 != 0 ||
+        context->deviceModel <= 0) {
+        m_hasDeviceContext = false;
+        std::memset(&m_deviceContext, 0, sizeof(m_deviceContext));
+        WriteLog(LogLevel::Warning,
+                 "SetDeviceContextRejected",
+                 "Color calibration device context is invalid or not ready");
+        return false;
+    }
+
+    // 按值复制固定 POD，调用返回后不依赖 SettingsUI 栈上临时结构的生命周期。
+    m_deviceContext = *context;
+    m_hasDeviceContext = true;
+    WriteLog(LogLevel::Info,
+             "SetDeviceContext",
+             QString("Device context accepted: model=%1 name=%2 device=%3")
+                 .arg(m_deviceContext.deviceModel)
+                 .arg(QString::fromUtf8(m_deviceContext.modelNameUtf8))
+                 .arg(QString::fromUtf8(m_deviceContext.deviceIdUtf8)));
+    return true;
+}
+
 // 创建颜色校准主界面。
 // 页面按参考软件还原为“自定义标题栏 + 方形相机预览 + 校准/退出按钮”的独立流程面板。
 QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
+    if (!m_hasDeviceContext) {
+        // 颜色校准不得绕过 MainExe 设备预检直接创建；测试宿主需显式注入模拟快照。
+        WriteLog(LogLevel::Warning,
+                 "CreateWidgetRejected",
+                 "Device context must be set before creating color calibration UI");
+        return nullptr;
+    }
     // root 挂到 parent 下时由设置模块遮罩弹窗接管；无 parent 时作为独立人工测试窗口。
     auto* root = new QWidget(parent);
     // objectName 是 QSS、自动化测试和设置模块定位颜色校准面板的稳定锚点。
     root->setObjectName("MeyerScanCalibrationColorUIRoot");
+    // 动态属性仅供自动化和现场诊断读取，不参与样式或业务判断。
+    root->setProperty("deviceModel", m_deviceContext.deviceModel);
+    root->setProperty("deviceId", QString::fromUtf8(m_deviceContext.deviceIdUtf8));
     // 独立运行时去掉系统标题栏，使用页面内的标题和关闭按钮复刻参考界面。
     if (!parent) {
         root->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
@@ -412,6 +453,8 @@ void CalibrationColorUIImpl::Shutdown() {
     m_root = nullptr;
     // UIComponents 是共享 DLL 内部单例，本模块只清空借用指针，不调用其 Shutdown。
     m_uiComponents = nullptr;
+    m_hasDeviceContext = false;
+    std::memset(&m_deviceContext, 0, sizeof(m_deviceContext));
     m_logger = nullptr;
     m_appDir.clear();
     m_logDir.clear();
@@ -439,5 +482,5 @@ extern "C" MEYERSCAN_CALIBRATIONCOLORUI_API const char* GetMeyerModuleVersion() 
 
 // 返回颜色校准界面公共接口 ABI 版本。
 extern "C" __declspec(dllexport) int GetMeyerModuleApiVersion() {
-    return 1;
+    return MEYER_CALIBRATION_COLOR_UI_API_VERSION;
 }

@@ -35,7 +35,10 @@ namespace meyer
                 MeyerDeviceCapability_Battery |
                 MeyerDeviceCapability_Light |
                 MeyerDeviceCapability_ForceLight |
-                MeyerDeviceCapability_Capture;
+                MeyerDeviceCapability_Capture |
+                // 用户提供的旧软件实例确认 0xCD/0xCE 也用于有线机型的
+                // 设备信息读取，因此该能力属于当前多机型公共探测链路。
+                MeyerDeviceCapability_DeviceSecurityInfo;
 
             static const std::uint64_t wirelessCapabilities =
                 commonCapabilities |
@@ -50,6 +53,18 @@ namespace meyer
             // 它只选择 B 类图像头解析方式，不作为产品型号对外展示。
             static const DeviceModelProfile profiles[] =
             {
+                // Unknown 不是产品型号，而是校准入口探测阶段使用的最小配置。
+                // 它只允许读取设备信息，型号识别成功后服务会切换到真实 profile。
+                { MeyerDeviceModel_Unknown,
+                  MeyerDeviceProtocolFamily_LegacySimilar,
+                  false,
+                  6,
+                  MeyerDeviceCapability_DeviceSecurityInfo,
+                  "Unknown",
+                  "Legacy device information probe",
+                  StopSequence::LightOffThenStop,
+                  80U,
+                  BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan3,
                   MeyerDeviceProtocolFamily_LegacySimilar,
                   false,

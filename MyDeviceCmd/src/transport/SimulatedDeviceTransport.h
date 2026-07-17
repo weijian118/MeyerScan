@@ -68,6 +68,9 @@ namespace meyer
             bool m_captureActive;
             bool m_frameReady;
             bool m_lightOn;
+            bool m_isUsb2;
+            bool m_omitModelMarker;
+            std::int32_t m_model;
             std::string m_deviceId;
             std::string m_lastError;
             std::vector<std::uint8_t> m_pendingResponse;

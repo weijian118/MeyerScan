@@ -1,5 +1,12 @@
 ﻿# 修改记录
 
+## 2026-07-17 - 1.2.0
+
+- 默认 `deviceIndex` 改为 `MEYER_DEVICE_TRANSPORT_AUTO_DEVICE_INDEX`，CyAPI 按枚举顺序尝试全部设备，避免其它 Cypress 设备占用索引 0 时漏检口扫设备。
+- USB2 判定按 `bHighSpeed + BcdUSB [0x0200,0x0300)`，USB3 判定按 `bSuperSpeed + BcdUSB >= 0x0300`；未知速度不再被默认 `false` 误判为 USB3。
+- 显式设备索引仍保留给诊断工具；自动模式和默认值加入无硬件 smoke，测试数更新为 32 项。
+- 实机验证已确认自动枚举和 USB3 判断；命令测试按旧软件增加发送后 200 ms 间隔，当前设备仍未返回只读 `0xCD` 的 `0xCE` 响应。
+
 ## 2026-07-16 - 1.1.0
 
 - 增加统一整数 ABI 导出 `GetMeyerModuleApiVersion()`，使 `MyDeviceCmd` 能在解析 Transport 函数表前完成版本门禁。

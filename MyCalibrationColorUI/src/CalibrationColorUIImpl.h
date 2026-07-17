@@ -26,6 +26,9 @@ public:
     // 创建颜色校准界面。
     QWidget* CreateWidget(QWidget* parent = nullptr) override;
 
+    // 保存 MainExe 设备会话宿主已经验证的只读设备快照。
+    bool SetDeviceContext(const CalibrationColorDeviceContext* context) override;
+
     // 返回模块版本。
     const char* GetModuleVersion() const override;
 
@@ -71,4 +74,8 @@ private:
 
     // 当前根界面的弱引用，真实释放由调用方/Qt 父子关系负责。
     QWidget* m_root = nullptr;
+
+    // 设备上下文按值保存，不持有 MainExe/SettingsUI 的临时结构地址。
+    CalibrationColorDeviceContext m_deviceContext = {};
+    bool m_hasDeviceContext = false;
 };

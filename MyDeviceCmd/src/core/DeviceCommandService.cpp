@@ -10,6 +10,7 @@
 #include "../transport/SimulatedDeviceTransport.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -315,6 +316,68 @@ namespace
         std::memcpy(info.expirationCode, &payload[15U], MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES);
         std::memcpy(info.reservedData, &payload[45U], 337U);
     }
+
+    // 把设备信息预留区转换为可搜索的 ASCII 小写文本。不可打印字节替换为空格，
+    // 防止二进制数据和相邻可打印片段意外拼成一个伪造型号标记。
+    std::string BuildSearchableModelText(const MeyerDeviceCmdDeviceInfo& info)
+    {
+        std::string text;
+        text.reserve(sizeof(info.reservedData));
+        for (std::size_t index = 0U; index < sizeof(info.reservedData); ++index)
+        {
+            const unsigned char value = info.reservedData[index];
+            if (value >= 32U && value <= 126U)
+            {
+                text.push_back(static_cast<char>(std::tolower(value)));
+            }
+            else
+            {
+                text.push_back(' ');
+            }
+        }
+        return text;
+    }
+
+    // 只识别设备明确上报的稳定标记，不根据设备编号前缀猜测型号。
+    // 当前正式协议把 337 字节定义为预留区；实机确认新格式后只需扩展本函数。
+    std::int32_t DetectModelFromDeviceInfo(const MeyerDeviceCmdDeviceInfo& info)
+    {
+        const std::string text = BuildSearchableModelText(info);
+        if (text.find("meyerscan_model=60") != std::string::npos ||
+            text.find("myscan 6 wireless") != std::string::npos)
+        {
+            return MeyerDeviceModel_MyScan6Wireless;
+        }
+        if (text.find("meyerscan_model=50") != std::string::npos ||
+            text.find("myscan 5h") != std::string::npos)
+        {
+            return MeyerDeviceModel_MyScan5H;
+        }
+        if (text.find("meyerscan_model=3") != std::string::npos ||
+            text.find("myscan 3") != std::string::npos)
+        {
+            return MeyerDeviceModel_MyScan3;
+        }
+        if (text.find("meyerscan_model=5") != std::string::npos ||
+            text.find("myscan 5") != std::string::npos)
+        {
+            return MeyerDeviceModel_MyScan5;
+        }
+        if (text.find("meyerscan_model=6") != std::string::npos ||
+            text.find("myscan 6") != std::string::npos)
+        {
+            return MeyerDeviceModel_MyScan6;
+        }
+        return MeyerDeviceModel_Unknown;
+    }
+
+    // 预检详情使用固定 UTF-8 缓冲区，调用方复制结构后不依赖 DLL 内字符串生命周期。
+    void SetPreflightDetail(MeyerDeviceCalibrationPreflight& preflight,
+                            const std::string& detail)
+    {
+        std::memset(preflight.detailUtf8, 0, sizeof(preflight.detailUtf8));
+        std::strncpy(preflight.detailUtf8, detail.c_str(), sizeof(preflight.detailUtf8) - 1U);
+    }
 }
 
 namespace meyer
@@ -446,6 +509,87 @@ namespace meyer
 
             m_lastError.clear();
             logging::WriteInfo("Reconnect", "Device command session reconnected");
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 执行颜色校准入口所需的完整设备预检。
+        // 该函数只在扫描/练习工作台未持有设备时调用；工作台门禁由 MainExe 先完成。
+        std::int32_t DeviceCommandService::PrepareColorCalibration(
+            const MeyerDeviceCmdOpenParams& params,
+            MeyerDeviceCalibrationPreflight& preflight)
+        {
+            preflight.status = MeyerDeviceCalibrationPreflight_NotRun;
+            preflight.commandResult = MeyerDeviceCmdResult_Ok;
+            SetPreflightDetail(preflight, "Color calibration device preflight started");
+
+            // MyScan 6 Wireless 使用另一套尚未开发的连接方法。调用方明确指定该
+            // 型号时必须返回未支持，不能错误落入 Cypress USB 并报告已连接。
+            if (params.backendType == MeyerDeviceCmdBackend_DeviceTransport &&
+                params.modelHint == MeyerDeviceModel_MyScan6Wireless)
+            {
+                preflight.status = MeyerDeviceCalibrationPreflight_WirelessProbeUnsupported;
+                SetPreflightDetail(preflight, "MyScan 6 Wireless connection probe is not implemented");
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            const std::int32_t openResult = Open(params);
+            if (openResult != MeyerDeviceCmdResult_Ok)
+            {
+                preflight.commandResult = openResult;
+                preflight.status = openResult == MeyerDeviceCmdResult_DeviceNotFound
+                    ? MeyerDeviceCalibrationPreflight_DeviceNotConnected
+                    : MeyerDeviceCalibrationPreflight_InternalError;
+                SetPreflightDetail(preflight, m_lastError);
+                preflight.state = m_state;
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            // Open 已从 DeviceTransport 取得 USB 速率。USB2 状态只需读取内存
+            // 快照，不再访问设备；失败分支复制快照后立即关闭唯一会话。
+            if ((m_state.validFields & MeyerDeviceStateField_UsbSpeed) != 0U &&
+                m_state.isUsb2 != 0)
+            {
+                preflight.status = MeyerDeviceCalibrationPreflight_Usb2Connected;
+                preflight.state = m_state;
+                SetPreflightDetail(preflight, "Device is connected through USB 2.x");
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            MeyerDeviceCmdDeviceInfo info = {};
+            info.structSize = sizeof(MeyerDeviceCmdDeviceInfo);
+            info.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            const std::int32_t infoResult = ReadDeviceInfo(info);
+            if (infoResult != MeyerDeviceCmdResult_Ok)
+            {
+                preflight.commandResult = infoResult;
+                preflight.status = MeyerDeviceCalibrationPreflight_DeviceInfoReadFailed;
+                preflight.state = m_state;
+                SetPreflightDetail(preflight, m_lastError);
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+            preflight.deviceInfo = info;
+
+            const std::int32_t detectedModel = DetectModelFromDeviceInfo(info);
+            if (!ApplyDetectedModel(detectedModel, MeyerDeviceModelSource_DeviceReported))
+            {
+                preflight.status = MeyerDeviceCalibrationPreflight_ModelUnknown;
+                preflight.state = m_state;
+                SetPreflightDetail(
+                    preflight,
+                    "0xCE device information has no recognized model marker in its reserved field");
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            preflight.status = MeyerDeviceCalibrationPreflight_Ready;
+            preflight.state = m_state;
+            SetPreflightDetail(preflight, "Color calibration device preflight passed");
+            logging::WriteInfo("PrepareColorCalibration",
+                               "Device connection, USB speed and model checks passed");
+            // Ready 分支保留当前 DeviceCmd/Transport 会话，颜色校准关闭后由宿主 Close。
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -1493,15 +1637,43 @@ namespace meyer
             m_state.sequence = nextSequence;
             m_state.model = profile.model;
             m_state.protocolFamily = profile.protocolFamily;
-            // 当前协议没有可靠产品型号上报字段，因此只能标记为宿主选择的配置。
-            m_state.modelSource = MeyerDeviceModelSource_HostHint;
+            // Unknown 是探测期最小配置，不得被标成宿主已确认型号。
+            m_state.modelSource = profile.model == MeyerDeviceModel_Unknown
+                ? MeyerDeviceModelSource_Unknown
+                : MeyerDeviceModelSource_HostHint;
             m_state.capabilities = profile.capabilities;
             m_state.connectionState = MeyerDeviceConnectionState_Closed;
             m_state.workMode = MeyerDeviceWorkMode_Idle;
-            m_state.validFields = MeyerDeviceStateField_Model |
-                                  MeyerDeviceStateField_Connection |
+            m_state.validFields = MeyerDeviceStateField_Connection |
                                   MeyerDeviceStateField_Capture;
-            CopyText(m_state.modelNameUtf8, std::string(profile.modelName));
+            if (profile.model != MeyerDeviceModel_Unknown)
+            {
+                m_state.validFields |= MeyerDeviceStateField_Model;
+                CopyText(m_state.modelNameUtf8, std::string(profile.modelName));
+            }
+        }
+
+        // 把设备信息解析出的型号应用到当前会话，同时保留刚刚读取的设备编号、
+        // 期限和 USB 状态。与 ResetStateForModel 不同，本函数不能清空动态字段。
+        bool DeviceCommandService::ApplyDetectedModel(std::int32_t model,
+                                                      std::int32_t source)
+        {
+            const DeviceModelProfile* detectedProfile = DeviceModelCatalog::Find(model);
+            if (detectedProfile == nullptr || model == MeyerDeviceModel_Unknown)
+            {
+                return false;
+            }
+
+            m_profile = detectedProfile;
+            m_lastOpenParams.modelHint = model;
+            m_state.model = model;
+            m_state.protocolFamily = detectedProfile->protocolFamily;
+            m_state.modelSource = source;
+            m_state.capabilities = detectedProfile->capabilities;
+            m_state.validFields |= MeyerDeviceStateField_Model;
+            CopyText(m_state.modelNameUtf8, std::string(detectedProfile->modelName));
+            AdvanceState();
+            return true;
         }
     }
 }

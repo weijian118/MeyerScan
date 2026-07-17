@@ -28,6 +28,7 @@
 
 #include "DatabaseQtAdapter.h"
 #include "Logger.h"
+#include "device/DeviceSessionHost.h"
 
 namespace {
 const char* kDefaultLoginUrl = "https://myscan.meyerop.com/login";
@@ -40,7 +41,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.1.9 (2026-07-15)";
+const char* Version = "MeyerScan_MainExe v0.2.0 (2026-07-17)";
 }
 
 // 从患者/订单读模型行中取稳定 ID。
@@ -150,6 +151,11 @@ MainWindow::MainWindow(QWidget* parent)
     // 后续所有客户操作日志都复用 m_logger 这个缓存指针。
     InitLoggerEarly();
 
+    // 设备会话宿主属于 MainExe 生命周期，但首次颜色校准前才真正加载 DeviceCmd。
+    // 这保证登录和普通首页浏览不会提前枚举 USB。
+    m_deviceSessionHost = new DeviceSessionHost();
+    m_deviceSessionHost->Initialize(QCoreApplication::applicationDirPath(), m_logger);
+
     // MainExe 只提供一个全屏内容区。
     // 首页、浏览、等待页不会作为并列兄弟页面常驻；
     // 每次只把当前需要显示的模块页面挂到这个 layout 中，离开后及时释放旧页面资源。
@@ -224,6 +230,13 @@ MainWindow::~MainWindow() {
     }
     if (m_uiComponents) {
         m_uiComponents->Shutdown();
+    }
+
+    // 设备会话必须在 Logger 关闭前释放，关闭结果和异常仍能进入统一日志。
+    if (m_deviceSessionHost) {
+        m_deviceSessionHost->Shutdown();
+        delete m_deviceSessionHost;
+        m_deviceSessionHost = nullptr;
     }
 
     // Database 通过 QtAdapter 收尾，MainExe 不直接包含 Database.h。
@@ -659,6 +672,18 @@ void MainWindow::OnSettingsAction(void* context, int actionId) {
     }
 }
 
+// C ABI 同步回调转发：SettingsUI 在真正创建校准弹窗前等待该函数返回。
+int MainWindow::OnCalibrationPreflight(
+    void* context,
+    int actionId,
+    SettingsCalibrationDeviceContext* deviceContext) {
+    auto* window = static_cast<MainWindow*>(context);
+    if (!window) {
+        return SettingsCalibrationPreflightInternalError;
+    }
+    return window->HandleCalibrationPreflight(actionId, deviceContext);
+}
+
 // C ABI 回调转发：OrderCreateUI 不直接依赖 MainWindow 类型。
 void MainWindow::OnOrderCreateAction(void* context, int actionId) {
     auto* window = static_cast<MainWindow*>(context);
@@ -835,13 +860,90 @@ void MainWindow::HandleSettingsAction(int actionId) {
         break;
     case SettingsActionOpen3DCalibration:
     case SettingsActionOpenColorCalibration:
-        // 校准页面已经由 SettingsUI 内部嵌入，这里只记录跨模块动作。
+        // SettingsUI 已通过同步回调完成设备预检；这里记录弹窗开始显示。
         WriteStatus(tr("Calibration page opened"));
+        break;
+    case SettingsActionColorCalibrationClosed:
+        // 颜色校准弹窗关闭后立即释放唯一 DeviceCmd/Transport 会话，避免设置页空闲时占用设备。
+        if (m_deviceSessionHost) {
+            m_deviceSessionHost->CloseSession();
+        }
+        WriteStatus(tr("Color calibration closed"));
         break;
     default:
         WriteStatus(tr("Settings action %1 is not implemented yet").arg(actionId));
         break;
     }
+}
+
+// 完成颜色校准入口的工作台和设备预检。
+int MainWindow::HandleCalibrationPreflight(
+    int actionId,
+    SettingsCalibrationDeviceContext* deviceContext) {
+    if (!deviceContext || actionId != SettingsActionOpenColorCalibration) {
+        return SettingsCalibrationPreflightInternalError;
+    }
+
+    std::memset(deviceContext, 0, sizeof(*deviceContext));
+    deviceContext->structSize = sizeof(*deviceContext);
+    deviceContext->schemaVersion = 1U;
+
+    // 创建工作台的 Order/Scan/Process/Send 和练习工作台的 Scan/Process
+    // 都共用扫描设备。即使 SettingsUI 已经释放工作台 QWidget，也要按打开来源拦截。
+    if (m_settingsOpenedFromActiveWorkspace ||
+        m_settingsOpenSource == SettingsOpenSourceScanReconstruct) {
+        deviceContext->status = SettingsCalibrationPreflightWorkspaceOwnsDevice;
+        std::strncpy(deviceContext->detailUtf8,
+                     "Order or practice workspace owns the device session",
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        WriteUserAction("ColorCalibrationBlocked",
+                        "Order/practice workspace owns the device session");
+        return deviceContext->status;
+    }
+
+    if (!m_deviceSessionHost) {
+        deviceContext->status = SettingsCalibrationPreflightInternalError;
+        std::strncpy(deviceContext->detailUtf8,
+                     "MainExe device session host is unavailable",
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        return deviceContext->status;
+    }
+
+    MeyerDeviceCalibrationPreflight preflight = {};
+    const std::int32_t result =
+        m_deviceSessionHost->PrepareColorCalibration(&preflight);
+    if (result != MeyerDeviceCmdResult_Ok) {
+        deviceContext->status = SettingsCalibrationPreflightInternalError;
+        std::strncpy(deviceContext->detailUtf8,
+                     preflight.detailUtf8,
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        WriteUserAction("ColorCalibrationPreflightFailed",
+                        QString("Device host API result: %1").arg(result));
+        return deviceContext->status;
+    }
+
+    // Settings 和颜色校准模块只接收所需字段副本，不获得 DeviceCmd 句柄或函数表。
+    deviceContext->status = preflight.status;
+    deviceContext->deviceModel = preflight.state.model;
+    deviceContext->modelSource = preflight.state.modelSource;
+    deviceContext->connectionState = preflight.state.connectionState;
+    deviceContext->isUsb2 = preflight.state.isUsb2;
+    std::strncpy(deviceContext->modelNameUtf8,
+                 preflight.state.modelNameUtf8,
+                 sizeof(deviceContext->modelNameUtf8) - 1U);
+    std::strncpy(deviceContext->deviceIdUtf8,
+                 preflight.state.deviceIdUtf8,
+                 sizeof(deviceContext->deviceIdUtf8) - 1U);
+    std::strncpy(deviceContext->detailUtf8,
+                 preflight.detailUtf8,
+                 sizeof(deviceContext->detailUtf8) - 1U);
+
+    WriteUserAction("ColorCalibrationPreflight",
+                    QString("status=%1 model=%2 usb2=%3")
+                        .arg(deviceContext->status)
+                        .arg(deviceContext->deviceModel)
+                        .arg(deviceContext->isUsb2));
+    return deviceContext->status;
 }
 
 // 建单页面动作统一由 MainExe 分发。
@@ -1120,6 +1222,9 @@ void MainWindow::ShowCase() {
 // 显示设置页，并记录关闭设置后应回到的来源页面。
 void MainWindow::ShowSettings(int openSource) {
     // 记录来源不是为了页面跳转本身，而是让 SettingsUI 能判断校准入口是否允许显示。
+    m_settingsOpenedFromActiveWorkspace =
+        openSource == SettingsOpenSourceScanReconstruct ||
+        (m_orderWorkspaceWidget && m_activeWidget == m_orderWorkspaceWidget);
     m_settingsOpenSource = openSource;
     if (EnsureSettingsPage()) {
         // 每次打开设置前都传来源上下文。
@@ -1312,6 +1417,8 @@ bool MainWindow::EnsureSettingsPage() {
         return false;
     }
     m_settings->SetActionCallback(&MainWindow::OnSettingsAction, this);
+    m_settings->SetCalibrationPreflightCallback(
+        &MainWindow::OnCalibrationPreflight, this);
     // CreateWidget 前先传一次来源上下文，确保校准页首次创建时状态正确。
     m_settings->SetOpenContext(m_settingsOpenSource,
                                IsCalibrationAllowedForSettingsSource(m_settingsOpenSource));
@@ -2680,7 +2787,7 @@ ISettingsUI* MainWindow::SettingsUIModule() {
     QFunctionPointer pointer = ResolveFactory(m_settingsLibrary,
                                               "MeyerScan_SettingsUI.dll",
                                               "GetSettingsUI",
-                                              2,
+                                              MEYER_SETTINGS_UI_API_VERSION,
                                               &error);
     if (!pointer) {
         WriteStatus(tr("SettingsUI unavailable"));

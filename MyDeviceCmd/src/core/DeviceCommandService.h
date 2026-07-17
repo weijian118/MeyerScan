@@ -34,6 +34,10 @@ namespace meyer
             // 使用最近一次打开参数重新连接设备。
             std::int32_t Reconnect();
 
+            // 为颜色校准建立空闲会话，检查连接/USB 速率并读取设备信息与型号。
+            std::int32_t PrepareColorCalibration(const MeyerDeviceCmdOpenParams& params,
+                                                 MeyerDeviceCalibrationPreflight& preflight);
+
             // 顺序读取机器码、主板版本、电池和授权信息等基础状态。
             std::int32_t RefreshBasicState();
             // 复制最近一次状态快照，不触发新的 USB 请求。
@@ -146,6 +150,8 @@ namespace meyer
             void AdvanceState();
             // 切换型号时清空动态字段并写入型号静态信息。
             void ResetStateForModel(const DeviceModelProfile& profile);
+            // 型号从设备信息的明确标记识别后，切换能力目录并保留已读取动态状态。
+            bool ApplyDetectedModel(std::int32_t model, std::int32_t source);
 
             std::unique_ptr<IRawDeviceTransport> m_transport;
             const DeviceModelProfile* m_profile;

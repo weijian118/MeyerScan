@@ -1,6 +1,14 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
-## 2026-07-17
+## 2026-07-17 - 0.3.0 设备预检链路
+
+- 公共接口 ABI 升级为 3，增加 `SetCalibrationPreflightCallback` 和固定 POD `SettingsCalibrationDeviceContext`。
+- 颜色校准按钮改为先同步检查工作台占用、设备连接、USB2/USB3、设备信息和型号，只有 `Ready` 才加载并创建颜色校准弹窗。
+- 分别提示退出扫描模块、设备未连接、重新插入 USB3 和型号读取失败；提示文本均使用 `tr("English source text")`。
+- 颜色校准关闭后上报 `SettingsActionColorCalibrationClosed`，MainExe 据此关闭唯一设备会话。
+- `SettingsUITest --test-preflight-status` 覆盖工作台、未连接、USB2、型号未知四个失败提示，并验证失败时不创建遮罩。
+
+## 2026-07-17 - 颜色校准蒙层
 
 - 修复 Windows 透明顶层窗口未绘制蒙层的问题：增加独立 `SettingsCalibrationDimmer` 子控件，颜色校准打开后设置背景会正确变暗。
 - 配合颜色校准面板拖动能力，取消遮罩对颜色校准根控件的 Layout 托管，改由 SettingsUI 在打开时计算初始居中位置。
