@@ -3,12 +3,19 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_CalibrationColorUI", "MeyerScan_CalibrationColorUI.vcxproj", "{8F618D5B-7A93-4F32-BD70-F8872B37C7CD}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+		{C29A8F2F-42DE-443A-B176-8D5C2423A2A1} = {C29A8F2F-42DE-443A-B176-8D5C2423A2A1}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CalibrationColorUITest", "CalibrationColorUITest.vcxproj", "{22480953-2134-4906-9E14-35CD38D9009F}"
 	ProjectSection(ProjectDependencies) = postProject
 		{8F618D5B-7A93-4F32-BD70-F8872B37C7CD} = {8F618D5B-7A93-4F32-BD70-F8872B37C7CD}
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_Logger", "..\MyLogger\MeyerScan_Logger.vcxproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeyerScan_UIComponents", "..\MyUIComponents\MeyerScan_UIComponents.vcxproj", "{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,6 +26,10 @@ Global
 		{8F618D5B-7A93-4F32-BD70-F8872B37C7CD}.Release|x64.Build.0 = Release|x64
 		{22480953-2134-4906-9E14-35CD38D9009F}.Release|x64.ActiveCfg = Release|x64
 		{22480953-2134-4906-9E14-35CD38D9009F}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.Build.0 = Release|x64
+		{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}.Release|x64.ActiveCfg = Release|x64
+		{C29A8F2F-42DE-443A-B176-8D5C2423A2A1}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

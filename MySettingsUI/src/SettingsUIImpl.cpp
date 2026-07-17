@@ -9,6 +9,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -17,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPoint>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QStandardPaths>
@@ -49,7 +51,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.2.3 (2026-07-15)";
+const char* Version = "MeyerScan_SettingsUI v0.2.4 (2026-07-16)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -967,7 +969,16 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
     layout->addLayout(textLayout, 1);
 
     auto* button = new QPushButton(tr("Calibrate"), card);
-    button->setObjectName("SettingsPrimary");
+    // 每个校准入口使用稳定 objectName，测试宿主和自动化脚本无需依赖翻译后的按钮文字。
+    if (actionId == SettingsActionOpenColorCalibration) {
+        button->setObjectName("SettingsColorCalibrationButton");
+    } else if (actionId == SettingsActionOpen3DCalibration) {
+        button->setObjectName("Settings3DCalibrationButton");
+    } else {
+        button->setObjectName("SettingsPrimary");
+    }
+    // role 属性让不同 objectName 的校准按钮继续复用同一主按钮视觉规则。
+    button->setProperty("settingsRole", "primary");
     // 按钮初始可用态来自当前打开来源，ApplyCalibrationAvailability 后还会统一刷新分类入口。
     button->setEnabled(m_allowCalibration);
     QObject::connect(button, &QPushButton::clicked, [this, actionId, title]() {
@@ -1000,7 +1011,77 @@ void SettingsUIImpl::SwitchToPage(int pageIndex, const QString& pageName) {
     }
 }
 
+// 在设置窗口上方显示颜色校准遮罩弹窗。
+// 参考软件的颜色校准是临时模态流程，不属于设置 QStackedWidget 的并列分类页。
+void SettingsUIImpl::ShowColorCalibrationDialog() {
+    if (!m_pages || !m_calibrationColor) {
+        WriteLog(LogLevel::Warning,
+                 "ShowColorCalibrationDialog",
+                 "Color calibration module is not available");
+        return;
+    }
+
+    // m_pages->window() 返回设置页面所在的顶层客户窗口，遮罩需要覆盖这整个可见区域。
+    QWidget* hostWindow = m_pages->window();
+    QDialog overlay(hostWindow, Qt::Dialog | Qt::FramelessWindowHint);
+    overlay.setObjectName("SettingsCalibrationModalOverlay");
+    // 模态窗口阻止用户在校准期间继续点击设置和首页，符合参考图的遮罩交互。
+    overlay.setModal(true);
+    overlay.setAttribute(Qt::WA_TranslucentBackground, true);
+    // 该动态属性是颜色校准模块关闭按钮识别合法弹窗宿主的稳定合同。
+    overlay.setProperty("meyerCalibrationDialogHost", true);
+    // QDialog 是新的顶层样式作用域，显式加载设置 QSS 才能稳定绘制半透明遮罩。
+    MeyerQtModule::ApplyModuleQss(&overlay, "MySettingsUI", "settings.qss", m_logger);
+
+    // 颜色校准 DLL 只创建自己的面板内容；遮罩、居中和模态生命周期由 SettingsUI 管理。
+    QWidget* calibrationWidget = m_calibrationColor->CreateWidget(&overlay);
+    if (!calibrationWidget) {
+        WriteLog(LogLevel::Warning,
+                 "ShowColorCalibrationDialog",
+                 "Color calibration widget creation failed");
+        return;
+    }
+    if (hostWindow) {
+        // 顶层 QDialog 的 move() 使用屏幕坐标，因此先把宿主左上角转换为全局坐标。
+        overlay.resize(hostWindow->size());
+        overlay.move(hostWindow->mapToGlobal(QPoint(0, 0)));
+    } else {
+        // 理论上设置页一定存在宿主；保留降级尺寸防止异常测试环境出现零尺寸窗口。
+        overlay.resize(960, 640);
+    }
+
+    // 透明顶层 QDialog 在部分 Windows 合成环境下不会绘制 rgba 背景，
+    // 因此使用一个明确的子控件承担蒙层绘制，避免出现“面板有了但背景不变暗”。
+    auto* dimmer = new QWidget(&overlay);
+    dimmer->setObjectName("SettingsCalibrationDimmer");
+    dimmer->setAttribute(Qt::WA_StyledBackground, true);
+    dimmer->setGeometry(overlay.rect());
+    dimmer->show();
+    dimmer->lower();
+
+    // 不把颜色面板放进 Layout，标题栏拖动才能真正改变面板位置；每次打开时先居中。
+    calibrationWidget->adjustSize();
+    const QSize availablePanelSize = QSize(qMax(1, overlay.width() - 32),
+                                           qMax(1, overlay.height() - 32));
+    calibrationWidget->resize(calibrationWidget->sizeHint().boundedTo(availablePanelSize));
+    calibrationWidget->move((overlay.width() - calibrationWidget->width()) / 2,
+                            (overlay.height() - calibrationWidget->height()) / 2);
+    calibrationWidget->show();
+    // 面板必须位于 dimmer 上方，否则蒙层会遮住颜色校准按钮和预览图。
+    calibrationWidget->raise();
+
+    WriteLog(LogLevel::Info, "ShowColorCalibrationDialog", "Color calibration dialog opened");
+    // 显式置前可避免宿主由第三方程序拉起时，模态弹窗被其它顶层窗口遮挡。
+    overlay.show();
+    overlay.raise();
+    overlay.activateWindow();
+    // exec() 使用 Qt 嵌套事件循环：校准弹窗仍响应消息，但调用方在弹窗关闭前不会继续切页。
+    overlay.exec();
+    WriteLog(LogLevel::Info, "ShowColorCalibrationDialog", "Color calibration dialog closed");
+}
+
 // 在设置页面内部嵌入校准模块页面。
+// 三维校准当前保留嵌入式工作流；颜色校准按参考软件改由独立遮罩弹窗承载。
 void SettingsUIImpl::ShowEmbeddedCalibration(int actionId) {
     if (!m_pages) {
         // 没有页面容器时无法嵌入校准 UI，直接返回避免空指针。
@@ -1014,15 +1095,18 @@ void SettingsUIImpl::ShowEmbeddedCalibration(int actionId) {
     // 校准模块按需加载，避免设置页面刚打开就占用额外 DLL/算法资源。
     LoadCalibrationModules();
 
+    if (actionId == SettingsActionOpenColorCalibration) {
+        // 颜色校准是短时模态操作，不创建动态 QStackedWidget 页面和返回按钮。
+        ShowColorCalibrationDialog();
+        return;
+    }
+
     QWidget* calibrationWidget = nullptr;
     QString title;
     if (actionId == SettingsActionOpen3DCalibration) {
         title = tr("3D Calibration");
         // CreateWidget 的 parent 传 m_pages，让校准页面生命周期挂到设置页容器下。
         calibrationWidget = m_calibration3D ? m_calibration3D->CreateWidget(m_pages) : nullptr;
-    } else if (actionId == SettingsActionOpenColorCalibration) {
-        title = tr("Color Calibration");
-        calibrationWidget = m_calibrationColor ? m_calibrationColor->CreateWidget(m_pages) : nullptr;
     }
 
     auto* wrapper = new QWidget(m_pages);

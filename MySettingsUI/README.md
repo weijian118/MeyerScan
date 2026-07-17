@@ -7,7 +7,8 @@
 - 左侧设置分类：General、Information、Calibration、Cloud、Scan、Data Processing、About。
 - 设置底部操作：Confirm、Apply、Restore、Cancel。
 - Calibration 分类中提供 3D Calibration 和 Color Calibration 入口。
-- 三维校准和颜色校准通过 `MeyerScan_Calibration3DUI.dll` / `MeyerScan_CalibrationColorUI.dll` 嵌入设置模块，不把校准流程写入 MainExe。
+- 三维校准通过 `MeyerScan_Calibration3DUI.dll` 保持设置内部嵌入流程；颜色校准通过 `MeyerScan_CalibrationColorUI.dll` 在设置窗口上方显示半透明模态弹窗，不把校准业务写入 MainExe 或 SettingsUI。
+- 颜色校准弹窗打开后可以拖动自定义标题栏移动面板，拖动不会移动全屏遮罩，也不会被设置页 Layout 自动弹回中心位置。
 - MainExe、HomeUI、CaseUI、后续 ScanReconstructStudio 只请求打开设置模块，不直接拼设置页面。
 
 ## 设置数据模型
@@ -64,7 +65,7 @@
 
 ### 设置持久化策略
 
-- **骨架期（当前 v0.2.3）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
+- **骨架期（当前 v0.2.4）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
   修改后暂不持久化，仅停留在 UI 控件层面。
 - **正式阶段（规划）**：设置项的读写统一走 `ConfigCenter.dll` 的 `runtime_config.json`，由 ConfigCenter 负责配置的版本校验、迁移回滚和变更通知。设置模块不直接访问文件系统或数据库。
 - **路径字段备注**：订单存储路径和打包路径在正式阶段应从 ConfigCenter 读取用户/客户配置，
@@ -74,7 +75,9 @@
 
 - 3D Calibration 和 Color Calibration 通过 `QLibrary` 按需动态加载（懒加载）。
 - DLL 加载、工厂解析和 `Init()` 是三个独立成功条件；Init 返回 false 时 SettingsUI 调用子模块 Shutdown、清空接口并显示不可用占位，不影响其它设置页。
-- 当前骨架期静默加载，加载失败显示 "Calibration module is not available."
+- 颜色校准使用全窗口半透明遮罩和居中面板，关闭后仍停留在 Calibration 分类；三维校准当前使用设置内部页面和返回按钮。
+- `SettingsUITest --capture-color-calibration <png>` 可验证颜色校准 DLL 加载、遮罩层、居中布局和动作回调。
+- 加载失败时记录 Warning；三维校准显示不可用占位，颜色校准不创建空白遮罩。
 - 正式阶段需考虑：
   - 加载超时机制（如 `QTimer::singleShot` 兜底）
   - 加载慢时显示 loading 状态占位

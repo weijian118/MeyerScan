@@ -1,16 +1,22 @@
 ﻿#include "SettingsUI.h"
 
 #include <QApplication>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QList>
+#include <QPainter>
+#include <QPixmap>
+#include <QPoint>
+#include <QPushButton>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTimer>
 #include <QWidget>
+#include <memory>
 
 // =============================================================================
 // 文件说明:
@@ -99,6 +105,12 @@ int main(int argc, char* argv[]) {
     // SettingsUI 创建 QWidget，因此必须使用 QApplication。
     QApplication app(argc, argv);
     const bool smokeMode = app.arguments().contains("--smoke");
+    // --capture-color-calibration <png> 打开真实设置入口并抓取遮罩弹窗，用于视觉回归。
+    QString colorCalibrationCapturePath;
+    const int captureArgumentIndex = app.arguments().indexOf("--capture-color-calibration");
+    if (captureArgumentIndex >= 0 && captureArgumentIndex + 1 < app.arguments().size()) {
+        colorCalibrationCapturePath = app.arguments().at(captureArgumentIndex + 1);
+    }
 
     ISettingsUI* settings = GetSettingsUI();
     if (!settings) {
@@ -148,6 +160,60 @@ int main(int argc, char* argv[]) {
         QTimer::singleShot(250, &app, [&app, widget]() {
             // 页面在事件循环中完成布局后再检查表格，降低时序相关误报。
             app.exit(HasInformationRows(widget) ? 0 : 5);
+        });
+    } else if (!colorCalibrationCapturePath.isEmpty()) {
+        QTimer::singleShot(250, &app, [&app,
+                                      widget,
+                                      &lastAction,
+                                      colorCalibrationCapturePath]() {
+            // objectName 是设置模块为自动化提供的稳定锚点，不受中英文翻译变化影响。
+            QPushButton* openButton = widget->findChild<QPushButton*>(
+                "SettingsColorCalibrationButton");
+            if (!openButton) {
+                app.exit(6);
+                return;
+            }
+
+            // shared_ptr 让结果在嵌套事件循环和延迟 lambda 之间拥有明确生命周期。
+            const std::shared_ptr<int> captureResult = std::make_shared<int>(7);
+            // click() 会进入颜色校准 QDialog 的嵌套事件循环，因此提前安排抓图和关闭任务。
+            QTimer::singleShot(300, &app, [captureResult,
+                                           colorCalibrationCapturePath,
+                                           widget]() {
+                QWidget* overlay = nullptr;
+                const QWidgetList topLevels = QApplication::topLevelWidgets();
+                for (QWidget* candidate : topLevels) {
+                    if (candidate && candidate->objectName() == "SettingsCalibrationModalOverlay") {
+                        overlay = candidate;
+                        break;
+                    }
+                }
+
+                if (overlay) {
+                    // Windows 不允许后台测试程序强抢前台焦点，因此屏幕抓图可能截到其它软件。
+                    // 这里用 Qt 离屏合成：设置页截图 + 同透明度遮罩 + 实际校准面板截图。
+                    QPixmap screenshot = widget->grab();
+                    QPainter painter(&screenshot);
+                    painter.fillRect(screenshot.rect(), QColor(0, 0, 0, 145));
+                    QWidget* calibrationPanel = overlay->findChild<QWidget*>(
+                        "MeyerScanCalibrationColorUIRoot");
+                    if (calibrationPanel) {
+                        const QPoint panelPosition = calibrationPanel->mapTo(overlay, QPoint(0, 0));
+                        painter.drawPixmap(panelPosition, calibrationPanel->grab());
+                    }
+                    painter.end();
+                    *captureResult = screenshot.save(colorCalibrationCapturePath, "PNG") ? 0 : 8;
+                    // 关闭遮罩会结束 ShowColorCalibrationDialog 内的 exec() 嵌套事件循环。
+                    overlay->close();
+                }
+            });
+
+            openButton->click();
+            // 设置动作回调应在弹窗关闭后收到 ColorCalibration 动作，顺便验证模块交互链路。
+            if (*captureResult == 0 && lastAction != SettingsActionOpenColorCalibration) {
+                *captureResult = 9;
+            }
+            app.exit(*captureResult);
         });
     }
 

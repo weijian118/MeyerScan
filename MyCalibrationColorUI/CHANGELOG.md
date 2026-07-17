@@ -1,5 +1,25 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-17
+
+- 增加自定义标题栏拖动：独立测试窗口可整体移动，SettingsUI 模态遮罩中只移动颜色校准面板，并限制面板不会拖出宿主可见区域。
+- 移除 SettingsUI 对颜色校准面板的布局托管，改为打开时手动居中，使拖动位置不会被 Qt Layout 重置。
+
+## 2026-07-16
+
+- 版本升级为 `v0.2.0`，同步代码版本、CMake 项目版本和 Windows DLL 文件版本。
+- 按 `D:\wj\pp\颜色校准` 参考图复原颜色校准弹窗：450x585 无边框面板、64px 自定义标题栏、400x400 方形预览、关闭 normal/hover 状态以及 Calibrate/Exit 操作区。
+- 将 `init_image.png`、`close_b.png`、`close_h.png` 归档到模块 Resources，并由 `MeyerScan_UIResources.dll` 统一编译管理；源码不硬编码当前工作目录。
+- 动态加载 `MeyerScan_UIComponents.dll` 创建主按钮，样式角色对齐浏览页 Search；加载失败时使用带相同语义属性的 Qt 按钮降级。
+- 补充 Calibrate、Exit、右上角关闭、共享组件加载和资源加载日志；关闭逻辑只允许关闭独立窗口或带合同标记的设置遮罩宿主。
+- 测试宿主新增 `--capture-screenshot <png>` 视觉验收模式，固定抓取不含外部阴影的 450x585 面板。
+- smoke 测试新增预览区、关闭按钮、Calibrate/Exit 按钮和主按钮语义属性断言，防止界面退化为空骨架仍返回成功。
+- 测试宿主新增 `--drag-test`，使用 Qt 鼠标事件验证标题栏拖动后的窗口位置变化。
+- 修复双击 `CalibrationColorUITest.exe` 只闪现控制台、不显示界面的问题：无参数运行改为默认显示颜色校准窗口，`--smoke` 专用于自动化创建、校验、释放后退出。
+- VS2015 和 CMake 测试宿主统一改为 Windows 子系统，人工运行不再附带 CMD 窗口；根 CTest 清单显式传入 `--smoke`，避免自动化回归阻塞。
+- 人工测试路径补充 `aboutToQuit` 清理，窗口关闭时按顺序销毁根控件并调用模块 `Shutdown()`。
+- 修复单模块 VS2015 解决方案引用 Logger GUID 却未包含 Logger 项目的问题；解决方案现在显式包含 `MeyerScan_Logger.vcxproj`，并保证 Logger、颜色校准 DLL、测试宿主按依赖顺序构建。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.1.1`；新增公共接口 ABI 版本导出，SettingsUI 获取校准接口前强制校验。

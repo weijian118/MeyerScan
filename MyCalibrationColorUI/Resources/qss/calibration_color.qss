@@ -1,35 +1,87 @@
 QWidget#MeyerScanCalibrationColorUIRoot {
-    background: #f4f6f8;
-    color: #23313f;
-}
-
-QLabel {
-    color: #52616f;
-    font-size: 14px;
-}
-
-QFrame#CalibrationColorContent {
-    border: 1px solid #cfd8dc;
-    border-radius: 5px;
     background: #ffffff;
+    color: #071629;
+    border: 1px solid #aeb3b8;
+    border-radius: 6px;
+    font-family: "Microsoft YaHei UI";
 }
 
-QLabel#CalibrationColorStepPlaceholder {
-    border: 1px dashed #b0bec5;
-    color: #607080;
-    background: #f8fafb;
+QWidget#MeyerScanCalibrationColorUIRoot QLabel,
+QWidget#MeyerScanCalibrationColorUIRoot QPushButton {
+    font-family: "Microsoft YaHei UI";
 }
 
-QPushButton {
-    min-height: 34px;
-    min-width: 120px;
-    border: 1px solid #cfd8dc;
-    border-radius: 5px;
-    background: #f6f8fa;
-    color: #23313f;
-    padding: 8px 16px;
+QFrame#CalibrationColorTitleBar {
+    background: #f0f1f5;
+    border: 0;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
 }
 
-QPushButton:hover {
-    background: #edf2f5;
+QFrame#CalibrationColorBody {
+    background: #ffffff;
+    border: 0;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+QLabel#CalibrationColorTitle {
+    background: transparent;
+    color: #071629;
+    border: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+QPushButton#CalibrationColorCloseButton {
+    min-width: 58px;
+    max-width: 58px;
+    min-height: 56px;
+    max-height: 56px;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    border-image: url("@MEYER_MODULE_RESOURCE_DIR@/icon/color_calibration/close_b.png");
+}
+
+QPushButton#CalibrationColorCloseButton:hover,
+QPushButton#CalibrationColorCloseButton:checked {
+    background: transparent;
+    border-image: url("@MEYER_MODULE_RESOURCE_DIR@/icon/color_calibration/close_h.png");
+}
+
+QPushButton#CalibrationColorCloseButton:pressed {
+    background: #e4e6ea;
+    border-image: url("@MEYER_MODULE_RESOURCE_DIR@/icon/color_calibration/close_h.png");
+}
+
+QWidget#CalibrationColorPreview {
+    background: #505050;
+    border: 0;
+    border-radius: 10px;
+}
+
+QPushButton[calibrationAction="true"] {
+    min-height: 46px;
+    border: 0;
+    border-radius: 8px;
+    padding: 0 18px;
+    background: #007d68;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QPushButton[calibrationAction="true"]:hover {
+    background: #009176;
+}
+
+QPushButton[calibrationAction="true"]:pressed {
+    background: #006652;
+}
+
+QPushButton[calibrationAction="true"]:disabled {
+    background: #9dbab4;
+    color: #e8efed;
 }

@@ -1,5 +1,11 @@
 # 修改记录
 
+## 2026-07-16
+
+- 版本升级为 `v0.1.4`，同步 CMake、代码版本和 Windows DLL 文件版本。
+- 资源清单从 608 项增加到 611 项，新增 MyCalibrationColorUI 的 `init_image.png`、`close_b.png`、`close_h.png`，并打包新版 `calibration_color.qss`。
+- `UIResourcesTest` 增加颜色校准 QSS、预览图、关闭 normal/hover 图片和新版 QSS 内容断言，避免资源路径存在但发布 DLL 漏包。
+
 ## 2026-07-12
 
 - 本轮资源内容未变化，版本保持 `v0.1.3`；`UIResourcesTest` 增加重复初始化幂等、注销、重新注册和重注册后资源仍可读验证，并补充生命周期实现注释。

@@ -3,6 +3,12 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFrame>
+#include <QMouseEvent>
+#include <QObject>
+#include <QPixmap>
+#include <QPushButton>
+#include <QTimer>
 #include <QWidget>
 #include <cstdio>
 
@@ -27,6 +33,16 @@ bool Check(bool condition, const char* message) {
 int main(int argc, char* argv[]) {
     // 颜色校准模块创建 QWidget，必须使用 QApplication 初始化 Qt GUI 环境。
     QApplication app(argc, argv);
+    // 双击测试程序属于人工验收模式，默认显示界面；只有自动化测试显式传入
+    // --smoke 时才创建、检查并立即销毁页面，避免 CTest 卡在事件循环中。
+    const bool smokeMode = app.arguments().contains("--smoke");
+    const bool dragTestMode = app.arguments().contains("--drag-test");
+    // --capture-screenshot <png> 用于固定尺寸视觉验收，保存后自动退出。
+    QString capturePath;
+    const int captureArgumentIndex = app.arguments().indexOf("--capture-screenshot");
+    if (captureArgumentIndex >= 0 && captureArgumentIndex + 1 < app.arguments().size()) {
+        capturePath = app.arguments().at(captureArgumentIndex + 1);
+    }
 
     // 所有路径都从测试 exe 所在目录推导，避免 currentPath 变化导致资源加载错误。
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -52,25 +68,115 @@ int main(int argc, char* argv[]) {
     // 由模块创建根 QWidget，调用方只负责嵌入或显示，保持 UI 资源边界清晰。
     QWidget* widget = calibration->CreateWidget();
     if (!Check(widget != nullptr, "CalibrationColorUI 能创建根 QWidget")) {
+        // 即使页面创建失败，也要让 DLL 释放已经初始化的日志和路径状态。
+        calibration->Shutdown();
         return 3;
     }
     // objectName 是测试和样式定位的稳定锚点，不能随意修改。
     if (!Check(widget->objectName() == "MeyerScanCalibrationColorUIRoot", "颜色校准根对象名正确")) {
+        // 失败路径同样显式释放 QWidget，便于反复运行测试时检查资源生命周期。
+        delete widget;
+        calibration->Shutdown();
         return 4;
     }
 
-    // 默认自动化模式不进入事件循环；传 --show 时才给人工查看窗口。
-    if (QCoreApplication::arguments().contains("--show")) {
-        // 使用固定尺寸模拟设置模块中较大的内容区域。
-        widget->resize(1100, 720);
-        widget->show();
-        return app.exec();
+    // 通过 objectName 验证参考界面的四个关键控件，避免未来误退回只有空白根控件的骨架实现。
+    QWidget* preview = widget->findChild<QWidget*>("CalibrationColorPreview");
+    QPushButton* closeButton = widget->findChild<QPushButton*>("CalibrationColorCloseButton");
+    QPushButton* calibrateButton = widget->findChild<QPushButton*>("CalibrationColorCalibrateButton");
+    QPushButton* exitButton = widget->findChild<QPushButton*>("CalibrationColorExitButton");
+    const bool structureValid = preview &&
+                                closeButton &&
+                                calibrateButton &&
+                                exitButton &&
+                                calibrateButton->property("calibrationAction").toBool() &&
+                                exitButton->property("calibrationAction").toBool();
+    if (!Check(structureValid, "颜色校准参考界面关键控件完整")) {
+        delete widget;
+        calibration->Shutdown();
+        return 5;
     }
 
-    // 自动化模式下手动释放根控件，保证模块可以被创建和销毁。
-    delete widget;
-    // 释放模块内部状态，后续接入算法资源时也从这里做清理。
-    calibration->Shutdown();
-    std::printf("CalibrationColorUITest passed.\n");
-    return 0;
+    if (dragTestMode) {
+        // 显示后再发送鼠标事件，保证顶层窗口拥有有效的屏幕坐标。
+        widget->resize(450, 585);
+        widget->show();
+        app.processEvents();
+        QFrame* titleBar = widget->findChild<QFrame*>("CalibrationColorTitleBar");
+        const QPoint localPress(100, 20);
+        const QPoint dragDelta(36, 24);
+        const QPoint globalPress = titleBar ? titleBar->mapToGlobal(localPress) : QPoint();
+        const QPoint initialPosition = widget->pos();
+        if (!titleBar) {
+            delete widget;
+            calibration->Shutdown();
+            return 6;
+        }
+
+        // 依次发送按下、移动、释放三个事件，模拟用户拖动标题栏的完整鼠标手势。
+        QMouseEvent press(QEvent::MouseButtonPress,
+                          QPointF(localPress),
+                          QPointF(localPress),
+                          QPointF(globalPress),
+                          Qt::LeftButton,
+                          Qt::LeftButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(titleBar, &press);
+        const QPoint localMove = localPress + dragDelta;
+        QMouseEvent move(QEvent::MouseMove,
+                         QPointF(localMove),
+                         QPointF(localMove),
+                         QPointF(globalPress + dragDelta),
+                         Qt::NoButton,
+                         Qt::LeftButton,
+                         Qt::NoModifier);
+        QApplication::sendEvent(titleBar, &move);
+        QMouseEvent release(QEvent::MouseButtonRelease,
+                            QPointF(localMove),
+                            QPointF(localMove),
+                            QPointF(globalPress + dragDelta),
+                            Qt::LeftButton,
+                            Qt::NoButton,
+                            Qt::NoModifier);
+        QApplication::sendEvent(titleBar, &release);
+        const bool moved = widget->pos() == initialPosition + dragDelta;
+        Check(moved, "颜色校准标题栏拖动会改变窗口位置");
+        delete widget;
+        calibration->Shutdown();
+        return moved ? 0 : 7;
+    }
+
+    // smoke 模式不显示窗口、不进入事件循环，只验证 DLL 链路和页面生命周期。
+    if (smokeMode) {
+        // 自动化模式下手动释放根控件，保证模块可以被创建和销毁。
+        delete widget;
+        // 释放模块内部状态，后续接入算法资源时也从这里做清理。
+        calibration->Shutdown();
+        std::printf("CalibrationColorUITest passed.\n");
+        return 0;
+    }
+
+    // 人工模式使用接近设置模块内容区的尺寸，双击 exe 即可直接检查界面。
+    widget->setWindowTitle(QCoreApplication::translate(
+        "CalibrationColorUITest", "Color Calibration UI Test"));
+    // 450x585 对应参考图中不含外部阴影的实际面板；模块内部布局仍允许小屏适度收缩。
+    widget->resize(450, 585);
+    widget->show();
+
+    // 用户关闭最后一个窗口时 QApplication 会退出事件循环；aboutToQuit 信号
+    // 在栈上的 app 析构前触发，因此这里可以按“页面 -> DLL 状态”的顺序清理。
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [calibration, widget]() {
+        delete widget;
+        calibration->Shutdown();
+    });
+
+    if (!capturePath.isEmpty()) {
+        // 等待一次事件循环完成 QSS、布局和资源图片绘制后再抓取根窗口。
+        QTimer::singleShot(300, &app, [&app, widget, capturePath]() {
+            const QPixmap screenshot = widget->grab();
+            // 退出码 0/5 让自动脚本能区分截图成功和磁盘写入失败。
+            app.exit(screenshot.save(capturePath, "PNG") ? 0 : 5);
+        });
+    }
+    return app.exec();
 }

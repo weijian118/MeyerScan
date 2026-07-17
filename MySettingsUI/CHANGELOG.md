@@ -1,5 +1,19 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-17
+
+- 修复 Windows 透明顶层窗口未绘制蒙层的问题：增加独立 `SettingsCalibrationDimmer` 子控件，颜色校准打开后设置背景会正确变暗。
+- 配合颜色校准面板拖动能力，取消遮罩对颜色校准根控件的 Layout 托管，改由 SettingsUI 在打开时计算初始居中位置。
+- 颜色校准拖动只改变面板位置，遮罩仍覆盖原设置窗口范围，关闭按钮和 Exit 行为保持不变。
+
+## 2026-07-16
+
+- 版本升级为 `v0.2.4`，同步代码版本、CMake 项目版本和 Windows DLL 文件版本，公共接口 ABI 保持版本 2。
+- 颜色校准从动态 `QStackedWidget` 页面改为覆盖设置宿主的半透明模态遮罩弹窗，校准面板居中显示；三维校准暂时保留原嵌入流程。
+- 为颜色/三维校准入口增加稳定 objectName 和主按钮语义属性，不依赖翻译文字执行自动化定位。
+- CMake/VS2015 构建补齐 Calibration3DUI、CalibrationColorUI 和 UIComponents 运行时准备，避免 `SettingsUITest` 读取旧校准 DLL。
+- `SettingsUITest` 新增 `--capture-color-calibration <png>`，通过真实颜色校准入口验证 DLL 懒加载、遮罩弹窗、动作回调和离屏视觉合成。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.2.3`，公共接口版本升级为 2；新增 `SetDataContextJson()`，医生、诊所、技工所只从宿主快照读取。

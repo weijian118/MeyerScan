@@ -45,15 +45,15 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | CaseOrderService | 0.2.2 | 标准嵌套建单保存/查询、患者/订单轻量列表和最小 schema 可用；完整 CRUD、事务和迁移待完成 |
 | ScanSchemaService | 0.1.0 | 扫描步骤规则服务和测试可用；规则已从 UI/MainExe 移出 |
 | UIComponents | 0.4.1 | 常用控件工厂可用；DPI、公共弹窗、复杂表格待扩展 |
-| UIResources | 0.1.3 | 统一资源 DLL 可用 |
+| UIResources | 0.1.4 | 统一资源 DLL 可用；已收录颜色校准 QSS、预览图和关闭按钮状态资源 |
 | HomeUI | 0.3.3 | 页面和入口动作可用；只接收应用目录，不再带数据库语义 |
 | CaseUI | 0.3.3 | 宿主快照列表和动作上报可用；真实 CRUD/Workflow 未闭环 |
-| SettingsUI | 0.2.3 | 宿主快照页面和校准入口可用；配置保存/刷新未闭环 |
+| SettingsUI | 0.2.4 | 宿主快照页面、三维校准入口和可拖动颜色校准模态遮罩可用；Windows 透明窗口蒙层已修复；配置保存/刷新未闭环 |
 | OrderCreateUI | 0.5.4 | 建单 UI、牙位/桥、完整上下文导出可用；字段校验仍需完善 |
 | OrderScanWorkspaceShell | 0.1.4 | 创建/练习容器和步骤切换可用 |
 | ExternalLaunchAdapter | 0.1.1 | CMD JSON 第三方建单归一化链路可用 |
 | Calibration3DUI | 0.1.1 | UI/流程骨架；设备与计算未接入 |
-| CalibrationColorUI | 0.1.1 | UI/流程骨架；设备与计算未接入 |
+| CalibrationColorUI | 0.2.0 | 参考软件弹窗、可拖动标题栏、预览资源、共享按钮和设置遮罩链路可用；设备取图与计算未接入 |
 | ScanWorkflowUI | 0.2.4 | QVTK 页面、稳定 code 流程按钮和资源释放骨架可用 |
 | DataProcessUI | 0.2.4 | QVTK 页面、稳定 code 处理入口和资源释放骨架可用 |
 | SendUI | 0.1.3 | 页面和动作上报可用；导出/上传未实现 |

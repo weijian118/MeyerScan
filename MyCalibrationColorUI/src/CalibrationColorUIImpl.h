@@ -4,8 +4,12 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QLibrary>
 
 #include "Logger.h"
+
+class IUIComponents;
+class QPushButton;
 
 // CalibrationColorUIImpl 是颜色校准 UI 的骨架实现。
 // 当前先提供可嵌入界面和日志链路，后续再替换为真实颜色采集、计算和结果确认流程。
@@ -40,6 +44,15 @@ private:
     // 写颜色校准模块日志。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 
+    // 动态加载共享 UI 组件；加载失败时颜色校准页面使用本地 Qt 控件降级。
+    void LoadUIComponents();
+
+    // 创建浏览页 Search 同视觉角色的主按钮，并统一补充颜色校准按钮属性。
+    QPushButton* CreatePrimaryButton(const QString& text, QWidget* parent) const;
+
+    // 关闭当前颜色校准宿主窗口；兼容独立测试窗口和设置模块遮罩弹窗。
+    void CloseHostWindow(QWidget* root, const char* operation);
+
 private:
     // MeyerScan.exe 所在目录。
     QByteArray m_appDir;
@@ -49,6 +62,12 @@ private:
 
     // 缓存日志接口，避免重复获取单例。
     ILogger* m_logger = nullptr;
+
+    // UIComponents 使用 QLibrary 动态加载，颜色校准 DLL 不形成静态导入依赖。
+    QLibrary m_uiComponentsLibrary;
+
+    // 借用的共享 UI 组件接口，由 UIComponents DLL 内部管理生命周期。
+    IUIComponents* m_uiComponents = nullptr;
 
     // 当前根界面的弱引用，真实释放由调用方/Qt 父子关系负责。
     QWidget* m_root = nullptr;

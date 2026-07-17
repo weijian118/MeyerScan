@@ -4,11 +4,21 @@
 
 ## 当前定位
 
-- 当前版本是 Qt Widgets 最小骨架，用于先固定模块边界和集成方式。
+- 当前版本已按参考软件复原颜色校准弹窗：自定义标题栏、normal/hover 关闭按钮、400x400 初始相机预览、Calibrate 和 Exit 操作区。
 - 本模块是界面模块，可以使用 Qt Widgets、Qt Layout、信号槽和 `QString`；算法、设备重资源和跨进程状态同步仍通过清晰接口隔离，不把 Qt UI 对象传到模块边界外。
-- 后续颜色校准算法 DLL、DeviceCmd、DeviceTransport 接入本模块内部，不把颜色校准流程写入 MainExe 或 EngineeringSettings。
+- `init_image.png`、`close_b.png`、`close_h.png` 维护在 `Resources/icon/color_calibration`，根构建会统一编译进 `MeyerScan_UIResources.dll`。
+- Calibrate/Exit 使用 `UIComponents` 主按钮工厂，视觉角色与浏览模块 Search 按钮一致；UIComponents 不可用时使用本地 Qt 按钮降级，业务入口仍可显示。
+- 后续颜色校准算法 DLL、DeviceCmd、DeviceTransport 从 Calibrate 点击点接入本模块内部，不把颜色校准流程写入 MainExe 或 SettingsUI。
 - 可见 UI 文案必须使用 `tr("English source text")`，源码不写中文 UI source text。
 - 日志目录由 MainExe 或测试宿主基于安装目录传入，禁止使用当前工作目录推导运行资源。
+
+## 界面约束
+
+- 1920x1080 参考面板约为 `450x585`，预览区为 `400x400`；不包含参考截图外围的系统阴影尺寸。
+- 使用 Qt Layout、方形预览控件、最小/最大尺寸和多语言自然宽度，不使用绝对坐标，也不把所有控件整体乘分辨率系数。
+- 独立测试时根页面使用无边框 Dialog；SettingsUI 中由全窗口半透明遮罩承载并居中显示。
+- 鼠标按住自定义标题栏可以拖动颜色校准面板；独立运行时移动测试窗口，设置弹窗中只移动面板并限制在遮罩范围内。
+- 顶部关闭和 Exit 都关闭当前合法校准宿主，不允许误关闭 MeyerScan 主窗口；Calibrate 当前记录操作日志，设备取图和颜色计算尚未接入。
 
 ## 边界
 
@@ -24,6 +34,10 @@
 ```
 
 ## 测试入口
-- VS2015：打开 `MeyerScan_CalibrationColorUI.sln`，构建并运行 `CalibrationColorUITest.exe`。
+- VS2015：打开 `MeyerScan_CalibrationColorUI.sln`，构建并运行 `CalibrationColorUITest.exe`；无参数运行默认显示颜色校准界面，且不显示额外 CMD 窗口。
 - CMake/VSCode：默认开启 `CalibrationColorUITest` 测试目标，可通过 `MEYER_BUILD_CALIBRATIONCOLORUITEST` 控制。
+- 自动化回归必须传入 `--smoke`，此模式只验证 DLL 工厂、初始化、根控件和释放链路，然后用退出码返回结果。
+- `--drag-test` 会模拟标题栏按下/移动/释放事件，验证独立窗口位置确实发生变化。
+- `--capture-screenshot <png>` 会按参考面板尺寸渲染、抓图并自动退出，用于逐像素视觉比较。
+- `--show` 作为旧人工启动参数继续兼容，其行为与无参数运行一致。
 - 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。

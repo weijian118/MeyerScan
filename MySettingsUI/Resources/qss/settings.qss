@@ -3,6 +3,16 @@ QWidget#MeyerScanSettingsUIRoot {
     color: #23313f;
 }
 
+QDialog#SettingsCalibrationModalOverlay {
+    background: rgba(0, 0, 0, 145);
+    border: 0;
+}
+
+QWidget#SettingsCalibrationDimmer {
+    background-color: rgba(0, 0, 0, 145);
+    border: 0;
+}
+
 QPushButton {
     font-size: 15px;
     min-height: 34px;
@@ -17,7 +27,8 @@ QPushButton:hover {
     background: #f1f5f7;
 }
 
-QPushButton#SettingsPrimary {
+QPushButton#SettingsPrimary,
+QPushButton[settingsRole="primary"] {
     background: #00856b;
     color: #ffffff;
     border: 0;
@@ -26,7 +37,8 @@ QPushButton#SettingsPrimary {
     font-weight: 600;
 }
 
-QPushButton#SettingsPrimary:hover {
+QPushButton#SettingsPrimary:hover,
+QPushButton[settingsRole="primary"]:hover {
     background: #00745d;
 }
 

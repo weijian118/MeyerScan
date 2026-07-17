@@ -124,6 +124,10 @@ private:
     // 打开设置内部页面或嵌入的校准页面。
     void SwitchToPage(int pageIndex, const QString& pageName);
     void ShowEmbeddedCalibration(int actionId);
+
+    // 在设置窗口上方显示颜色校准遮罩弹窗；颜色校准不占用设置分类页索引。
+    void ShowColorCalibrationDialog();
+
     void RestoreSettingsOverview();
 
 private:

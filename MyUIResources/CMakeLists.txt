@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_UIResources VERSION 0.1.3 LANGUAGES CXX RC)
+project(MeyerScan_UIResources VERSION 0.1.4 LANGUAGES CXX RC)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core)

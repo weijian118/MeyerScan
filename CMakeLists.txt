@@ -172,9 +172,10 @@ if(BUILD_TESTING)
     meyer_register_aggregate_test(MeyerScan.VersionManager VersionManagerTest)
     meyer_register_aggregate_test(MeyerScan.ExternalLaunchAdapter ExternalLaunchAdapterTest)
 
-    # UI 测试默认使用非交互模式；支持 --smoke 的测试显式传入参数，保证事件循环自动退出。
+    # CTest 中的 UI 测试必须使用非交互模式；支持 --smoke 的测试显式传入参数，
+    # 既允许双击测试 EXE 做人工验收，也能保证自动化事件循环按时退出。
     meyer_register_aggregate_test(MeyerScan.Calibration3DUI Calibration3DUITest)
-    meyer_register_aggregate_test(MeyerScan.CalibrationColorUI CalibrationColorUITest)
+    meyer_register_aggregate_test(MeyerScan.CalibrationColorUI CalibrationColorUITest --smoke)
     meyer_register_aggregate_test(MeyerScan.HomeUI HomeUITest --smoke)
     meyer_register_aggregate_test(MeyerScan.CaseUI CaseUITest --smoke)
     meyer_register_aggregate_test(MeyerScan.SettingsUI SettingsUITest --smoke)

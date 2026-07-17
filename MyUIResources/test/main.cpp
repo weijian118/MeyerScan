@@ -34,6 +34,30 @@ int main(int argc, char* argv[]) {
     failed += Check(QFile::exists(homeQssPath), "HomeUI qss exists in resource dll") ? 0 : 1;
     failed += Check(QFile::exists(homeIconPath), "HomeUI icon exists in resource dll") ? 0 : 1;
 
+    // 颜色校准本轮新增三张图片和新版 QSS；逐项断言可防止清单规则或路径拼写漏包。
+    const QString colorQssPath = ":/MeyerScan/Modules/MyCalibrationColorUI/qss/calibration_color.qss";
+    const QString colorPreviewPath =
+        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/init_image.png";
+    const QString colorCloseNormalPath =
+        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/close_b.png";
+    const QString colorCloseHoverPath =
+        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/close_h.png";
+    failed += Check(QFile::exists(colorQssPath), "CalibrationColorUI qss exists in resource dll") ? 0 : 1;
+    failed += Check(QFile::exists(colorPreviewPath), "CalibrationColorUI preview exists in resource dll") ? 0 : 1;
+    failed += Check(QFile::exists(colorCloseNormalPath), "CalibrationColorUI normal close icon exists") ? 0 : 1;
+    failed += Check(QFile::exists(colorCloseHoverPath), "CalibrationColorUI hover close icon exists") ? 0 : 1;
+
+    QFile colorQssFile(colorQssPath);
+    const bool colorQssOpened = colorQssFile.open(QIODevice::ReadOnly | QIODevice::Text);
+    failed += Check(colorQssOpened, "CalibrationColorUI qss can be opened") ? 0 : 1;
+    if (colorQssOpened) {
+        // 同时检查根选择器和资源占位符，确认拿到的是本轮新版样式而非旧骨架 QSS。
+        const QByteArray colorQss = colorQssFile.readAll();
+        const bool colorQssIsCurrent = colorQss.contains("MeyerScanCalibrationColorUIRoot") &&
+                                       colorQss.contains("color_calibration/close_h.png");
+        failed += Check(colorQssIsCurrent, "CalibrationColorUI qss content is current") ? 0 : 1;
+    }
+
     QFile qssFile(homeQssPath);
     const bool qssOpened = qssFile.open(QIODevice::ReadOnly | QIODevice::Text);
     failed += Check(qssOpened, "embedded qss can be opened") ? 0 : 1;
