@@ -3,12 +3,13 @@
 #include <QApplication>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDialog>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QList>
-#include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPoint>
@@ -100,7 +101,7 @@ void OnSettingsAction(void* context, int actionId) {
     }
 }
 
-// 模拟 MainExe 设备会话宿主返回“USB3 + MyScan 6 + 型号已由设备上报”。
+// 模拟 MainExe 设备会话宿主返回“USB3 + mOS MyScan 5 国内标准版”。
 // 该回调只供 UI 测试，不访问 DeviceCmd 或真实 USB。
 int OnCalibrationPreflight(void* context,
                            int actionId,
@@ -117,12 +118,37 @@ int OnCalibrationPreflight(void* context,
         return deviceContext->status;
     }
     deviceContext->status = SettingsCalibrationPreflightReady;
-    deviceContext->deviceModel = 6;
+    deviceContext->deviceModel = 5;
     deviceContext->modelSource = 3;
     deviceContext->connectionState = 1;
     deviceContext->isUsb2 = 0;
-    std::strcpy(deviceContext->modelNameUtf8, "MyScan 6");
+    std::strcpy(deviceContext->modelNameUtf8, "MyScan 5");
     std::strcpy(deviceContext->deviceIdUtf8, "6200005301203");
+    std::strcpy(deviceContext->modelCodeUtf8, "62000053");
+    deviceContext->productEvidence = 0x17U;
+    deviceContext->productFamily = 5;
+    deviceContext->productModel = 5001;
+    deviceContext->productIdentificationStatus = 2;
+    deviceContext->protocolProfile = 5;
+    std::strcpy(deviceContext->productSeriesNameUtf8, "mOS MyScan 5");
+    std::strcpy(deviceContext->productNameUtf8, "mOS MyScan 5/mOS MyScan 5");
+    // 精确检测场景中 reported 与 effective 相同，且两项来源都标记为设备上报。
+    deviceContext->detection.structSize = sizeof(deviceContext->detection);
+    deviceContext->detection.schemaVersion =
+        MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION;
+    deviceContext->detection.detectionStatus = 1;
+    deviceContext->detection.deviceNumberStatus = 1;
+    deviceContext->detection.modelCodeStatus = SettingsDeviceModelCodeReadValid;
+    deviceContext->detection.seriesProbeStatus = 1;
+    deviceContext->detection.isProductionMode = 0;
+    deviceContext->detection.usedCompatibilityDefaults = 0;
+    deviceContext->detection.deviceNumberSource = 1;
+    deviceContext->detection.modelCodeSource = 1;
+    std::strcpy(deviceContext->detection.reportedDeviceNumberUtf8, "6200005301203");
+    std::strcpy(deviceContext->detection.effectiveDeviceNumberUtf8, "6200005301203");
+    std::strcpy(deviceContext->detection.reportedModelCodeUtf8, "62000053");
+    std::strcpy(deviceContext->detection.effectiveModelCodeUtf8, "62000053");
+    std::strcpy(deviceContext->detection.detailUtf8, "Exact simulated device identity");
     std::strcpy(deviceContext->detailUtf8, "Simulated calibration preflight passed");
     return deviceContext->status;
 }
@@ -138,6 +164,16 @@ QString ExpectedPreflightMessage(int status) {
         return "Please reconnect the device to a USB 3.0 port.";
     case SettingsCalibrationPreflightModelUnknown:
         return "Unable to read the device model.";
+    case SettingsCalibrationPreflightMachineCodeReadFailed:
+        return "Unable to read the device number.";
+    case SettingsCalibrationPreflightProductIdentityConflict:
+        return "The device number does not match the device model.";
+    case SettingsCalibrationPreflightDeviceResponseAbnormal:
+        return "The device response is abnormal.";
+    case SettingsCalibrationPreflightDeviceNumberInvalid:
+        return "The device number is invalid.";
+    case SettingsCalibrationPreflightDeviceModelCodeInvalid:
+        return "The device model code is invalid.";
     default:
         return "Unable to prepare the device for calibration.";
     }
@@ -226,23 +262,25 @@ int main(int argc, char* argv[]) {
             }
 
             const std::shared_ptr<int> result = std::make_shared<int>(11);
-            // QMessageBox::information 使用嵌套事件循环，提前安排验证和关闭任务。
+            // UIComponents 公共弹窗使用嵌套事件循环，提前安排验证和关闭任务。
             QTimer::singleShot(150, &app, [result, requestedPreflightStatus]() {
-                QMessageBox* messageBox = nullptr;
+                QDialog* messageDialog = nullptr;
                 const QWidgetList topLevels = QApplication::topLevelWidgets();
                 for (QWidget* candidate : topLevels) {
-                    messageBox = qobject_cast<QMessageBox*>(candidate);
-                    if (messageBox) {
+                    if (candidate && candidate->objectName() == "MeyerMessageDialog") {
+                        messageDialog = qobject_cast<QDialog*>(candidate);
                         break;
                     }
                 }
-                if (!messageBox) {
+                if (!messageDialog) {
                     *result = 12;
                     return;
                 }
 
+                QLabel* messageLabel = messageDialog->findChild<QLabel*>("MeyerDialogMessage");
                 const bool textMatches =
-                    messageBox->text() == ExpectedPreflightMessage(requestedPreflightStatus);
+                    messageLabel &&
+                    messageLabel->text() == ExpectedPreflightMessage(requestedPreflightStatus);
                 const bool noCalibrationOverlay = [&]() {
                     const QWidgetList widgets = QApplication::topLevelWidgets();
                     for (QWidget* candidate : widgets) {
@@ -254,7 +292,13 @@ int main(int argc, char* argv[]) {
                     return true;
                 }();
                 *result = textMatches && noCalibrationOverlay ? 0 : 13;
-                messageBox->accept();
+                QPushButton* confirmButton = messageDialog->findChild<QPushButton*>(
+                    "MeyerDialogConfirmButton");
+                if (confirmButton) {
+                    confirmButton->click();
+                } else {
+                    messageDialog->accept();
+                }
             });
 
             openButton->click();
@@ -275,10 +319,48 @@ int main(int argc, char* argv[]) {
 
             // shared_ptr 让结果在嵌套事件循环和延迟 lambda 之间拥有明确生命周期。
             const std::shared_ptr<int> captureResult = std::make_shared<int>(7);
-            // click() 会进入颜色校准 QDialog 的嵌套事件循环，因此提前安排抓图和关闭任务。
-            QTimer::singleShot(300, &app, [captureResult,
+            // Ready 分支会先显示合并后的设备信息弹窗。先验证编号、型号代码和
+            // 产品名称，再关闭它，随后才能进入校准遮罩。
+            QTimer::singleShot(120, &app, [captureResult]() {
+                QDialog* messageDialog = nullptr;
+                const QWidgetList topLevels = QApplication::topLevelWidgets();
+                for (QWidget* candidate : topLevels) {
+                    if (candidate && candidate->objectName() == "MeyerMessageDialog") {
+                        messageDialog = qobject_cast<QDialog*>(candidate);
+                        break;
+                    }
+                }
+                if (!messageDialog) {
+                    *captureResult = 14;
+                    return;
+                }
+
+                QLabel* messageLabel = messageDialog->findChild<QLabel*>("MeyerDialogMessage");
+                if (!messageLabel ||
+                    !messageLabel->text().contains("6200005301203") ||
+                    !messageLabel->text().contains("62000053") ||
+                    !messageLabel->text().contains("mOS MyScan 5/mOS MyScan 5")) {
+                    *captureResult = 15;
+                    messageDialog->reject();
+                    return;
+                }
+
+                QPushButton* confirmButton = messageDialog->findChild<QPushButton*>(
+                    "MeyerDialogConfirmButton");
+                if (confirmButton) {
+                    confirmButton->click();
+                } else {
+                    messageDialog->accept();
+                }
+            });
+
+            // 设备编号弹窗关闭后 ShowColorCalibrationDialog 才会进入第二层事件循环。
+            QTimer::singleShot(450, &app, [captureResult,
                                            colorCalibrationCapturePath,
                                            widget]() {
+                if (*captureResult != 7) {
+                    return;
+                }
                 QWidget* overlay = nullptr;
                 const QWidgetList topLevels = QApplication::topLevelWidgets();
                 for (QWidget* candidate : topLevels) {

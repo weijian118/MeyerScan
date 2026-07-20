@@ -225,6 +225,9 @@ private:
     // 缓存后的共享 UI 接口；不可用时本模块保留本地样式降级。
     IUIComponents* m_uiComponents = nullptr;
 
+    // 公共双按钮弹窗使用独立 C ABI；旧 UIComponents 缺少该导出时降级为 QMessageBox。
+    MeyerShowDecisionDialogFunc m_showDecisionDialog = nullptr;
+
     // ScanSchemaService DLL 句柄；规则服务通过 EXE 同级绝对路径加载。
     QLibrary m_scanSchemaServiceLibrary;
 

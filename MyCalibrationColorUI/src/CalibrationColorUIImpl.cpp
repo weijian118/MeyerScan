@@ -24,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CalibrationColorUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CalibrationColorUI v0.3.0 (2026-07-17)";
+const char* Version = "MeyerScan_CalibrationColorUI v0.6.0 (2026-07-20)";
 }
 
 // CalibrationPreviewWidget 保持预览区域为正方形，并按比例绘制色卡采集图片。
@@ -188,10 +188,19 @@ bool CalibrationColorUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8
 bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContext* context) {
     if (!context ||
         context->structSize != sizeof(CalibrationColorDeviceContext) ||
-        context->schemaVersion != 1U ||
+        context->schemaVersion != MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION ||
         context->connectionState != 1 ||
         context->isUsb2 != 0 ||
-        context->deviceModel <= 0) {
+        context->deviceModel <= 0 ||
+        context->detection.structSize !=
+            sizeof(CalibrationColorDeviceDetectionContext) ||
+        context->detection.schemaVersion !=
+            MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION ||
+        context->detection.detectionStatus < CalibrationColorDeviceDetectionExact ||
+        context->detection.detectionStatus >
+            CalibrationColorDeviceDetectionProductionInferred ||
+        context->detection.effectiveDeviceNumberUtf8[0] == '\0' ||
+        context->detection.effectiveModelCodeUtf8[0] == '\0') {
         m_hasDeviceContext = false;
         std::memset(&m_deviceContext, 0, sizeof(m_deviceContext));
         WriteLog(LogLevel::Warning,
@@ -205,10 +214,26 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
     m_hasDeviceContext = true;
     WriteLog(LogLevel::Info,
              "SetDeviceContext",
-             QString("Device context accepted: model=%1 name=%2 device=%3")
-                 .arg(m_deviceContext.deviceModel)
-                 .arg(QString::fromUtf8(m_deviceContext.modelNameUtf8))
-                 .arg(QString::fromUtf8(m_deviceContext.deviceIdUtf8)));
+              QString("Device context accepted: detection=%1 profile=%2 profileName=%3 "
+                      "reportedNumber=%4 effectiveNumber=%5 reportedModelCode=%6 "
+                      "effectiveModelCode=%7 product=%8 identityStatus=%9 production=%10 "
+                      "compatibility=%11 detail=%12")
+                  .arg(m_deviceContext.detection.detectionStatus)
+                  .arg(m_deviceContext.deviceModel)
+                  .arg(QString::fromUtf8(m_deviceContext.modelNameUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.detection.reportedDeviceNumberUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.detection.effectiveDeviceNumberUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.detection.reportedModelCodeUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.detection.effectiveModelCodeUtf8))
+                  .arg(QString::fromUtf8(m_deviceContext.productNameUtf8))
+                  .arg(m_deviceContext.productIdentificationStatus)
+                  .arg(m_deviceContext.detection.isProductionMode)
+                  .arg(m_deviceContext.detection.usedCompatibilityDefaults)
+                  .arg(QString::fromUtf8(m_deviceContext.detection.detailUtf8)));
     return true;
 }
 
@@ -228,7 +253,21 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
     root->setObjectName("MeyerScanCalibrationColorUIRoot");
     // 动态属性仅供自动化和现场诊断读取，不参与样式或业务判断。
     root->setProperty("deviceModel", m_deviceContext.deviceModel);
-    root->setProperty("deviceId", QString::fromUtf8(m_deviceContext.deviceIdUtf8));
+    root->setProperty("deviceId", QString::fromUtf8(
+        m_deviceContext.detection.effectiveDeviceNumberUtf8));
+    root->setProperty("modelCode", QString::fromUtf8(
+        m_deviceContext.detection.effectiveModelCodeUtf8));
+    root->setProperty("reportedDeviceId", QString::fromUtf8(
+        m_deviceContext.detection.reportedDeviceNumberUtf8));
+    root->setProperty("reportedModelCode", QString::fromUtf8(
+        m_deviceContext.detection.reportedModelCodeUtf8));
+    root->setProperty("deviceDetectionStatus", m_deviceContext.detection.detectionStatus);
+    root->setProperty("deviceProductionMode", m_deviceContext.detection.isProductionMode);
+    root->setProperty("deviceUsesCompatibilityDefaults",
+                      m_deviceContext.detection.usedCompatibilityDefaults);
+    root->setProperty("productFamily", m_deviceContext.productFamily);
+    root->setProperty("productModel", m_deviceContext.productModel);
+    root->setProperty("productName", QString::fromUtf8(m_deviceContext.productNameUtf8));
     // 独立运行时去掉系统标题栏，使用页面内的标题和关闭按钮复刻参考界面。
     if (!parent) {
         root->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);

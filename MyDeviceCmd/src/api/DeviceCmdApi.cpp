@@ -6,6 +6,7 @@
 
 #include "../core/DeviceCommandService.h"
 #include "../model/DeviceModelCatalog.h"
+#include "../model/DeviceProductCatalog.h"
 #include "../support/ModuleInfo.h"
 
 #include <algorithm>
@@ -270,6 +271,27 @@ extern "C"
         return InitializeStructure(info);
     }
 
+    // 初始化 0xD4/0xD9 机器码输出结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitMachineCode(
+        MeyerDeviceCmdMachineCode* machineCode)
+    {
+        return InitializeStructure(machineCode);
+    }
+
+    // 初始化产品识别 POD，默认状态保持 Unknown。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitProductIdentity(
+        MeyerDeviceProductIdentity* identity)
+    {
+        return InitializeStructure(identity);
+    }
+
+    // 初始化设备检测记录，所有步骤状态默认保持 NotRun。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitDetectionRecord(
+        MeyerDeviceDetectionRecord* record)
+    {
+        return InitializeStructure(record);
+    }
+
     // 初始化校准预检结果及其两个嵌套公共结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCalibrationPreflight(
         MeyerDeviceCalibrationPreflight* preflight)
@@ -285,6 +307,8 @@ extern "C"
         preflight->commandResult = MeyerDeviceCmdResult_Ok;
         MeyerDeviceCmd_InitStateSnapshot(&preflight->state);
         MeyerDeviceCmd_InitDeviceInfo(&preflight->deviceInfo);
+        MeyerDeviceCmd_InitProductIdentity(&preflight->productIdentity);
+        MeyerDeviceCmd_InitDetectionRecord(&preflight->detectionRecord);
         return MeyerDeviceCmdResult_Ok;
     }
 
@@ -306,7 +330,25 @@ extern "C"
         }
         return meyer::devicecmd::DeviceModelCatalog::CopyDescriptor(model, *descriptor)
             ? MeyerDeviceCmdResult_Ok
-            : MeyerDeviceCmdResult_UnsupportedModel;
+             : MeyerDeviceCmdResult_UnsupportedModel;
+    }
+
+    // 产品识别是纯目录操作，便于测试、生产工具和 MainExe 在无 USB I/O 时复用。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IdentifyProduct(
+        const char* deviceNumberUtf8,
+        const char* modelCodeUtf8,
+        std::uint64_t baseEvidence,
+        MeyerDeviceProductIdentity* identity)
+    {
+        if (!HasValidHeader(identity))
+        {
+            return MeyerDeviceCmdResult_InvalidArgument;
+        }
+        meyer::devicecmd::DeviceProductCatalog::Identify(deviceNumberUtf8,
+                                                         modelCodeUtf8,
+                                                         baseEvidence,
+                                                         *identity);
+        return MeyerDeviceCmdResult_Ok;
     }
 
     // 创建只包含一个设备领域服务的上下文。
@@ -371,8 +413,9 @@ extern "C"
         });
     }
 
-    // 颜色校准预检是一个原子宿主操作：打开连接、检查 USB、读取 0xCD/0xCE
-    // 并识别型号。业务拦截原因写入 preflight.status，不与 API 错误码混用。
+    // 颜色校准预检是一个原子宿主操作：打开连接、检查 USB、读取 0xD4/0xD9
+    // 机器码，再读取 0xCD/0xCE 并识别型号。业务拦截原因写入
+    // preflight.status，不与 API 错误码混用。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_PrepareColorCalibration(
         MeyerDeviceCmdHandle handle,
         const MeyerDeviceCmdOpenParams* params,
@@ -380,7 +423,10 @@ extern "C"
     {
         return Invoke(handle, [params, preflight](DeviceCmdContext& context) -> std::int32_t {
             if (!HasValidHeader(params) || !HasValidHeader(preflight) ||
-                !HasValidHeader(&preflight->state) || !HasValidHeader(&preflight->deviceInfo))
+                !HasValidHeader(&preflight->state) ||
+                !HasValidHeader(&preflight->deviceInfo) ||
+                !HasValidHeader(&preflight->productIdentity) ||
+                !HasValidHeader(&preflight->detectionRecord))
             {
                 return MeyerDeviceCmdResult_InvalidArgument;
             }
@@ -441,6 +487,20 @@ extern "C"
     {
         return Invoke(handle, [](DeviceCmdContext& context) {
             return context.service.ResetController();
+        });
+    }
+
+    // 读取 13 位机器码。输出结构由调用方拥有，DeviceCmd 只填充固定 POD 副本。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_ReadMachineCode(
+        MeyerDeviceCmdHandle handle,
+        MeyerDeviceCmdMachineCode* machineCode)
+    {
+        return Invoke(handle, [machineCode](DeviceCmdContext& context) -> std::int32_t {
+            if (!HasValidHeader(machineCode))
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            return context.service.ReadMachineCode(*machineCode);
         });
     }
 

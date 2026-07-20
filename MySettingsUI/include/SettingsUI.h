@@ -9,8 +9,10 @@
 #  define MEYERSCAN_SETTINGSUI_API __declspec(dllimport)
 #endif
 
-// SettingsUI 公共虚接口版本；新增校准设备预检回调后升级为 3。
-static const int MEYER_SETTINGS_UI_API_VERSION = 3;
+// SettingsUI 公共虚接口版本；颜色校准上下文增加完整设备检测记录后升级为 6。
+static const int MEYER_SETTINGS_UI_API_VERSION = 6;
+static const std::uint32_t MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION = 4U;
+static const std::uint32_t MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION = 1U;
 
 // 校准入口设备预检状态。数值与 DeviceCmd 的预检状态保持一致，但 SettingsUI
 // 只依赖本地 POD 合同，不包含 DeviceCmd 头或持有设备句柄。
@@ -24,7 +26,53 @@ enum SettingsCalibrationPreflightStatus {
     SettingsCalibrationPreflightDeviceInfoReadFailed = 6,
     SettingsCalibrationPreflightModelUnknown = 7,
     SettingsCalibrationPreflightInternalError = 8,
+    // 0xD4 请求未收到合法 0xD9 回包时单独提示，不能误报成机型读取失败。
+    SettingsCalibrationPreflightMachineCodeReadFailed = 9,
+    // 设备编号前缀和型号代码冲突时禁止进入校准，等待现场核对设备信息。
+    SettingsCalibrationPreflightProductIdentityConflict = 10,
+    // 已收到错误回包或命令超时；具体 D9/C7/CE 步骤由检测记录进一步区分。
+    SettingsCalibrationPreflightDeviceResponseAbnormal = 11,
+    // D9 校验通过但 13 位编号格式或 620000 前缀不合法。
+    SettingsCalibrationPreflightDeviceNumberInvalid = 12,
+    // CE 校验通过但 8 位型号代码格式或 62 前缀不合法。
+    SettingsCalibrationPreflightDeviceModelCodeInvalid = 13,
 };
+
+// CE 型号代码读取状态与 DeviceCmd 公共枚举数值保持一致。SettingsUI 只用它
+// 选择客户提示文本，不解析命令帧或自行决定兼容值。
+enum SettingsDeviceModelCodeReadStatus {
+    SettingsDeviceModelCodeReadNotRun = 0,
+    SettingsDeviceModelCodeReadValid = 1,
+    SettingsDeviceModelCodeReadFirmwareTooOld = 2,
+    SettingsDeviceModelCodeReadFrameInvalid = 3,
+    SettingsDeviceModelCodeReadChecksumInvalid = 4,
+    SettingsDeviceModelCodeReadUninitialized = 5,
+    SettingsDeviceModelCodeReadValueInvalid = 6,
+};
+
+// DeviceCmd 型号检测记录在 SettingsUI 边界上的只读副本。该结构分别保留
+// 设备上报值和兼容有效值，UI 不允许把 effective 字段反写到设备。
+struct SettingsDeviceDetectionContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t detectionStatus;
+    std::int32_t deviceNumberStatus;
+    std::int32_t modelCodeStatus;
+    std::int32_t seriesProbeStatus;
+    std::int32_t isProductionMode;
+    std::int32_t usedCompatibilityDefaults;
+    std::int32_t deviceNumberSource;
+    std::int32_t modelCodeSource;
+    char reportedDeviceNumberUtf8[32];
+    char effectiveDeviceNumberUtf8[32];
+    char reportedModelCodeUtf8[16];
+    char effectiveModelCodeUtf8[16];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(SettingsDeviceDetectionContext) == 424U,
+              "SettingsDeviceDetectionContext ABI size changed");
 
 // MainExe 在预检成功后填充的设备上下文。SettingsUI 只负责把副本继续注入
 // CalibrationColorUI，不解释机型差异，也不共享 MainExe 的 DeviceCmd 句柄。
@@ -37,10 +85,28 @@ struct SettingsCalibrationDeviceContext {
     std::int32_t connectionState;
     std::int32_t isUsb2;
     char modelNameUtf8[32];
+    // 0xD4/0xD9 返回的 13 位设备编号；DeviceCmd 的 MachineCode 是历史协议命名。
     char deviceIdUtf8[32];
     char detailUtf8[256];
-    std::uint32_t reserved[8];
+    // 旧有线 0xCE payload 前 8 字节转换得到的型号代码；无线布局可能留空。
+    // 本字段占用原 reserved[8] 的 32 字节，因此结构总大小保持不变。
+    char modelCodeUtf8[32];
+    // 以下字段是 DeviceCmd 产品识别 POD 的必要副本。UI 只展示和记录，不能
+    // 根据这些整数重新解释协议或自行选择 Transport。
+    std::uint64_t productEvidence;
+    std::int32_t productFamily;
+    std::int32_t productModel;
+    std::int32_t productIdentificationStatus;
+    std::int32_t protocolProfile;
+    char productSeriesNameUtf8[32];
+    char productNameUtf8[96];
+    // 完整步骤记录放在结构末尾，老字段次序保持稳定；API/schema 已同步升级。
+    SettingsDeviceDetectionContext detection;
 };
+
+// MainExe 和 SettingsUI 必须使用同一 API/schema；结构变化时编译期尺寸断言会拦截。
+static_assert(sizeof(SettingsCalibrationDeviceContext) == 960U,
+               "SettingsCalibrationDeviceContext ABI size changed");
 
 // 同步回调必须在返回前完成预检并写满 context；返回值使用
 // SettingsCalibrationPreflightStatus。同步调用保证弹窗不会在检查完成前闪现。

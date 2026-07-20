@@ -2,7 +2,7 @@
 
 `MyCalibrationColorUI` 输出 `MeyerScan_CalibrationColorUI.dll`，用于承载颜色校准界面、流程编排和颜色校正参数生成入口。
 
-当前版本为 `0.3.0`，公共虚接口 ABI 为 2。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；颜色校准 UI 不自行加载 DeviceTransport，也不创建第二个 USB 会话。
+当前版本为 `0.6.0`，公共虚接口 ABI 为 5，设备上下文 schema 为 4。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；快照包含协议 Profile、产品身份以及 D9/C7/CE 的完整检测记录。颜色校准 UI 不自行解析回包、加载 DeviceCmd/DeviceTransport 或创建第二个 USB 会话。
 
 ## 当前定位
 
@@ -10,7 +10,7 @@
 - 本模块是界面模块，可以使用 Qt Widgets、Qt Layout、信号槽和 `QString`；算法、设备重资源和跨进程状态同步仍通过清晰接口隔离，不把 Qt UI 对象传到模块边界外。
 - `init_image.png`、`close_b.png`、`close_h.png` 维护在 `Resources/icon/color_calibration`，根构建会统一编译进 `MeyerScan_UIResources.dll`。
 - Calibrate/Exit 使用 `UIComponents` 主按钮工厂，视觉角色与浏览模块 Search 按钮一致；UIComponents 不可用时使用本地 Qt 按钮降级，业务入口仍可显示。
-- 后续颜色校准算法 DLL、DeviceCmd、DeviceTransport 从 Calibrate 点击点接入本模块内部，不把颜色校准流程写入 MainExe 或 SettingsUI。
+- 后续 Calibrate 点击只向宿主提交颜色校准动作，并调用本模块拥有的颜色算法适配层；DeviceCmd/DeviceTransport 句柄仍由进程级设备会话宿主持有，不下沉到 UI。
 - 可见 UI 文案必须使用 `tr("English source text")`，源码不写中文 UI source text。
 - 日志目录由 MainExe 或测试宿主基于安装目录传入，禁止使用当前工作目录推导运行资源。
 
@@ -27,6 +27,7 @@
 - 不做三维校准。
 - 不做病例/订单数据维护。
 - 不做云端上传或发送流程。
+- 不解析 D9、C7、CE 原始回包；DeviceCmd 完成解析后，本模块只保存固定 POD 副本。`reported*` 表示真实设备回包，`effective*` 表示颜色校准当前应使用的值，兼容值必须由来源和状态明确标记。
 - 不跨进程传递 Qt 对象；需要同步状态时使用订单 ID、UTF-8 JSON 或文件路径。
 
 ## 构建

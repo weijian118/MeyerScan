@@ -70,13 +70,38 @@ int main(int argc, char* argv[]) {
     // 正式 MeyerScan.exe 中该结构来自 DeviceSessionHost -> DeviceCmd -> DeviceTransport。
     CalibrationColorDeviceContext deviceContext = {};
     deviceContext.structSize = sizeof(deviceContext);
-    deviceContext.schemaVersion = 1U;
-    deviceContext.deviceModel = 6;
+    deviceContext.schemaVersion = MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
+    deviceContext.deviceModel = 5;
     deviceContext.modelSource = 3;
     deviceContext.connectionState = 1;
     deviceContext.isUsb2 = 0;
-    std::strcpy(deviceContext.modelNameUtf8, "MyScan 6");
+    std::strcpy(deviceContext.modelNameUtf8, "MyScan 5");
     std::strcpy(deviceContext.deviceIdUtf8, "6200005301203");
+    std::strcpy(deviceContext.modelCodeUtf8, "62000053");
+    deviceContext.productEvidence = 0x17U;
+    deviceContext.productFamily = 5;
+    deviceContext.productModel = 5001;
+    deviceContext.productIdentificationStatus = 2;
+    deviceContext.protocolProfile = 5;
+    std::strcpy(deviceContext.productSeriesNameUtf8, "mOS MyScan 5");
+    std::strcpy(deviceContext.productNameUtf8, "mOS MyScan 5/mOS MyScan 5");
+    // 模拟精确检测结果：真实上报值与最终有效值一致，不依赖兼容默认值。
+    deviceContext.detection.structSize = sizeof(deviceContext.detection);
+    deviceContext.detection.schemaVersion =
+        MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION;
+    deviceContext.detection.detectionStatus = CalibrationColorDeviceDetectionExact;
+    deviceContext.detection.deviceNumberStatus = 1;
+    deviceContext.detection.modelCodeStatus = 1;
+    deviceContext.detection.seriesProbeStatus = 1;
+    deviceContext.detection.isProductionMode = 0;
+    deviceContext.detection.usedCompatibilityDefaults = 0;
+    deviceContext.detection.deviceNumberSource = 1;
+    deviceContext.detection.modelCodeSource = 1;
+    std::strcpy(deviceContext.detection.reportedDeviceNumberUtf8, "6200005301203");
+    std::strcpy(deviceContext.detection.effectiveDeviceNumberUtf8, "6200005301203");
+    std::strcpy(deviceContext.detection.reportedModelCodeUtf8, "62000053");
+    std::strcpy(deviceContext.detection.effectiveModelCodeUtf8, "62000053");
+    std::strcpy(deviceContext.detection.detailUtf8, "Exact simulated device identity");
     if (!Check(calibration->SetDeviceContext(&deviceContext),
                "CalibrationColorUI 接受已验证设备快照")) {
         calibration->Shutdown();
@@ -97,6 +122,16 @@ int main(int argc, char* argv[]) {
         calibration->Shutdown();
         return 5;
     }
+    // 根控件属性应使用 effective 值，后续颜色算法无需理解生产模式兼容规则。
+    if (!Check(widget->property("deviceId").toString() == "6200005301203" &&
+               widget->property("modelCode").toString() == "62000053" &&
+               widget->property("deviceDetectionStatus").toInt() ==
+                   CalibrationColorDeviceDetectionExact,
+               "颜色校准根控件记录完整设备检测结果")) {
+        delete widget;
+        calibration->Shutdown();
+        return 6;
+    }
 
     // 通过 objectName 验证参考界面的四个关键控件，避免未来误退回只有空白根控件的骨架实现。
     QWidget* preview = widget->findChild<QWidget*>("CalibrationColorPreview");
@@ -112,7 +147,7 @@ int main(int argc, char* argv[]) {
     if (!Check(structureValid, "颜色校准参考界面关键控件完整")) {
         delete widget;
         calibration->Shutdown();
-        return 6;
+        return 7;
     }
 
     if (dragTestMode) {
@@ -128,7 +163,7 @@ int main(int argc, char* argv[]) {
         if (!titleBar) {
             delete widget;
             calibration->Shutdown();
-            return 7;
+            return 8;
         }
 
         // 依次发送按下、移动、释放三个事件，模拟用户拖动标题栏的完整鼠标手势。
@@ -161,7 +196,7 @@ int main(int argc, char* argv[]) {
         Check(moved, "颜色校准标题栏拖动会改变窗口位置");
         delete widget;
         calibration->Shutdown();
-        return moved ? 0 : 8;
+        return moved ? 0 : 9;
     }
 
     // smoke 模式不显示窗口、不进入事件循环，只验证 DLL 链路和页面生命周期。

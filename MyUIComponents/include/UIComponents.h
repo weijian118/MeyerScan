@@ -36,6 +36,25 @@ enum MeyerButtonContentLayout {
     MeyerButtonContentIconTopText = 4,    // 上图标下文字
 };
 
+// 单按钮提示弹窗级别。只描述视觉和语义层级，不包含业务错误码。
+enum MeyerNoticeDialogLevel {
+    MeyerNoticeDialogInformation = 1, // 普通信息，例如显示设备机器码
+    MeyerNoticeDialogSuccess = 2,     // 操作成功，例如保存完成
+    MeyerNoticeDialogError = 3,       // 失败或报错，例如设备命令读取失败
+};
+
+// 双按钮选择弹窗级别。高危级确认按钮使用危险样式，警告级使用普通主按钮。
+enum MeyerDecisionDialogLevel {
+    MeyerDecisionDialogWarning = 1,  // 可撤销或中等风险操作
+    MeyerDecisionDialogCritical = 2, // 删除、覆盖等高风险操作
+};
+
+// 公共弹窗只返回稳定整数，不把 QDialog 枚举传播到业务模块。
+enum MeyerDialogResult {
+    MeyerDialogRejected = 0,
+    MeyerDialogAccepted = 1,
+};
+
 // IUIComponents 是共享 UI 控件模块的公共接口。
 // 模块边界:
 //   - 统一常用控件样式、等待页、辅助缩放系数。
@@ -129,3 +148,34 @@ public:
 
 // C ABI 工厂函数。
 extern "C" MEYERSCAN_UICOMPONENTS_API IUIComponents* GetUIComponents();
+
+// 显示单按钮提示弹窗。所有文本必须由调用方使用 tr("English source text") 翻译后传入。
+// UIComponents 只负责布局、图标、按钮和 QSS，不记录业务日志或决定后续流程。
+extern "C" MEYERSCAN_UICOMPONENTS_API int MeyerUIComponents_ShowNoticeDialog(
+    int level,
+    const char* titleUtf8,
+    const char* messageUtf8,
+    const char* confirmTextUtf8,
+    QWidget* parent = nullptr);
+
+// 显示确认/取消双按钮弹窗。返回 MeyerDialogAccepted 或 MeyerDialogRejected。
+extern "C" MEYERSCAN_UICOMPONENTS_API int MeyerUIComponents_ShowDecisionDialog(
+    int level,
+    const char* titleUtf8,
+    const char* messageUtf8,
+    const char* confirmTextUtf8,
+    const char* cancelTextUtf8,
+    QWidget* parent = nullptr);
+
+// 动态加载模块可复用的稳定函数指针类型。
+using MeyerShowNoticeDialogFunc = int (*)(int,
+                                          const char*,
+                                          const char*,
+                                          const char*,
+                                          QWidget*);
+using MeyerShowDecisionDialogFunc = int (*)(int,
+                                            const char*,
+                                            const char*,
+                                            const char*,
+                                            const char*,
+                                            QWidget*);

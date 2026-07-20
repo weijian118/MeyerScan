@@ -10,6 +10,26 @@
 #include <algorithm>
 #include <cstring>
 
+namespace
+{
+    // 为模拟旧有线设备选择一个已登记的完整型号代码。一个协议 Profile 可能
+    // 对应多个销售型号，模拟器只使用其中一个确定性标准型号验证主链路。
+    const char* DefaultModelCodeForProfile(std::int32_t model)
+    {
+        switch (model)
+        {
+        case MeyerDeviceModel_MyScan3:
+            return "62000020";
+        case MeyerDeviceModel_MyScan5:
+            return "62000053";
+        case MeyerDeviceModel_MyScan5H:
+            return "62000055";
+        default:
+            return nullptr;
+        }
+    }
+}
+
 namespace meyer
 {
     namespace devicecmd
@@ -17,7 +37,8 @@ namespace meyer
         // 构造模拟后端时先准备所有固定长度响应，后续读命令只复制状态数据。
         SimulatedDeviceTransport::SimulatedDeviceTransport()
             : m_open(false), m_captureActive(false), m_frameReady(false), m_lightOn(false),
-              m_isUsb2(false), m_omitModelMarker(false),
+              m_isUsb2(false), m_omitModelMarker(false), m_failMachineCodeRead(false),
+              m_simulatedFlags(0U),
               m_model(MeyerDeviceModel_MyScan6Wireless),
               m_deviceId("6200005301203"), m_frameRate(0x14U)
         {
@@ -48,7 +69,15 @@ namespace meyer
             m_isUsb2 = (params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_Usb2Connected) != 0U;
             m_omitModelMarker =
                 (params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_OmitModelMarker) != 0U;
-            m_model = params.modelHint;
+            m_failMachineCodeRead =
+                (params.simulatedFlags & MeyerDeviceCmdSimulatedFlag_MachineCodeReadFailure) != 0U;
+            m_simulatedFlags = params.simulatedFlags;
+            // modelHint=Unknown 表示宿主正在探测，并不表示模拟的物理设备没有型号。
+            // 默认让模拟硬件返回已知 MyScan 5 型号代码，覆盖与真实 Cypress
+            // 设备相同的“Unknown 探测 Profile -> 0xCE 精确识别”路径。
+            m_model = params.modelHint == MeyerDeviceModel_Unknown
+                ? MeyerDeviceModel_MyScan5
+                : params.modelHint;
             BuildDefaultPayloads();
             m_open = true;
             m_lastError.clear();
@@ -338,8 +367,19 @@ namespace meyer
             switch (requestCode)
             {
             case protocol::ReadMachineCode:
+                if (m_failMachineCodeRead)
+                {
+                    // 发送成功但不生成响应，ReceiveCommand 将稳定返回 Timeout。
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadMachineCode;
                 BuildMachineCodePayload(payload);
+                if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_InvalidDeviceNumber) != 0U)
+                {
+                    // 构造 13 位但前缀不是 620000 的编号，验证值合法性门禁。
+                    payload[0] = 1U;
+                }
                 break;
             case protocol::ReadMainBoardVersion:
                 responseCode = protocol::UploadMainBoardVersion;
@@ -355,12 +395,32 @@ namespace meyer
                 payload.push_back(90U);
                 break;
             case protocol::ReadDeviceInfo:
+                if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_ModelCodeReadFailure) != 0U)
+                {
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+                if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_ModelCodeUninitialized) != 0U)
+                {
+                    // 旧下位机使用 0xFFFF 长度表示命令存在但设备型号尚未初始化。
+                    m_pendingResponse = { protocol::kHeader0, protocol::kHeader1,
+                        protocol::UploadDeviceInfo, 0xFFU, 0xFFU, 0x00U, 0x00U };
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadDeviceInfo;
                 payload = m_deviceInfo;
+                // 只有无线授权布局在偏移 2 保存设备编号。旧有线布局的前 8 字节
+                // 是型号代码，若在这里复制机器码会直接破坏型号识别证据。
+                if (m_model == MeyerDeviceModel_MyScan6Wireless)
                 {
                     std::vector<std::uint8_t> machineCode;
                     BuildMachineCodePayload(machineCode);
                     std::copy(machineCode.begin(), machineCode.end(), payload.begin() + 2U);
+                }
+                if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_InvalidModelCode) != 0U)
+                {
+                    // 8 位数值存在但不是 62 前缀，供型号代码合法性测试。
+                    payload[0] = 1U;
                 }
                 break;
             case protocol::StoreMachineCode:
@@ -404,6 +464,11 @@ namespace meyer
                 payload.assign(requestPayload->begin(), requestPayload->begin() + 6U);
                 break;
             case protocol::ReadCamera1Calibration:
+                if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_Camera1ProbeUnsupported) != 0U)
+                {
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadCamera1Calibration;
                 payload = m_camera1Calibration;
                 break;
@@ -450,6 +515,41 @@ namespace meyer
             {
                 m_lastError = codecError;
                 return MeyerDeviceCmdResult_ProtocolError;
+            }
+
+            // 在完整帧构建后翻转低位校验字节，精确模拟旧生产模式和 CE 坏校验。
+            const bool corruptMachineChecksum =
+                requestCode == protocol::ReadMachineCode &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure) != 0U;
+            const bool corruptModelChecksum =
+                requestCode == protocol::ReadDeviceInfo &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_ModelCodeChecksumFailure) != 0U;
+            if ((corruptMachineChecksum || corruptModelChecksum) &&
+                !m_pendingResponse.empty())
+            {
+                m_pendingResponse[m_pendingResponse.size() - 1U] ^= 0x01U;
+            }
+
+            // 非校验坏包通过破坏帧头生成。这样详细解析器会返回 InvalidHeader，
+            // 测试能够确认它不会被误判成“生产模式”或“型号尚未初始化”。
+            const bool corruptMachineFrame =
+                requestCode == protocol::ReadMachineCode &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_DeviceNumberFrameInvalid) != 0U;
+            const bool corruptModelFrame =
+                requestCode == protocol::ReadDeviceInfo &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_ModelCodeFrameInvalid) != 0U;
+            const bool corruptProbeFrame =
+                requestCode == protocol::ReadCamera1Calibration &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid) != 0U;
+            if ((corruptMachineFrame || corruptModelFrame || corruptProbeFrame) &&
+                !m_pendingResponse.empty())
+            {
+                m_pendingResponse[0] ^= 0x01U;
             }
             return MeyerDeviceCmdResult_Ok;
         }
@@ -498,22 +598,44 @@ namespace meyer
             }
 
             m_deviceInfo.assign(382U, 0U);
-            m_deviceInfo[0] = 1U;
-            m_deviceInfo[1] = 2U;
-            std::vector<std::uint8_t> machineCode;
-            BuildMachineCodePayload(machineCode);
-            std::copy(machineCode.begin(), machineCode.end(), m_deviceInfo.begin() + 2U);
-            std::fill(m_deviceInfo.begin() + 15U, m_deviceInfo.begin() + 45U, 0x78U);
-
-            // 正式协议把后 337 字节定义为预留区。模拟后端在这里写入一个明确
-            // 的可读扩展标记，用于验证“设备上报型号”解析，不用设备编号猜型号。
-            if (!m_omitModelMarker && m_model != MeyerDeviceModel_Unknown)
+            if (m_model == MeyerDeviceModel_MyScan6Wireless)
             {
-                const std::string marker =
-                    std::string("MEYERSCAN_MODEL=") + std::to_string(m_model);
+                // 无线协议使用授权信息布局：加密状态、13 位编号、期限和预留区。
+                m_deviceInfo[0] = 1U;
+                m_deviceInfo[1] = 2U;
+                std::vector<std::uint8_t> machineCode;
+                BuildMachineCodePayload(machineCode);
+                std::copy(machineCode.begin(), machineCode.end(), m_deviceInfo.begin() + 2U);
+                std::fill(m_deviceInfo.begin() + 15U, m_deviceInfo.begin() + 45U, 0x78U);
+            }
+            else
+            {
+                // 旧有线协议示例的前 8 字节是逐位数值，不是 ASCII 字符串。
+                const char* modelCode = m_omitModelMarker
+                    ? nullptr
+                    : DefaultModelCodeForProfile(m_model);
+                if (modelCode != nullptr)
+                {
+                    for (std::size_t index = 0U; index < 8U; ++index)
+                    {
+                        m_deviceInfo[index] =
+                            static_cast<std::uint8_t>(modelCode[index] - '0');
+                    }
+                }
+            }
+
+            // 没有已登记型号代码的测试 Profile 可以使用明确 ASCII 标记验证
+            // 后续扩展兼容；OmitModelMarker 会同时移除代码和该标记。
+            if (!m_omitModelMarker &&
+                DefaultModelCodeForProfile(m_model) == nullptr &&
+                m_model != MeyerDeviceModel_Unknown)
+            {
+                const std::string marker = std::string("MEYERSCAN_MODEL=") +
+                    std::to_string(m_model);
                 const std::size_t copySize =
                     (std::min)(marker.size(), static_cast<std::size_t>(337U));
-                std::copy(marker.begin(), marker.begin() + copySize, m_deviceInfo.begin() + 45U);
+                std::copy(marker.begin(), marker.begin() + copySize,
+                          m_deviceInfo.begin() + 45U);
             }
 
             m_exposureParameters.assign(17U, 0x11U);

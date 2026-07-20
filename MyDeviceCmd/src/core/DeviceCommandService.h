@@ -17,6 +17,22 @@ namespace meyer
 {
     namespace devicecmd
     {
+        // 一次命令交换的内部诊断。原始回包只在 DLL 内短期保存，不进入公共结构。
+        struct CommandExchangeDiagnostics
+        {
+            bool requestSent;
+            bool responseReceived;
+            protocol::CommandParseStatus parseStatus;
+            std::vector<std::uint8_t> rawResponse;
+
+            // 默认状态表示尚未发出请求，便于失败分支准确判断停在哪一步。
+            CommandExchangeDiagnostics()
+                : requestSent(false), responseReceived(false),
+                  parseStatus(protocol::CommandParseStatus::NotRun)
+            {
+            }
+        };
+
         class DeviceCommandService
         {
         public:
@@ -34,7 +50,7 @@ namespace meyer
             // 使用最近一次打开参数重新连接设备。
             std::int32_t Reconnect();
 
-            // 为颜色校准建立空闲会话，检查连接/USB 速率并读取设备信息与型号。
+            // 为颜色校准建立空闲会话，依次检查连接/USB、机器码和设备型号。
             std::int32_t PrepareColorCalibration(const MeyerDeviceCmdOpenParams& params,
                                                  MeyerDeviceCalibrationPreflight& preflight);
 
@@ -48,6 +64,8 @@ namespace meyer
             std::int32_t SetForceLight(bool enabled);
             // 发送控制器软件复位命令。
             std::int32_t ResetController();
+            // 发送 0xD4 并解析 0xD9 机器码，同时更新状态快照。
+            std::int32_t ReadMachineCode(MeyerDeviceCmdMachineCode& machineCode);
             // 将 13 位十进制机器码转换后固化到设备。
             std::int32_t StoreMachineCode(const char* machineCodeUtf8);
             // 读取 16 字节相机参数并转换为公共结构。
@@ -118,15 +136,22 @@ namespace meyer
                                         std::size_t payloadSize,
                                         std::int32_t expectedResponseCode,
                                         protocol::CommandFrame* response,
-                                        std::uint32_t timeoutMs);
-            // 读取机器码响应并更新状态快照。
-            std::int32_t RefreshMachineCode();
+                                        std::uint32_t timeoutMs,
+                                        CommandExchangeDiagnostics* diagnostics = nullptr);
             // 读取主板版本响应并更新状态快照。
             std::int32_t RefreshFirmwareVersion();
             // 读取电池响应并更新状态快照。
             std::int32_t RefreshBattery();
             // 读取设备授权信息并更新状态快照。
             std::int32_t RefreshDeviceSecurityInfo();
+            // 读取并严格验证 0xD4/0xD9 设备编号；校验失败可识别为生产模式。
+            std::int32_t ReadDeviceNumberForDetection(MeyerDeviceCmdMachineCode& machineCode,
+                                                      MeyerDeviceDetectionRecord& record);
+            // 生产模式下通过 0xC2/0xC7 命令能力探测 MyScan 与 MyScan5/6 系列。
+            std::int32_t ProbeProductionSeries(MeyerDeviceDetectionRecord& record);
+            // 读取 0xCD/0xCE 型号代码，并按旧固件/未初始化规则填充兼容值。
+            std::int32_t ReadModelCodeForDetection(MeyerDeviceCmdDeviceInfo& info,
+                                                   MeyerDeviceDetectionRecord& record);
             // 执行带 0xFF/0x00 状态回复的固化命令。
             std::int32_t ExecuteStatusCommand(std::uint8_t commandCode,
                                                const unsigned char* payload,

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_SettingsUI VERSION 0.3.0 LANGUAGES CXX)
+project(MeyerScan_SettingsUI VERSION 0.6.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
@@ -16,6 +16,7 @@ target_include_directories(MeyerScan_SettingsUI
         ../MyCalibration3DUI/include
         ../MyCalibrationColorUI/include
         ../MyLogger/include
+        ../MyUIComponents/include
 )
 meyer_link_sibling_module(MeyerScan_SettingsUI MyLogger MeyerScan_Logger)
 meyer_copy_module_resources(MeyerScan_SettingsUI MySettingsUI)

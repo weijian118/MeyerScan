@@ -19,12 +19,44 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-20：只有创建订单扫描要求正式设备编号
+
+- 问题：新设备在生产调试阶段直到最后打包才写入设备编号，型号代码也可能尚未写入；若完全拒绝未写号设备，生产练习和校准流程无法运行，但正式订单扫描需要真实设备编号进行约束。
+- 结论：DeviceCmd 继续如实检测并分别保存 reported/effective 身份，不理解创建、练习或校准模式。DeviceSessionHost 在工作流层应用准入策略：只有创建订单扫描使用 `RequireProgrammedDeviceNumber`；练习、颜色校准和后续三维校准使用 `AllowProductionCompatibilityIdentity`。
+- 结论：生产设备已识别系列后可获得带 `CompatibilityDefault` 来源的默认编号/型号供练习复用；创建模式无真实编号时返回稳定状态 14，关闭设备会话、留在 Order，并禁止创建或激活 Scan/Process/Send。
+- 结论：准入结果写入工作台 `deviceIdentity` JSON，reported/effective、来源、生产/兼容标志和产品身份必须成组传递。自动化 `--smoke-main` 可显式旁路物理 USB，但必须记录 `automationBypass=true`，正式配置没有该开关。
+- 影响：MainExe 0.5.1、DeviceCmd 0.6.1；SettingsUI/CalibrationColorUI 继续保持 0.6.0。状态 14 只用于创建流程，颜色校准不因设备编号未写入而拦截，三维校准后续沿用相同规则。
+
+### 2026-07-20：设备型号检测保留真实值、有效值和完整步骤证据
+
+- 问题：旧设备、生产模式和不同下位机版本会让 D9/C7/CE 出现无回包、坏包、校验失败、未初始化或非法值；如果只保存一个最终编号/型号，兼容默认值会伪装成真实设备数据，后续权限、校准和诊断无法判断来源。
+- 结论：固定检测顺序为连接/USB -> D4/D9 -> D9 校验失败时 C2/C7 -> CD/CE -> 产品目录。D9 只有求和校验失败表示未写设备编号并进入生产模式；无回包、普通坏包和合法帧中的非法编号分别返回明确失败状态。
+- 结论：`MeyerDeviceDetectionRecord` 分别保存 `reportedDeviceNumber/reportedModelCode` 和 `effectiveDeviceNumber/effectiveModelCode`，同时保存值来源、生产模式、兼容标志、D9/C7/CE 状态和诊断文本。兼容值不得覆盖 reported 字段，也不得标成设备上报。
+- 结论：生产模式 C7 无回包形成 mOS MyScan 候选，收到 C7 形成 mOS MyScan 5/6 候选；5/6 区分规则待定。CE 旧固件、坏包、校验/初始化/值异常可采用带来源的兼容值继续；C7 与 CE 或编号前缀与 CE 冲突必须拦截。
+- 优化：流程图在“已写合法编号但 CE 不可用”分支统一写了 `62000020`。实现对已登记编号前缀选择同系列标准型号代码（20/27/53/55），只有未知前缀才回退 `62000020`；这样避免把已知 MyScan 5/5H 错套成 MyScan 3，同时仍以 CompatibilityDefault 标记，不能冒充精确产品。
+- 影响：DeviceCmd 0.6.0/ABI 4、MainExe 0.5.0、SettingsUI/CalibrationColorUI 0.6.0 已贯通完整 POD。设置页一次提示有效编号、产品、型号代码、生产/兼容来源，颜色校准只消费快照，不解析协议。
+
+### 2026-07-20：产品系列、具体产品和协议 Profile 分层
+
+- 问题：设备编号前缀、型号代码、三/五/六代协议能力和具体销售型号曾混用；旧逻辑按型号代码首位判断 3/5/6，会把全部以 6 开头的已知代码错误识别为 MyScan 6。
+- 结论：MyScan3/5/5H/6/6Wireless 只表示协议能力 Profile；产品系列单独表示 mOS MyScan、mOS MyScan 5、mOS MyScan 6；具体产品使用稳定 ID 和完整 8 位型号代码精确映射。
+- 结论：D4/D9 读取 13 位设备编号，编号前缀只给系列候选；CD/CE 读取型号代码。旧有线与无线 0xCE 分支解析，未写设备编号继续识别，前缀/代码冲突返回 Conflict，未知时不猜测。
+- 影响：DeviceCmd 0.5.0/ABI 3 新增 ProductCatalog 和产品身份 POD；MainExe 0.4.0、SettingsUI/CalibrationColorUI 0.5.0 只转发和展示识别结果，不解析协议。
+
+### 2026-07-20：设备编号/型号代码回包集中解析与公共分级弹窗
+
+- 问题：颜色校准需要先验证 `0xD4/0xD9` 设备编号，再读取 `0xCD/0xCE` 型号代码；若让 SettingsUI、校准 UI 各自解析回包，协议规则和错误处理会快速分散。
+- 结论：所有命令回包的查找、长度/命令码校验、逐字节转换和型号映射统一留在纯 C++ DeviceCmd。内部可用 `std::string`/字节容器，跨 DLL 只传固定 POD、固定 UTF-8 数组和原始字节，不传 STL/Qt 容器。
+- 结论：颜色校准固定顺序改为工作台门禁 -> 连接 -> USB3 -> D4/D9 设备编号 -> 显示编号 -> CD/CE 型号代码 -> 注入快照 -> 创建弹窗。旧有线 `0xCE` 前 8 字节只有完整代码命中中央目录时才映射具体产品；无线布局单独解析。
+- 结论：普通分级弹窗归 UIComponents，并通过独立 C ABI 提供；单按钮分信息/成功/错误，双按钮分警告/高危。业务模块负责 `tr()`、日志和后续动作，公共 UI 只负责视觉和返回选择结果。
+- 影响：该阶段完成 D4/D9 和公共弹窗基础链路；产品身份分层已由同日较新的 DeviceCmd 0.5.0 决策替代。实机已确认设备编号读取成功，CD/CE 仍超时。
+
 ### 2026-07-17：颜色校准设备预检链路
 
 - 问题：颜色校准打开前必须排除创建/练习工作台占用设备，检查连接与 USB2/USB3，并读取设备信息和型号；任何 UI 自行打开 USB 都会破坏单会话边界。
 - 结论：MainExe 落地 `DeviceSessionHost`，工作线程动态调用 DeviceCmd -> DeviceTransport；SettingsUI 只执行同步预检回调并传 POD，CalibrationColorUI 无有效快照拒绝创建。
-- 结论：Cypress 有线机型共用自动枚举与速度检测；MyScan 6 Wireless 连接方法未开发时明确返回未支持。`0xCD/0xCE` 正式协议无独立机型字段，只识别预留区明确标记，不按设备编号猜测。
-- 验证：Transport 32 项 smoke、DeviceCmd 全链路 smoke、SettingsUI 成功截图和工作台/未连接/USB2/型号未知四个提示测试、CalibrationColorUI smoke、MainExe smoke 均通过；当前实机已确认 Cypress 自动枚举和 USB3 判断，`0xCD` 发送成功但 1.5 秒内未收到 `0xCE`，系统返回 `DeviceInfoReadFailed` 并关闭会话。后续需核对固件支持或命令通道前置初始化。
+- 结论：Cypress 有线机型共用自动枚举与速度检测；MyScan 6 Wireless 连接方法未开发时明确返回未支持。当时按无线协议预留区识别的初始口径，已被同日确认的“旧有线前 8 字节型号代码 + 无线授权布局分支解析”替代。
+- 验证：当时 Transport、DeviceCmd、SettingsUI、CalibrationColorUI 和 MainExe smoke 均通过；实机确认 Cypress/USB3，CD 后 CE 超时。当时“直接 DeviceInfoReadFailed”行为已由 2026-07-20 DeviceCmd 0.6.0 决策替代为“保留 FirmwareTooOld 诊断并使用独立 compatibility effective 值”。
 
 ### 2026-07-16：设备命令层和单设备会话所有权
 

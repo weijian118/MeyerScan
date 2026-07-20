@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMessageBox>
 #include <QRegExp>
 #include <QSet>
 #include <QStatusBar>
@@ -41,7 +42,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.2.0 (2026-07-17)";
+const char* Version = "MeyerScan_MainExe v0.5.1 (2026-07-20)";
 }
 
 // 从患者/订单读模型行中取稳定 ID。
@@ -274,6 +275,9 @@ void MainWindow::StartLogin() {
 
 // 冒烟测试不弹登录窗口，只验证基础设施和页面切换。
 void MainWindow::StartWithoutLoginForSmoke() {
+    // smoke-main 只验证模块装载和页面导航，不应依赖测试电脑是否插入真实设备。
+    // 该标志没有配置文件入口，也不会在正式启动、第三方启动或登录流程中启用。
+    m_skipWorkspaceDevicePreflightForSmoke = true;
     // 冒烟测试需要覆盖正常启动的大部分基础设施，但不能弹出真实登录窗口。
     ShowWaitPage(tr("Preparing modules"));
     InitInfrastructure();
@@ -886,7 +890,7 @@ int MainWindow::HandleCalibrationPreflight(
 
     std::memset(deviceContext, 0, sizeof(*deviceContext));
     deviceContext->structSize = sizeof(*deviceContext);
-    deviceContext->schemaVersion = 1U;
+    deviceContext->schemaVersion = MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
 
     // 创建工作台的 Order/Scan/Process/Send 和练习工作台的 Scan/Process
     // 都共用扫描设备。即使 SettingsUI 已经释放工作台 QWidget，也要按打开来源拦截。
@@ -937,12 +941,81 @@ int MainWindow::HandleCalibrationPreflight(
     std::strncpy(deviceContext->detailUtf8,
                  preflight.detailUtf8,
                  sizeof(deviceContext->detailUtf8) - 1U);
+    std::strncpy(deviceContext->modelCodeUtf8,
+                 preflight.state.modelCodeUtf8,
+                 sizeof(deviceContext->modelCodeUtf8) - 1U);
+    // 产品身份由 DeviceCmd 结合设备编号和完整型号代码生成；MainExe 只复制 POD，
+    // SettingsUI/CalibrationColorUI 不再重复维护型号映射表。
+    deviceContext->productEvidence = preflight.productIdentity.evidence;
+    deviceContext->productFamily = preflight.productIdentity.productFamily;
+    deviceContext->productModel = preflight.productIdentity.productModel;
+    deviceContext->productIdentificationStatus =
+        preflight.productIdentity.identificationStatus;
+    deviceContext->protocolProfile = preflight.productIdentity.protocolProfile;
+    std::strncpy(deviceContext->productSeriesNameUtf8,
+                 preflight.productIdentity.seriesNameUtf8,
+                 sizeof(deviceContext->productSeriesNameUtf8) - 1U);
+    std::strncpy(deviceContext->productNameUtf8,
+                 preflight.productIdentity.productNameUtf8,
+                 sizeof(deviceContext->productNameUtf8) - 1U);
+
+    // 检测记录必须逐字段复制到 SettingsUI 自有 POD。两个模块不共享 DeviceCmd
+    // 结构定义，避免设置 DLL 因设备层头文件变化形成静态链接依赖。
+    deviceContext->detection.structSize = sizeof(deviceContext->detection);
+    deviceContext->detection.schemaVersion =
+        MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION;
+    deviceContext->detection.detectionStatus =
+        preflight.detectionRecord.detectionStatus;
+    deviceContext->detection.deviceNumberStatus =
+        preflight.detectionRecord.deviceNumberStatus;
+    deviceContext->detection.modelCodeStatus =
+        preflight.detectionRecord.modelCodeStatus;
+    deviceContext->detection.seriesProbeStatus =
+        preflight.detectionRecord.seriesProbeStatus;
+    deviceContext->detection.isProductionMode =
+        preflight.detectionRecord.isProductionMode;
+    deviceContext->detection.usedCompatibilityDefaults =
+        preflight.detectionRecord.usedCompatibilityDefaults;
+    deviceContext->detection.deviceNumberSource =
+        preflight.detectionRecord.deviceNumberSource;
+    deviceContext->detection.modelCodeSource =
+        preflight.detectionRecord.modelCodeSource;
+    std::strncpy(deviceContext->detection.reportedDeviceNumberUtf8,
+                 preflight.detectionRecord.reportedDeviceNumberUtf8,
+                 sizeof(deviceContext->detection.reportedDeviceNumberUtf8) - 1U);
+    std::strncpy(deviceContext->detection.effectiveDeviceNumberUtf8,
+                 preflight.detectionRecord.effectiveDeviceNumberUtf8,
+                 sizeof(deviceContext->detection.effectiveDeviceNumberUtf8) - 1U);
+    std::strncpy(deviceContext->detection.reportedModelCodeUtf8,
+                 preflight.detectionRecord.reportedModelCodeUtf8,
+                 sizeof(deviceContext->detection.reportedModelCodeUtf8) - 1U);
+    std::strncpy(deviceContext->detection.effectiveModelCodeUtf8,
+                 preflight.detectionRecord.effectiveModelCodeUtf8,
+                 sizeof(deviceContext->detection.effectiveModelCodeUtf8) - 1U);
+    std::strncpy(deviceContext->detection.detailUtf8,
+                 preflight.detectionRecord.detailUtf8,
+                 sizeof(deviceContext->detection.detailUtf8) - 1U);
 
     WriteUserAction("ColorCalibrationPreflight",
-                    QString("status=%1 model=%2 usb2=%3")
+                    QString("status=%1 detection=%2 profile=%3 usb2=%4 reportedNumber=%5 "
+                            "effectiveNumber=%6 reportedModelCode=%7 effectiveModelCode=%8 "
+                            "product=%9 identityStatus=%10 production=%11 compatibility=%12")
                         .arg(deviceContext->status)
+                        .arg(deviceContext->detection.detectionStatus)
                         .arg(deviceContext->deviceModel)
-                        .arg(deviceContext->isUsb2));
+                        .arg(deviceContext->isUsb2)
+                        .arg(QString::fromUtf8(
+                            deviceContext->detection.reportedDeviceNumberUtf8))
+                        .arg(QString::fromUtf8(
+                            deviceContext->detection.effectiveDeviceNumberUtf8))
+                        .arg(QString::fromUtf8(
+                            deviceContext->detection.reportedModelCodeUtf8))
+                        .arg(QString::fromUtf8(
+                            deviceContext->detection.effectiveModelCodeUtf8))
+                        .arg(QString::fromUtf8(deviceContext->productNameUtf8))
+                        .arg(deviceContext->productIdentificationStatus)
+                        .arg(deviceContext->detection.isProductionMode)
+                        .arg(deviceContext->detection.usedCompatibilityDefaults));
     return deviceContext->status;
 }
 
@@ -982,7 +1055,16 @@ void MainWindow::HandleOrderCreateAction(int actionId) {
         }
         if (m_orderWorkspace) {
             RefreshWorkspaceScanProcessFromOrder();
-            EnsureScanWorkflowPage();
+            // 创建模式先完成设备准入，再创建 ScanWorkflowUI 的 VTK/OpenGL 页面。
+            // 生产设备没有真实编号时保持在建单页，不加载扫描资源。
+            if (!PrepareWorkspaceDeviceSession()) {
+                WriteStatus(tr("Device preparation failed"));
+                break;
+            }
+            if (!EnsureScanWorkflowPage()) {
+                WriteStatus(tr("Scan workflow unavailable"));
+                break;
+            }
             m_orderWorkspace->SetStep(WorkspaceStepScan);
         }
         WriteStatus(tr("Scan step opened"));
@@ -1028,6 +1110,24 @@ void MainWindow::HandleWorkspaceShellAction(int actionId) {
 // 进入 Scan/Process 时懒加载对应页面；离开时释放隐藏页的 VTK/OpenGL 资源。
 void MainWindow::HandleWorkspaceStepChanged(int step) {
     WriteUserAction("WorkspaceStepChanged", QString("Workspace step changed: %1").arg(step));
+
+    // Shell 的步骤按钮会先更新内部当前步骤，再同步回调 MainExe。这里在创建
+    // 任何重页面前执行设备准入；失败后同一事件回调内切回 Order，Qt 尚未发生
+    // 下一轮绘制，因此客户不会看到被拒绝的 Scan/Process/Send 页面闪现。
+    if (step == WorkspaceStepScan ||
+        step == WorkspaceStepProcess ||
+        step == WorkspaceStepSend) {
+        if (!PrepareWorkspaceDeviceSession()) {
+            if (m_currentWorkspaceMode == WorkspaceModeOrderCreate && m_orderWorkspace) {
+                m_orderWorkspace->SetStep(WorkspaceStepOrderCreate);
+            } else {
+                // 练习模式没有 Order 步骤。设备准入失败时延迟返回首页，避免在
+                // Shell 的 clicked 信号栈内同步销毁发送者所在控件树。
+                QTimer::singleShot(0, this, [this]() { ShowHome(); });
+            }
+            return;
+        }
+    }
 
     if (step == WorkspaceStepScan) {
         if (m_currentWorkspaceMode == WorkspaceModeOrderCreate) {
@@ -1576,6 +1676,11 @@ bool MainWindow::EnsurePracticeWorkspacePage() {
     }
     m_orderWorkspace->SetStepChangedCallback(&MainWindow::OnWorkspaceStepChanged, this);
 
+    // 练习模式可使用生产默认身份，但仍必须通过连接、USB3、系列和型号检测。
+    // 准入成功后先把 deviceIdentity 写入上下文，再创建扫描页面。
+    if (!PrepareWorkspaceDeviceSession()) {
+        return false;
+    }
     if (!EnsureScanWorkflowPage()) {
         return false;
     }
@@ -1763,6 +1868,13 @@ void MainWindow::ReleaseOrderWorkspacePage() {
     ReleaseScanWorkflowPage();
     ReleaseDataProcessPage();
     ReleaseSendPage();
+
+    // 工作台是扫描设备会话的业务所有者。无论创建还是练习，离开工作台都要
+    // 关闭唯一 DeviceCmd 会话，防止设置/校准误复用过期连接和身份快照。
+    if (m_deviceSessionHost) {
+        m_deviceSessionHost->CloseSession();
+    }
+    m_workspaceDeviceSessionReady = false;
 
     if (m_orderCreate && m_orderCreateWidget && m_activeWidget != m_orderWorkspaceWidget) {
         // OrderCreateUI 没有单独 DestroyWidget 接口，当前通过 Shutdown 清理弱引用。
@@ -2945,6 +3057,247 @@ QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const 
     return QString::fromUtf8(QJsonDocument(context).toJson(QJsonDocument::Compact));
 }
 
+// 准备当前工作台使用的唯一设备会话。
+// 创建模式使用严格身份策略；练习模式允许 DeviceCmd 已明确标记来源的生产默认身份。
+bool MainWindow::PrepareWorkspaceDeviceSession() {
+    if (m_skipWorkspaceDevicePreflightForSmoke) {
+        // 自动化 smoke 只检查页面切换，不伪造 reported/effective 设备值。
+        // 明确写入 automationBypass，防止测试上下文被误解为真实设备检测结果。
+        if (!m_workspaceDeviceSessionReady) {
+            QJsonObject context;
+            const QJsonDocument current = QJsonDocument::fromJson(
+                m_workspaceContextJson.toUtf8());
+            if (current.isObject()) {
+                context = current.object();
+            }
+            QJsonObject identity;
+            identity.insert("schemaVersion", 1);
+            identity.insert("automationBypass", true);
+            identity.insert("admissionMode",
+                            m_currentWorkspaceMode == WorkspaceModePractice
+                                ? "practice"
+                                : "orderCreate");
+            context.insert("deviceIdentity", identity);
+            m_workspaceContextJson = QString::fromUtf8(
+                QJsonDocument(context).toJson(QJsonDocument::Compact));
+            RefreshWorkspaceContextConsumers();
+            m_workspaceDeviceSessionReady = true;
+            WriteUserAction("WorkspaceDevicePreflightBypassed",
+                            "smoke-main bypassed physical USB device checks");
+        }
+        return true;
+    }
+
+    if (!m_deviceSessionHost) {
+        WriteUserAction("WorkspaceDevicePreflightFailed",
+                        "MainExe device session host is unavailable");
+        ShowWorkspaceDevicePreflightMessage(
+            MeyerDeviceCalibrationPreflight_InternalError);
+        return false;
+    }
+
+    // 已通过准入且连接仍打开时直接复用，避免步骤来回切换时重复发送设备命令。
+    if (m_workspaceDeviceSessionReady && m_deviceSessionHost->IsSessionOpen()) {
+        return true;
+    }
+    m_workspaceDeviceSessionReady = false;
+
+    MeyerDeviceCalibrationPreflight preflight = {};
+    const bool allowProductionIdentity =
+        m_currentWorkspaceMode == WorkspaceModePractice;
+    const std::int32_t result = m_deviceSessionHost->PrepareWorkspaceSession(
+        allowProductionIdentity, &preflight);
+
+    // 即使业务状态被拦截，也先保存完整身份诊断，便于日志和后续现场问题页读取。
+    if (result == MeyerDeviceCmdResult_Ok) {
+        SetWorkspaceDeviceIdentity(preflight);
+    }
+
+    WriteUserAction(
+        "WorkspaceDevicePreflight",
+        QString("mode=%1 result=%2 status=%3 production=%4 compatibility=%5 "
+                "reportedNumber=%6 effectiveNumber=%7 reportedModelCode=%8 "
+                "effectiveModelCode=%9")
+            .arg(allowProductionIdentity ? "practice" : "orderCreate")
+            .arg(result)
+            .arg(preflight.status)
+            .arg(preflight.detectionRecord.isProductionMode)
+            .arg(preflight.detectionRecord.usedCompatibilityDefaults)
+            .arg(QString::fromUtf8(
+                preflight.detectionRecord.reportedDeviceNumberUtf8))
+            .arg(QString::fromUtf8(
+                preflight.detectionRecord.effectiveDeviceNumberUtf8))
+            .arg(QString::fromUtf8(
+                preflight.detectionRecord.reportedModelCodeUtf8))
+            .arg(QString::fromUtf8(
+                preflight.detectionRecord.effectiveModelCodeUtf8)));
+
+    if (result != MeyerDeviceCmdResult_Ok ||
+        preflight.status != MeyerDeviceCalibrationPreflight_Ready) {
+        const int displayStatus = result == MeyerDeviceCmdResult_Ok
+            ? preflight.status
+            : MeyerDeviceCalibrationPreflight_InternalError;
+        ShowWorkspaceDevicePreflightMessage(displayStatus);
+        m_deviceSessionHost->CloseSession();
+        return false;
+    }
+
+    m_workspaceDeviceSessionReady = true;
+    return true;
+}
+
+// 把 DeviceCmd 的固定 POD 转成跨 UI 模块使用的版本化 JSON。
+// JSON 同时保留真实值和 effective 值；下游读取 effective 时必须结合 source/标志判断来源。
+void MainWindow::SetWorkspaceDeviceIdentity(
+    const MeyerDeviceCalibrationPreflight& preflight) {
+    QJsonObject context;
+    const QJsonDocument current = QJsonDocument::fromJson(
+        m_workspaceContextJson.toUtf8());
+    if (current.isObject()) {
+        context = current.object();
+    }
+    if (context.isEmpty()) {
+        const QString mode = m_currentWorkspaceMode == WorkspaceModePractice
+            ? "practice"
+            : "order";
+        context = QJsonDocument::fromJson(
+            BuildDefaultWorkspaceContextJson(mode).toUtf8()).object();
+    }
+
+    QJsonObject identity;
+    identity.insert("schemaVersion", 1);
+    identity.insert("admissionMode",
+                    m_currentWorkspaceMode == WorkspaceModePractice
+                        ? "practice"
+                        : "orderCreate");
+    identity.insert("preflightStatus", preflight.status);
+    identity.insert("commandResult", preflight.commandResult);
+    identity.insert("connectionState", preflight.state.connectionState);
+    identity.insert("isUsb2", preflight.state.isUsb2 != 0);
+    identity.insert("protocolProfile", preflight.productIdentity.protocolProfile);
+    identity.insert("model", preflight.state.model);
+    identity.insert("modelSource", preflight.state.modelSource);
+    identity.insert("modelName", QString::fromUtf8(preflight.state.modelNameUtf8));
+    identity.insert("productFamily", preflight.productIdentity.productFamily);
+    identity.insert("productModel", preflight.productIdentity.productModel);
+    identity.insert("productIdentificationStatus",
+                    preflight.productIdentity.identificationStatus);
+    // evidence 是 uint64 位标记，使用十进制字符串可避免 JSON double 丢失高位精度。
+    identity.insert("productEvidence",
+                    QString::number(preflight.productIdentity.evidence));
+    identity.insert("productSeriesName",
+                    QString::fromUtf8(preflight.productIdentity.seriesNameUtf8));
+    identity.insert("productName",
+                    QString::fromUtf8(preflight.productIdentity.productNameUtf8));
+    identity.insert("reportedDeviceNumber",
+                    QString::fromUtf8(
+                        preflight.detectionRecord.reportedDeviceNumberUtf8));
+    identity.insert("effectiveDeviceNumber",
+                    QString::fromUtf8(
+                        preflight.detectionRecord.effectiveDeviceNumberUtf8));
+    identity.insert("reportedModelCode",
+                    QString::fromUtf8(
+                        preflight.detectionRecord.reportedModelCodeUtf8));
+    identity.insert("effectiveModelCode",
+                    QString::fromUtf8(
+                        preflight.detectionRecord.effectiveModelCodeUtf8));
+    identity.insert("deviceNumberSource",
+                    preflight.detectionRecord.deviceNumberSource);
+    identity.insert("modelCodeSource",
+                    preflight.detectionRecord.modelCodeSource);
+    identity.insert("deviceNumberStatus",
+                    preflight.detectionRecord.deviceNumberStatus);
+    identity.insert("modelCodeStatus",
+                    preflight.detectionRecord.modelCodeStatus);
+    identity.insert("seriesProbeStatus",
+                    preflight.detectionRecord.seriesProbeStatus);
+    identity.insert("detectionStatus",
+                    preflight.detectionRecord.detectionStatus);
+    identity.insert("isProductionMode",
+                    preflight.detectionRecord.isProductionMode != 0);
+    identity.insert("usedCompatibilityDefaults",
+                    preflight.detectionRecord.usedCompatibilityDefaults != 0);
+    identity.insert("detail", QString::fromUtf8(preflight.detailUtf8));
+
+    context.insert("deviceIdentity", identity);
+    m_workspaceContextJson = QString::fromUtf8(
+        QJsonDocument(context).toJson(QJsonDocument::Compact));
+    RefreshWorkspaceContextConsumers();
+}
+
+// 同步最新工作台上下文到已经创建的各步骤模块。
+void MainWindow::RefreshWorkspaceContextConsumers() {
+    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
+    if (m_scanWorkflow &&
+        !m_scanWorkflow->SetSessionContextJson(contextBytes.constData())) {
+        WriteUserAction("ContextRejected",
+                        "ScanWorkflowUI rejected refreshed workspace context");
+    }
+    if (m_dataProcess &&
+        !m_dataProcess->SetSessionContextJson(contextBytes.constData())) {
+        WriteUserAction("ContextRejected",
+                        "DataProcessUI rejected refreshed workspace context");
+    }
+    if (m_send &&
+        !m_send->SetSessionContextJson(contextBytes.constData())) {
+        WriteUserAction("ContextRejected",
+                        "SendUI rejected refreshed workspace context");
+    }
+}
+
+// 显示设备准入失败原因。所有客户可见源文本均使用 tr() 包裹英文。
+void MainWindow::ShowWorkspaceDevicePreflightMessage(int status) {
+    QString message;
+    switch (status) {
+    case MeyerDeviceCalibrationPreflight_DeviceNotConnected:
+        message = tr("Device is not connected.");
+        break;
+    case MeyerDeviceCalibrationPreflight_Usb2Connected:
+        message = tr("Please reconnect the device to a USB 3.0 port.");
+        break;
+    case MeyerDeviceCalibrationPreflight_ProductionDeviceNumberRequired:
+        message = tr("The device number has not been programmed. A programmed device number is required for order scanning.");
+        break;
+    case MeyerDeviceCalibrationPreflight_ProductIdentityConflict:
+        message = tr("The device number does not match the device model.");
+        break;
+    case MeyerDeviceCalibrationPreflight_DeviceNumberInvalid:
+        message = tr("The device number is invalid.");
+        break;
+    case MeyerDeviceCalibrationPreflight_DeviceModelCodeInvalid:
+    case MeyerDeviceCalibrationPreflight_ModelUnknown:
+        message = tr("Unable to read the device model.");
+        break;
+    case MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal:
+        message = tr("The device response is abnormal.");
+        break;
+    default:
+        message = tr("Unable to prepare the device for scanning.");
+        break;
+    }
+
+    QWidget* parent = m_orderWorkspaceWidget
+        ? m_orderWorkspaceWidget->window()
+        : this;
+    const MeyerShowNoticeDialogFunc showNotice =
+        reinterpret_cast<MeyerShowNoticeDialogFunc>(
+            m_uiComponentsLibrary.resolve("MeyerUIComponents_ShowNoticeDialog"));
+    if (showNotice) {
+        const QByteArray titleBytes = tr("Error").toUtf8();
+        const QByteArray messageBytes = message.toUtf8();
+        const QByteArray confirmBytes = tr("Confirm").toUtf8();
+        showNotice(MeyerNoticeDialogError,
+                   titleBytes.constData(),
+                   messageBytes.constData(),
+                   confirmBytes.constData(),
+                   parent);
+        return;
+    }
+
+    // UIComponents 缺失不应吞掉关键门禁提示，使用 Qt 标准弹窗作为最后降级。
+    QMessageBox::critical(parent, tr("Error"), message, QMessageBox::Ok);
+}
+
 // 构造默认练习扫描流程。
 QJsonObject MainWindow::BuildDefaultScanProcessObject() const {
     QJsonArray steps;
@@ -3019,22 +3372,7 @@ void MainWindow::SetWorkspaceScanProcess(const QJsonObject& scanProcessObject) {
     context.insert("scanProcess", scanProcessObject);
     m_workspaceContextJson = QString::fromUtf8(QJsonDocument(context).toJson(QJsonDocument::Compact));
 
-    const QByteArray contextBytes = m_workspaceContextJson.toUtf8();
-    if (m_scanWorkflow) {
-        if (!m_scanWorkflow->SetSessionContextJson(contextBytes.constData())) {
-            WriteUserAction("ContextRejected", "ScanWorkflowUI rejected refreshed scan process");
-        }
-    }
-    if (m_dataProcess) {
-        if (!m_dataProcess->SetSessionContextJson(contextBytes.constData())) {
-            WriteUserAction("ContextRejected", "DataProcessUI rejected refreshed scan process");
-        }
-    }
-    if (m_send) {
-        if (!m_send->SetSessionContextJson(contextBytes.constData())) {
-            WriteUserAction("ContextRejected", "SendUI rejected refreshed workspace context");
-        }
-    }
+    RefreshWorkspaceContextConsumers();
 }
 
 // 写客户操作日志。日志对象使用构造期缓存的 m_logger，避免每次重新 GetLogger()。

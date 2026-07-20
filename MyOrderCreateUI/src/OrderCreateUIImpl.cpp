@@ -57,7 +57,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_OrderCreateUI";
 
 // 模块版本用于 GetModuleVersion()，需要和 Version.rc 同步维护。
-const char* Version = "MeyerScan_OrderCreateUI v0.5.4 (2026-07-15)";
+const char* Version = "MeyerScan_OrderCreateUI v0.5.5 (2026-07-20)";
 }
 
 const char* kOcclusionNatural = "natural";
@@ -674,6 +674,7 @@ void OrderCreateUIImpl::Shutdown() {
     m_currentScanProcessJson.clear();
     m_currentOrderContextJson.clear();
     m_uiComponents = nullptr;
+    m_showDecisionDialog = nullptr;
     // ScanSchemaService 是模块单例，本 UI 只清借用指针，不关闭可能被其它调用方使用的服务。
     m_scanSchemaService = nullptr;
     m_logger = nullptr;
@@ -893,14 +894,31 @@ QWidget* OrderCreateUIImpl::CreateToothPlanPanel(QWidget* parent) {
         // 视频中的清空操作需要二次确认，避免用户误删已经配置好的牙位方案。
         const bool skipConfirmForSmoke = qApp && qApp->property("MeyerScanSmokeTest").toBool();
         if (!skipConfirmForSmoke) {
-            QMessageBox messageBox(m_root);
-            messageBox.setIcon(QMessageBox::Question);
-            messageBox.setWindowTitle(tr("Question"));
-            messageBox.setText(tr("Are you sure to clear all selections?"));
-            QPushButton* confirmButton = messageBox.addButton(tr("Confirm"), QMessageBox::AcceptRole);
-            messageBox.addButton(tr("Cancel"), QMessageBox::RejectRole);
-            messageBox.exec();
-            if (messageBox.clickedButton() != confirmButton) {
+            bool confirmed = false;
+            if (m_showDecisionDialog) {
+                // 公共弹窗只负责视觉和按钮返回值；是否清空仍由建单模块决定。
+                const QByteArray titleBytes = tr("Warning").toUtf8();
+                const QByteArray messageBytes = tr("Are you sure to clear all selections?").toUtf8();
+                const QByteArray confirmBytes = tr("Confirm").toUtf8();
+                const QByteArray cancelBytes = tr("Cancel").toUtf8();
+                confirmed = m_showDecisionDialog(MeyerDecisionDialogWarning,
+                                                  titleBytes.constData(),
+                                                  messageBytes.constData(),
+                                                  confirmBytes.constData(),
+                                                  cancelBytes.constData(),
+                                                  m_root) == MeyerDialogAccepted;
+            } else {
+                // 发布目录缺少新版 UIComponents 时仍保留功能完整的 Qt 标准弹窗降级路径。
+                QMessageBox messageBox(m_root);
+                messageBox.setIcon(QMessageBox::Question);
+                messageBox.setWindowTitle(tr("Warning"));
+                messageBox.setText(tr("Are you sure to clear all selections?"));
+                QPushButton* confirmButton = messageBox.addButton(tr("Confirm"), QMessageBox::AcceptRole);
+                messageBox.addButton(tr("Cancel"), QMessageBox::RejectRole);
+                messageBox.exec();
+                confirmed = messageBox.clickedButton() == confirmButton;
+            }
+            if (!confirmed) {
                 WriteLog(LogLevel::Info, "ClearAllTeethCanceled", "Clear all selections canceled");
                 return;
             }
@@ -1806,6 +1824,14 @@ void OrderCreateUIImpl::LoadUIComponents() {
                      "UIComponents Init returned false; fallback to local order controls");
             m_uiComponents = nullptr;
             return;
+        }
+        // 弹窗导出从 UIComponents v0.5.0 起提供；解析失败不影响已有控件工厂。
+        m_showDecisionDialog = reinterpret_cast<MeyerShowDecisionDialogFunc>(
+            m_uiComponentsLibrary.resolve("MeyerUIComponents_ShowDecisionDialog"));
+        if (!m_showDecisionDialog) {
+            WriteLog(LogLevel::Warning,
+                     "LoadUIComponents",
+                     "Decision-dialog export unavailable; QMessageBox fallback enabled");
         }
         WriteLog(LogLevel::Info, "LoadUIComponents", "UIComponents loaded for order create UI");
     }

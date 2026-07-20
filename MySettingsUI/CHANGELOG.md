@@ -1,5 +1,30 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-20 - 0.6.0
+
+- SettingsUI API 升级为 6、校准设备上下文 schema 升级为 4，并完整转发 DeviceCmd 检测记录。
+- 设备上下文新增 D9/C7/CE 步骤状态、生产模式、兼容标志、真实 reported 值、最终 effective 值及各字段来源；SettingsUI 不解析原始回包。
+- 颜色校准入口把原“仅显示设备编号”改为一次性设备信息提示，统一展示有效编号、具体产品、型号代码、生产模式和兼容来源，避免连续多个模态弹窗。
+- CE 旧固件、回包异常、未初始化、校验失败和型号值非法使用英文 `tr()` 源文本说明兼容原因；D9 普通回包异常、编号非法和型号代码非法增加独立错误提示。
+- 注入 CalibrationColorUI 时逐字段复制检测 POD，不使用 `reinterpret_cast` 假设两个 DLL 的结构布局相同。
+- 代码版本、CMake 版本和 Windows 文件版本统一升级为 0.6.0。
+
+## 2026-07-20 - 0.5.0
+
+- SettingsUI API 升级为 5、颜色校准上下文 schema 升级为 3；只读转发 DeviceCmd 已识别的产品系列、具体产品、协议 Profile、状态和证据。
+- 新增产品身份冲突提示，设备编号前缀与型号代码不匹配时显示错误并阻止颜色校准。
+- 界面术语由历史“机器码”统一为“设备编号”；DeviceCmd API 中 MachineCode 名称仅为兼容保留。
+- 注入 CalibrationColorUI 的 POD 增加产品名称和识别状态，SettingsUI 仍不解析设备回包、不维护产品映射表。
+- CMake、代码版本和 Windows 文件版本统一升级为 0.5.0，相关 CTest 通过。
+
+## 2026-07-20 - 0.4.0
+
+- 颜色校准预检顺序扩展为工作台门禁、连接、USB3、`0xD4/0xD9` 机器码、`0xCD/0xCE` 机型；新增机器码读取失败状态 9。
+- 机器码读取成功后先用公共信息弹窗显示可复制的 13 位机器码，再继续处理机型结果和颜色校准入口。
+- 设备上下文在原保留空间中增加 `modelCodeUtf8[32]`，结构总大小不变；SettingsUI API 升级为 4，颜色校准上下文 schema 升级为 2。
+- 动态加载 UIComponents 单按钮弹窗 C ABI；缺失或 ABI 不匹配时降级为 `QMessageBox`，不阻断设置流程。
+- `SettingsUITest` 覆盖机器码读取失败提示、公共弹窗结构、机器码内容和关闭机器码提示后进入颜色校准遮罩。
+
 ## 2026-07-17 - 0.3.0 设备预检链路
 
 - 公共接口 ABI 升级为 3，增加 `SetCalibrationPreflightCallback` 和固定 POD `SettingsCalibrationDeviceContext`。

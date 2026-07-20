@@ -24,7 +24,7 @@ namespace meyer
 {
     namespace devicecmd
     {
-        // 查询产品型号配置。MyScan 5H 与 MyScan 5 共用协议配置，但仍保留独立型号名。
+        // 查询协议能力 Profile。MyScan 5H 与 MyScan 5 协议相近，但保留独立能力项。
         const DeviceModelProfile* DeviceModelCatalog::Find(std::int32_t model)
         {
             // 公共基础命令来自用户提供的相似协议说明；大块校准和固件能力只在
@@ -54,12 +54,16 @@ namespace meyer
             static const DeviceModelProfile profiles[] =
             {
                 // Unknown 不是产品型号，而是校准入口探测阶段使用的最小配置。
-                // 它只允许读取设备信息，型号识别成功后服务会切换到真实 profile。
+                // 探测必须先允许 D4/D9 机器码和 CD/CE 设备信息两组只读命令，
+                // 型号识别成功后服务再切换到真实 profile。
                 { MeyerDeviceModel_Unknown,
                   MeyerDeviceProtocolFamily_LegacySimilar,
                   false,
                   6,
-                  MeyerDeviceCapability_DeviceSecurityInfo,
+                  MeyerDeviceCapability_MachineCode |
+                      MeyerDeviceCapability_DeviceSecurityInfo |
+                      // 生产模式编号未写入时，需要用 C2/C7 是否有回包探测系列。
+                      MeyerDeviceCapability_CalibrationData,
                   "Unknown",
                   "Legacy device information probe",
                   StopSequence::LightOffThenStop,

@@ -1,6 +1,6 @@
 # 设备协议命令覆盖表
 
-本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf`。`MyDeviceCmd 0.3.0`
+本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf` 及旧有线软件实例。`MyDeviceCmd 0.6.1`
 已经为协议表中的 48 个命令码提供语义接口或对应的响应解析路径。
 
 状态含义：
@@ -17,7 +17,7 @@
 | `0x0B` 停止传图 | 无 | `MeyerDeviceCmd_StopCapture` | 已实现、模拟通过、待实机 |
 | `0xFF` 控制器复位 | 无 | `MeyerDeviceCmd_ResetController` | 已实现、模拟通过、待实机 |
 | `0x0D` 固化机器码 | `0x1D` | `MeyerDeviceCmd_StoreMachineCode` | 已实现、模拟通过、待实机 |
-| `0xD4` 读取机器码 | `0xD9` | `MeyerDeviceCmd_RefreshBasicState`；原始命令接口 | 已实现、模拟通过、待实机 |
+| `0xD4` 读取设备编号（API 历史名 MachineCode） | `0xD9` | `MeyerDeviceCmd_ReadMachineCode`；`MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、实机已返回 13 位编号 |
 | `0x0E` 开关灯 | 无 | `MeyerDeviceCmd_SetLight` | 已实现、模拟通过、待实机 |
 | `0x0C` 强制开灯 | 无 | `MeyerDeviceCmd_SetForceLight` | 已实现、模拟通过、待实机 |
 | `0x14` 读取主板版本 | `0x15` | `MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、待实机 |
@@ -62,12 +62,17 @@ DeviceCmd 只负责协议读写。
 | `0xCD` 读取设备信息 | `0xCE` | `MeyerDeviceCmd_ReadDeviceInfo`；`MeyerDeviceCmd_PrepareColorCalibration` | 已实现、校准预检模拟通过、待实机 |
 | `0xC9` 固化设备信息 | `0xCB` | `MeyerDeviceCmd_StoreDeviceInfo` | 已实现、模拟通过、待实机 |
 
-设备信息包括加密标志、加密类型、13 位设备编号、30 字节期限码和 337 字节
-预留区。期限码只保存和传递原始字节，授权/加解密模块负责业务解释。
+颜色校准型号检测固定顺序为 D4/D9、必要时 C2/C7、CD/CE。详细解析会区分
+无回包、普通坏包、求和校验失败、`0xFFFF` 未初始化和业务值非法；兼容默认值
+只写入 `MeyerDeviceDetectionRecord.effective*`，真实 `reported*` 字段保持原样。
 
-协议没有单独定义“设备机型”字段。当前型号解析器只识别预留区中的明确 ASCII
-型号标记，并把来源标为 `DeviceReported`；没有标记时返回 `ModelUnknown`。禁止仅凭
-设备编号前缀猜测机型。实机联调时应记录脱敏后的预留区格式，再集中扩展解析器。
+`0xCE` 不能全局按一种结构解释：旧 Cypress 有线软件实例返回 382 字节，前 8 字节
+逐位组成设备型号代码；MyScan 6 Wireless 文档布局才包含加密标志、加密类型、
+13 位设备编号、30 字节期限码和 337 字节预留区。`DeviceCmd` 根据协议 Profile
+选择解析器，并在 `responseLayout` 中记录分支。
+
+型号代码必须完整精确匹配 `DeviceProductCatalog`。设备编号前缀只确定产品系列候选；
+前缀和代码冲突时返回 `Conflict`，未写设备编号时继续使用型号代码识别，UI 不解析原始回包。
 
 ## 主板固件升级
 

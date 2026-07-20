@@ -7,8 +7,10 @@
 #include <QComboBox>
 #include <QDateEdit>
 #include <QDesktopWidget>
+#include <QDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
@@ -27,7 +29,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIComponents";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_UIComponents v0.4.1 (2026-07-15)";
+const char* Version = "MeyerScan_UIComponents v0.5.0 (2026-07-20)";
 }
 
 const double kDesignWidth = 1920.0;
@@ -65,6 +67,37 @@ QString ButtonContentName(int contentLayout) {
     }
 }
 
+// 把弹窗级别转成稳定 QSS 属性。notice/decision 共用同一弹窗结构，
+// 但信息、成功、错误、警告和高危使用不同图标与强调色。
+QString DialogLevelName(bool decisionDialog, int level) {
+    if (decisionDialog) {
+        return level == MeyerDecisionDialogCritical ? "critical" : "warning";
+    }
+    if (level == MeyerNoticeDialogSuccess) {
+        return "success";
+    }
+    if (level == MeyerNoticeDialogError) {
+        return "error";
+    }
+    return "information";
+}
+
+// 选择 Qt 自带的标准图标，避免每个业务模块重复携带提示图资源。
+QStyle::StandardPixmap DialogStandardPixmap(bool decisionDialog, int level) {
+    if (decisionDialog) {
+        return level == MeyerDecisionDialogCritical
+            ? QStyle::SP_MessageBoxCritical
+            : QStyle::SP_MessageBoxWarning;
+    }
+    if (level == MeyerNoticeDialogSuccess) {
+        return QStyle::SP_DialogApplyButton;
+    }
+    if (level == MeyerNoticeDialogError) {
+        return QStyle::SP_MessageBoxCritical;
+    }
+    return QStyle::SP_MessageBoxInformation;
+}
+
 // Qt 动态属性变化后需要重新抛光，qss 才能稳定按新属性重算。
 void Repolish(QWidget* widget) {
     if (!widget || !widget->style()) {
@@ -74,6 +107,115 @@ void Repolish(QWidget* widget) {
     widget->style()->unpolish(widget);
     widget->style()->polish(widget);
     widget->update();
+}
+
+// 创建并同步执行公共模态弹窗。函数只组合通用控件，不读取业务状态。
+int ShowCommonDialog(bool decisionDialog,
+                     int level,
+                     const char* titleUtf8,
+                     const char* messageUtf8,
+                     const char* confirmTextUtf8,
+                     const char* cancelTextUtf8,
+                     QWidget* parent) {
+    if (!QApplication::instance()) {
+        // 没有 QApplication 时不能创建 QWidget，稳定返回取消而不是崩溃。
+        return MeyerDialogRejected;
+    }
+
+    // QDialog 放在调用栈上，exec() 返回后立即释放；内部子控件由 Qt 父子关系回收。
+    QDialog dialog(parent);
+    dialog.setObjectName("MeyerMessageDialog");
+    dialog.setProperty("dialogLevel", DialogLevelName(decisionDialog, level));
+    dialog.setModal(true);
+    dialog.setWindowModality(Qt::WindowModal);
+    dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setMinimumWidth(440);
+    dialog.setMaximumWidth(680);
+    MeyerQtModule::ApplyModuleQss(&dialog, "MyUIComponents", "ui_components.qss", nullptr);
+
+    auto* rootLayout = new QVBoxLayout(&dialog);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+
+    // 顶部强调条只通过动态属性区分级别，具体颜色全部由 QSS 管理。
+    auto* accent = new QWidget(&dialog);
+    accent->setObjectName("MeyerDialogAccent");
+    accent->setProperty("dialogLevel", DialogLevelName(decisionDialog, level));
+    accent->setFixedHeight(5);
+    rootLayout->addWidget(accent);
+
+    auto* content = new QWidget(&dialog);
+    content->setObjectName("MeyerDialogContent");
+    auto* contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(28, 24, 28, 22);
+    contentLayout->setSpacing(18);
+
+    auto* messageRow = new QHBoxLayout();
+    messageRow->setContentsMargins(0, 0, 0, 0);
+    messageRow->setSpacing(16);
+
+    auto* iconLabel = new QLabel(content);
+    iconLabel->setObjectName("MeyerDialogIcon");
+    iconLabel->setFixedSize(40, 40);
+    const QIcon standardIcon = QApplication::style()->standardIcon(
+        DialogStandardPixmap(decisionDialog, level));
+    iconLabel->setPixmap(standardIcon.pixmap(36, 36));
+    iconLabel->setAlignment(Qt::AlignCenter);
+    messageRow->addWidget(iconLabel, 0, Qt::AlignTop);
+
+    auto* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(8);
+    auto* titleLabel = new QLabel(QString::fromUtf8(titleUtf8 ? titleUtf8 : ""), content);
+    titleLabel->setObjectName("MeyerDialogTitle");
+    titleLabel->setWordWrap(true);
+    auto* messageLabel = new QLabel(QString::fromUtf8(messageUtf8 ? messageUtf8 : ""), content);
+    messageLabel->setObjectName("MeyerDialogMessage");
+    messageLabel->setWordWrap(true);
+    // 机器码、错误详情等内容允许鼠标选择复制，但标签本身仍不可编辑。
+    messageLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    textLayout->addWidget(titleLabel);
+    textLayout->addWidget(messageLabel);
+    messageRow->addLayout(textLayout, 1);
+    contentLayout->addLayout(messageRow);
+
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->setContentsMargins(0, 2, 0, 0);
+    buttonRow->setSpacing(10);
+    buttonRow->addStretch();
+
+    if (decisionDialog) {
+        // 双按钮弹窗把取消放在确认左侧，减少误触高风险操作。
+        QPushButton* cancelButton = UIComponentsImpl::Instance().CreateButton(
+            MeyerButtonRoleSecondary,
+            MeyerButtonContentTextOnly,
+            cancelTextUtf8,
+            "",
+            content);
+        cancelButton->setObjectName("MeyerDialogCancelButton");
+        QObject::connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+        buttonRow->addWidget(cancelButton);
+    }
+
+    const int confirmRole = decisionDialog && level == MeyerDecisionDialogCritical
+        ? MeyerButtonRoleDanger
+        : MeyerButtonRolePrimary;
+    QPushButton* confirmButton = UIComponentsImpl::Instance().CreateButton(
+        confirmRole,
+        MeyerButtonContentTextOnly,
+        confirmTextUtf8,
+        "",
+        content);
+    confirmButton->setObjectName("MeyerDialogConfirmButton");
+    confirmButton->setDefault(true);
+    QObject::connect(confirmButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    buttonRow->addWidget(confirmButton);
+    contentLayout->addLayout(buttonRow);
+    rootLayout->addWidget(content);
+
+    return dialog.exec() == QDialog::Accepted
+        ? MeyerDialogAccepted
+        : MeyerDialogRejected;
 }
 }
 
@@ -471,6 +613,45 @@ QIcon UIComponentsImpl::LoadIcon(const char* iconResourcePathUtf8) const {
 extern "C" MEYERSCAN_UICOMPONENTS_API IUIComponents* GetUIComponents() {
     // C ABI 工厂函数保持导出名稳定，方便其它 DLL 用 QLibrary 动态获取。
     return &UIComponentsImpl::Instance();
+}
+
+// 导出单按钮提示弹窗。级别非法时按信息级降级，保证调用方仍能得到可用提示。
+extern "C" MEYERSCAN_UICOMPONENTS_API int MeyerUIComponents_ShowNoticeDialog(
+    int level,
+    const char* titleUtf8,
+    const char* messageUtf8,
+    const char* confirmTextUtf8,
+    QWidget* parent) {
+    const int safeLevel = level >= MeyerNoticeDialogInformation && level <= MeyerNoticeDialogError
+        ? level
+        : MeyerNoticeDialogInformation;
+    return ShowCommonDialog(false,
+                            safeLevel,
+                            titleUtf8,
+                            messageUtf8,
+                            confirmTextUtf8,
+                            "",
+                            parent);
+}
+
+// 导出双按钮选择弹窗。级别非法时按普通警告级降级。
+extern "C" MEYERSCAN_UICOMPONENTS_API int MeyerUIComponents_ShowDecisionDialog(
+    int level,
+    const char* titleUtf8,
+    const char* messageUtf8,
+    const char* confirmTextUtf8,
+    const char* cancelTextUtf8,
+    QWidget* parent) {
+    const int safeLevel = level == MeyerDecisionDialogCritical
+        ? MeyerDecisionDialogCritical
+        : MeyerDecisionDialogWarning;
+    return ShowCommonDialog(true,
+                            safeLevel,
+                            titleUtf8,
+                            messageUtf8,
+                            confirmTextUtf8,
+                            cancelTextUtf8,
+                            parent);
 }
 
 // 统一版本导出函数。

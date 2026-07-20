@@ -17,6 +17,7 @@
 - `MeyerScan_UIComponents.dll` 通过 `QLibrary` 动态加载，工程只保留头文件依赖和 DLL 复制，不强制链接 `MeyerScan_UIComponents.lib`；共享 UI 缺失时建单界面使用本地降级样式继续运行。
 - UIComponents 按 `Init(appDirUtf8, ...)` 的应用目录绝对定位并检查 Init 返回值；第三方启动器改变工作目录时也不能从 currentPath 加载同名 DLL。
 - 当前会调用 UIComponents v0.4.0 新增的表格接口，因此加载成功后还会检查 `GetModuleVersion()`；运行目录里如果残留旧版 UIComponents，会主动降级到本地样式，避免旧 DLL vtable 不包含新接口导致崩溃。
+- “清空全部牙位”优先调用 UIComponents v0.5.0 的警告级双按钮 C ABI；业务确认、清空动作和日志仍在 OrderCreateUI，缺少新导出时降级为 `QMessageBox`。
 - 分辨率适配优先依赖 Qt Layout、滚动区、伸缩策略、控件最小尺寸和多语言自动换行；不再按 1920x1080 到实际分辨率的比例直接缩放所有坐标和控件。
 - 治疗方案选择区按当前软件视频复刻：左侧独立治疗类型卡片，中间大牙弓主视觉，右侧明细卡；上下颌使用 `maxilla.png` / `mandible.png` 显示，点击坐标反算到原始 600x400 mask；牙位叠加图和桥连接点叠加图按资源文件绘制。
 

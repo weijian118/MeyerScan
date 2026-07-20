@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.3.0
+// 版本: 0.6.1
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -26,10 +26,10 @@
 #endif
 
 // 当前公共结构版本。新增字段时只能在 reserved 前追加，不能改变已有字段含义。
-static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 1U;
+static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 4U;
 
 // MainExe 动态加载 DLL 前校验的整数 ABI 版本。
-static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 1;
+static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 4;
 
 // 协议当前最大命令数据为 416 字节；保留 1024 字节可覆盖后续常规扩展，
 // 同时避免把不受控的大块内存放入公共结构。
@@ -38,6 +38,9 @@ static const std::size_t MEYER_DEVICE_CMD_MAX_RAW_RESPONSE_BYTES = 1024U;
 // 协议中各类固定长度数据的大小。调用方使用这些常量分配缓冲区，避免在
 // SettingsUI、CalibrationUI 和扫描模块中重复书写容易出错的魔数。
 static const std::size_t MEYER_DEVICE_CMD_MACHINE_CODE_BYTES = 13U;
+static const std::size_t MEYER_DEVICE_CMD_MODEL_PREFIX_BYTES = 8U;
+// 8 个无符号字节逐个转十进制后最长为 24 个字符，额外保留字符串结尾。
+static const std::size_t MEYER_DEVICE_CMD_MODEL_CODE_UTF8_BYTES = 25U;
 static const std::size_t MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES = 30U;
 static const std::size_t MEYER_DEVICE_CMD_CAMERA_PARAMETERS_BYTES = 16U;
 static const std::size_t MEYER_DEVICE_CMD_COLOR_MATRIX_BYTES = 416U;
@@ -136,7 +139,8 @@ enum MeyerDeviceCmdBackendType : std::int32_t
     MeyerDeviceCmdBackend_SimulatorForTest = 2
 };
 
-// 产品型号使用稳定业务枚举，不复用 DeviceTransport 的历史图像解码类型。
+// 该枚举描述协议/硬件能力 Profile，不再承担销售产品型号含义。
+// 名称和值暂时保持兼容，避免已有采集参数和 Transport 解码分支同时发生变化。
 enum MeyerDeviceModel : std::int32_t
 {
     MeyerDeviceModel_Unknown = 0,
@@ -145,6 +149,124 @@ enum MeyerDeviceModel : std::int32_t
     MeyerDeviceModel_MyScan5H = 50,
     MeyerDeviceModel_MyScan6 = 6,
     MeyerDeviceModel_MyScan6Wireless = 60
+};
+
+// 产品系列是面向业务和界面的一级分类。一个系列可以包含多个具体产品型号，
+// 不能仅凭系列名称选择贴牌、海外或医院版等产品分支。
+enum MeyerDeviceProductFamily : std::int32_t
+{
+    MeyerDeviceProductFamily_Unknown = 0,
+    MeyerDeviceProductFamily_MyScan = 1,
+    MeyerDeviceProductFamily_MyScan5 = 5,
+    MeyerDeviceProductFamily_MyScan6 = 6
+};
+
+// 具体产品型号使用稳定整数 ID。型号代码待定的产品也先占用稳定 ID，后续只需
+// 在产品目录补充型号代码，不应修改已经发布的枚举值。
+enum MeyerDeviceProductModel : std::int32_t
+{
+    MeyerDeviceProductModel_Unknown = 0,
+    MeyerDeviceProductModel_MyScan_SY_KS1000_P1 = 1001,
+    MeyerDeviceProductModel_MyScan_SY_KS1000_P2 = 1002,
+    MeyerDeviceProductModel_MyScan_SY_KS1000_P3 = 1003,
+    MeyerDeviceProductModel_MyScan_InternationalStandard = 1010,
+    MeyerDeviceProductModel_MyScan_InternationalPrivateLabel = 1011,
+    MeyerDeviceProductModel_MyScan5_DomesticStandard = 5001,
+    MeyerDeviceProductModel_MyScan5_InternationalStandard = 5002,
+    MeyerDeviceProductModel_MyScan5_DomesticCaries = 5003,
+    MeyerDeviceProductModel_MyScan5H_PublicHospital = 5051,
+    MeyerDeviceProductModel_MyScan6_DomesticWired = 6001,
+    MeyerDeviceProductModel_MyScan6_DomesticWireless = 6002
+};
+
+// 识别状态明确区分“只知道系列”和“已经知道具体产品”，避免上层把候选值
+// 当作精确结果。设备编号未写入是生产阶段状态，不等同于设备通信失败。
+enum MeyerDeviceProductIdentificationStatus : std::int32_t
+{
+    MeyerDeviceProductIdentification_Unknown = 0,
+    MeyerDeviceProductIdentification_SeriesOnly = 1,
+    MeyerDeviceProductIdentification_ExactProduct = 2,
+    MeyerDeviceProductIdentification_DeviceNumberUnprogrammed = 3,
+    MeyerDeviceProductIdentification_Conflict = 4,
+    // 使用旧固件/生产模式兼容默认值识别，不能伪装成设备精确上报。
+    MeyerDeviceProductIdentification_CompatibilityInferred = 5
+};
+
+// 识别证据使用位标记保存来源。后续加入固件命令时可以继续组合证据，
+// 无需改变现有识别状态或让 UI 解析原始命令回包。
+enum MeyerDeviceProductEvidence : std::uint64_t
+{
+    MeyerDeviceProductEvidence_None = 0ULL,
+    MeyerDeviceProductEvidence_ConnectionType = 1ULL << 0,
+    MeyerDeviceProductEvidence_DeviceNumberPrefix = 1ULL << 1,
+    MeyerDeviceProductEvidence_ModelCode = 1ULL << 2,
+    MeyerDeviceProductEvidence_FirmwareVersion = 1ULL << 3,
+    MeyerDeviceProductEvidence_CommandCapability = 1ULL << 4,
+    MeyerDeviceProductEvidence_CompatibilityDefault = 1ULL << 5,
+    MeyerDeviceProductEvidence_CalibrationCommandProbe = 1ULL << 6
+};
+
+// reported 表示设备真实回包，CompatibilityDefault 表示旧流程为继续生产/兼容
+// 选择的默认值。两类来源必须分别记录，禁止默认值覆盖真实字段。
+enum MeyerDeviceIdentityValueSource : std::int32_t
+{
+    MeyerDeviceIdentityValueSource_Unknown = 0,
+    MeyerDeviceIdentityValueSource_DeviceReported = 1,
+    MeyerDeviceIdentityValueSource_CompatibilityDefault = 2
+};
+
+// 0xD4/0xD9 设备编号步骤状态。
+enum MeyerDeviceNumberReadStatus : std::int32_t
+{
+    MeyerDeviceNumberRead_NotRun = 0,
+    MeyerDeviceNumberRead_Valid = 1,
+    MeyerDeviceNumberRead_ResponseMissing = 2,
+    MeyerDeviceNumberRead_FrameInvalid = 3,
+    MeyerDeviceNumberRead_ChecksumIndicatesUnprogrammed = 4,
+    MeyerDeviceNumberRead_ValueInvalid = 5
+};
+
+// 0xCD/0xCE 型号代码步骤状态。
+enum MeyerDeviceModelCodeReadStatus : std::int32_t
+{
+    MeyerDeviceModelCodeRead_NotRun = 0,
+    MeyerDeviceModelCodeRead_Valid = 1,
+    MeyerDeviceModelCodeRead_FirmwareTooOld = 2,
+    MeyerDeviceModelCodeRead_FrameInvalid = 3,
+    MeyerDeviceModelCodeRead_ChecksumInvalid = 4,
+    MeyerDeviceModelCodeRead_Uninitialized = 5,
+    MeyerDeviceModelCodeRead_ValueInvalid = 6
+};
+
+// 设备编号未写入时，用 0xC2/0xC7 命令能力探测产品系列候选。
+enum MeyerDeviceSeriesProbeStatus : std::int32_t
+{
+    MeyerDeviceSeriesProbe_NotRun = 0,
+    MeyerDeviceSeriesProbe_NotRequired = 1,
+    MeyerDeviceSeriesProbe_MyScan = 2,
+    MeyerDeviceSeriesProbe_MyScan5Or6 = 3,
+    MeyerDeviceSeriesProbe_ResponseAbnormal = 4
+};
+
+// 最终检测状态既描述是否可用，也保留是否依赖兼容默认值。
+enum MeyerDeviceDetectionStatus : std::int32_t
+{
+    MeyerDeviceDetection_NotRun = 0,
+    MeyerDeviceDetection_Exact = 1,
+    MeyerDeviceDetection_CompatibilityInferred = 2,
+    MeyerDeviceDetection_ProductionExactModel = 3,
+    MeyerDeviceDetection_ProductionInferred = 4,
+    MeyerDeviceDetection_Failed = 5,
+    MeyerDeviceDetection_Conflict = 6
+};
+
+// 0xCE 在旧有线设备和无线设备中含义不同。记录实际解析布局可帮助日志和
+// 实机联调确认走了哪个协议分支，禁止再次把两种结构强行按同一偏移解释。
+enum MeyerDeviceInfoLayout : std::uint8_t
+{
+    MeyerDeviceInfoLayout_Unknown = 0,
+    MeyerDeviceInfoLayout_LegacyWiredModelCode = 1,
+    MeyerDeviceInfoLayout_WirelessSecurityInfo = 2
 };
 
 // 协议族用于把“产品型号”和“命令格式版本”分开，后续新增机型时不改调用方流程。
@@ -210,7 +332,8 @@ enum MeyerDeviceStateField : std::uint64_t
     MeyerDeviceStateField_DeviceSecurityInfo = 1ULL << 6,
     MeyerDeviceStateField_LightRequested = 1ULL << 7,
     MeyerDeviceStateField_Capture = 1ULL << 8,
-    MeyerDeviceStateField_FrameTelemetry = 1ULL << 9
+    MeyerDeviceStateField_FrameTelemetry = 1ULL << 9,
+    MeyerDeviceStateField_ModelCode = 1ULL << 10
 };
 
 // 颜色校准入口预检的业务状态。函数调用本身返回 DeviceCmdResult，调用成功后
@@ -225,7 +348,17 @@ enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
     MeyerDeviceCalibrationPreflight_WirelessProbeUnsupported = 5,
     MeyerDeviceCalibrationPreflight_DeviceInfoReadFailed = 6,
     MeyerDeviceCalibrationPreflight_ModelUnknown = 7,
-    MeyerDeviceCalibrationPreflight_InternalError = 8
+    MeyerDeviceCalibrationPreflight_InternalError = 8,
+    // 为保持既有状态数值稳定，新状态追加在末尾，不插入已有枚举中间。
+    MeyerDeviceCalibrationPreflight_MachineCodeReadFailed = 9,
+    // 设备编号前缀与 0xCE 型号代码指向不同系列时必须阻止继续使用。
+    MeyerDeviceCalibrationPreflight_ProductIdentityConflict = 10,
+    MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal = 11,
+    MeyerDeviceCalibrationPreflight_DeviceNumberInvalid = 12,
+    MeyerDeviceCalibrationPreflight_DeviceModelCodeInvalid = 13,
+    // 设备已识别为生产状态但尚未写入真实编号。该状态由创建工作流宿主设置；
+    // 练习、颜色校准和三维校准可以继续使用带来源的 effective 兼容身份。
+    MeyerDeviceCalibrationPreflight_ProductionDeviceNumberRequired = 14
 };
 
 // 模拟后端专用标志，只允许测试程序使用。正式 DeviceTransport 后端忽略这些值，
@@ -235,7 +368,19 @@ enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
     MeyerDeviceCmdSimulatedFlag_None = 0U,
     MeyerDeviceCmdSimulatedFlag_DeviceNotConnected = 1U << 0,
     MeyerDeviceCmdSimulatedFlag_Usb2Connected = 1U << 1,
-    MeyerDeviceCmdSimulatedFlag_OmitModelMarker = 1U << 2
+    MeyerDeviceCmdSimulatedFlag_OmitModelMarker = 1U << 2,
+    MeyerDeviceCmdSimulatedFlag_MachineCodeReadFailure = 1U << 3,
+    MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure = 1U << 4,
+    MeyerDeviceCmdSimulatedFlag_ModelCodeReadFailure = 1U << 5,
+    MeyerDeviceCmdSimulatedFlag_ModelCodeUninitialized = 1U << 6,
+    MeyerDeviceCmdSimulatedFlag_ModelCodeChecksumFailure = 1U << 7,
+    MeyerDeviceCmdSimulatedFlag_Camera1ProbeUnsupported = 1U << 8,
+    MeyerDeviceCmdSimulatedFlag_InvalidDeviceNumber = 1U << 9,
+    MeyerDeviceCmdSimulatedFlag_InvalidModelCode = 1U << 10,
+    // 以下三个标志生成“已经收到、但不是校验错误”的坏包，用于验证回包异常分支。
+    MeyerDeviceCmdSimulatedFlag_DeviceNumberFrameInvalid = 1U << 11,
+    MeyerDeviceCmdSimulatedFlag_ModelCodeFrameInvalid = 1U << 12,
+    MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid = 1U << 13
 };
 
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，
@@ -273,6 +418,53 @@ struct MeyerDeviceModelDescriptor
     char protocolNameUtf8[64];
     std::uint32_t reserved[8];
 };
+
+// 设备产品识别结果是可跨 DLL 复制的只读 POD。协议能力 Profile、产品系列和
+// 具体产品型号分别保存，上层无需保留 DeviceCmd 内部目录指针或 C++ 字符串。
+struct MeyerDeviceProductIdentity
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t productFamily;
+    std::int32_t productModel;
+    std::int32_t identificationStatus;
+    std::int32_t protocolProfile;
+    std::uint64_t evidence;
+    char deviceNumberPrefixUtf8[16];
+    char modelCodeUtf8[16];
+    char seriesNameUtf8[32];
+    char productNameUtf8[96];
+    char detailUtf8[128];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceProductIdentity) == 352U,
+              "MeyerDeviceProductIdentity ABI size changed");
+
+// 完整设备检测记录同时保存真实回包值与最终兼容值。该结构可写入日志、运行时
+// 快照并传给 UI，但不包含原始 USB 缓冲区或 DLL 内部指针。
+struct MeyerDeviceDetectionRecord
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t detectionStatus;
+    std::int32_t deviceNumberStatus;
+    std::int32_t modelCodeStatus;
+    std::int32_t seriesProbeStatus;
+    std::int32_t isProductionMode;
+    std::int32_t usedCompatibilityDefaults;
+    std::int32_t deviceNumberSource;
+    std::int32_t modelCodeSource;
+    char reportedDeviceNumberUtf8[32];
+    char effectiveDeviceNumberUtf8[32];
+    char reportedModelCodeUtf8[16];
+    char effectiveModelCodeUtf8[16];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceDetectionRecord) == 424U,
+              "MeyerDeviceDetectionRecord ABI size changed");
 
 // 采集参数通常先由 InitCaptureParamsForModel 写入机型默认值，再由扫描编排层
 // 按实际扫描头或协议版本覆盖。普通 UI 不应直接维护这些底层分包字段。
@@ -329,8 +521,28 @@ struct MeyerDeviceStateSnapshot
     char deviceIdUtf8[32];
     char firmwareVersionUtf8[32];
     char expirationCodeHex[64];
+    // 旧软件把 0xCE payload 前 8 字节逐字节转十进制后拼成机型标识。
+    // 该文本保留原始含义；model 字段只在标识能可靠映射时才写具体枚举。
+    char modelCodeUtf8[MEYER_DEVICE_CMD_MODEL_CODE_UTF8_BYTES];
+    std::uint8_t reservedBytes[7];
+};
+
+// 0xD4/0xD9 使用的 13 位设备编号。MachineCode 是既有协议/API 历史命名；
+// rawDigits 保留逐位数值，machineCodeUtf8 保存规范化设备编号字符串。
+struct MeyerDeviceCmdMachineCode
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::uint8_t rawDigits[MEYER_DEVICE_CMD_MACHINE_CODE_BYTES];
+    char machineCodeUtf8[32];
     std::uint32_t reserved[8];
 };
+
+// 公共 ABI 尺寸必须稳定。新增字段应优先消耗 reserved，并同步升级 schema/整数 ABI。
+static_assert(sizeof(MeyerDeviceStateSnapshot) == 304U,
+              "MeyerDeviceStateSnapshot ABI size changed");
+static_assert(sizeof(MeyerDeviceCmdMachineCode) == 88U,
+              "MeyerDeviceCmdMachineCode ABI size changed");
 
 // 一帧图像的元数据。像素内容由 GetFrame 写入调用方缓冲区。
 struct MeyerDeviceCmdFrameInfo
@@ -474,8 +686,16 @@ struct MeyerDeviceCmdDeviceInfo
     char deviceIdUtf8[32];
     unsigned char expirationCode[MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES];
     unsigned char reservedData[337];
-    std::uint32_t reserved[8];
+    // detectedModel 只保存 DeviceCmd 可以可靠映射的结果；无法映射时为 Unknown。
+    std::int32_t detectedModel;
+    char modelCodeUtf8[MEYER_DEVICE_CMD_MODEL_CODE_UTF8_BYTES];
+    std::uint8_t responseLayout;
+    std::uint8_t reservedBytes[2];
 };
+
+// 本结构替换了原 32 字节 reserved，尺寸仍必须保持 444 字节。
+static_assert(sizeof(MeyerDeviceCmdDeviceInfo) == 444U,
+              "MeyerDeviceCmdDeviceInfo ABI size changed");
 
 // 校准预检结果同时保存设备运行状态和 0xCD/0xCE 设备信息副本。
 // 多个 UI/业务模块只复制该 POD，不共享 DeviceCmd 内部对象或 USB 句柄。
@@ -487,9 +707,14 @@ struct MeyerDeviceCalibrationPreflight
     std::int32_t commandResult;
     MeyerDeviceStateSnapshot state;
     MeyerDeviceCmdDeviceInfo deviceInfo;
+    MeyerDeviceProductIdentity productIdentity;
+    MeyerDeviceDetectionRecord detectionRecord;
     char detailUtf8[256];
     std::uint32_t reserved[8];
 };
+
+static_assert(sizeof(MeyerDeviceCalibrationPreflight) == 1832U,
+              "MeyerDeviceCalibrationPreflight ABI size changed");
 
 // 0xDB/0xDC/0xDE 使用的曝光参数。前 16 个字段对应设置命令，读取响应额外
 // 带一个协议预留字节，模块会自动忽略该字节。
@@ -545,6 +770,10 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitRawResponse(MeyerDeviceCmdRawResponse* response);
     // 初始化型号描述结构，供 GetModelDescriptor 校验和回填。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitModelDescriptor(MeyerDeviceModelDescriptor* descriptor);
+    // 初始化产品识别结果结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitProductIdentity(MeyerDeviceProductIdentity* identity);
+    // 初始化设备型号检测记录结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitDetectionRecord(MeyerDeviceDetectionRecord* record);
     // 初始化相机参数结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCameraParameters(MeyerDeviceCmdCameraParameters* parameters);
     // 初始化相机开窗位置结构。
@@ -565,12 +794,20 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitColorCalibration(MeyerDeviceCmdColorCalibration* calibration);
     // 初始化设备授权信息结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitDeviceInfo(MeyerDeviceCmdDeviceInfo* info);
+    // 初始化机器码结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitMachineCode(MeyerDeviceCmdMachineCode* machineCode);
     // 初始化颜色校准设备预检结果。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCalibrationPreflight(MeyerDeviceCalibrationPreflight* preflight);
     // 初始化曝光参数结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitExposureParameters(MeyerDeviceCmdExposureParameters* parameters);
-    // 读取指定产品型号的协议族和能力目录。
+    // 读取指定协议/硬件 Profile 的协议族和能力目录。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_GetModelDescriptor(std::int32_t model, MeyerDeviceModelDescriptor* descriptor);
+    // 根据 0xD9 设备编号和 0xCE 型号代码执行纯目录识别，不访问 USB 设备。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IdentifyProduct(
+        const char* deviceNumberUtf8,
+        const char* modelCodeUtf8,
+        std::uint64_t baseEvidence,
+        MeyerDeviceProductIdentity* identity);
 
     // 创建单设备命令会话。生产进程应只由 MainExe 的设备会话宿主持有一个句柄。
     MEYERSCAN_DEVICE_CMD_API MeyerDeviceCmdHandle MeyerDeviceCmd_Create();
@@ -604,6 +841,10 @@ extern "C"
 
     // 下发 0xFF 使设备控制器软件复位。该命令无响应，调用方随后应关闭并重连会话。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_ResetController(MeyerDeviceCmdHandle handle);
+    // 发送 0xD4 并解析 0xD9 的 13 位机器码，同时更新状态快照。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_ReadMachineCode(
+        MeyerDeviceCmdHandle handle,
+        MeyerDeviceCmdMachineCode* machineCode);
     // 把 13 位十进制机器码存入设备 Flash，并检查 0x1D 状态回复。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_StoreMachineCode(MeyerDeviceCmdHandle handle, const char* machineCodeUtf8);
 

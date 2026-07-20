@@ -54,7 +54,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.3.0 (2026-07-17)";
+const char* Version = "MeyerScan_SettingsUI v0.6.0 (2026-07-20)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -85,6 +85,8 @@ bool SettingsUIImpl::Init(const char* appDirUtf8, const char* logDirUtf8) {
     // 校准 DLL 不在 Init 阶段加载，而是在用户真正点击校准入口时懒加载；
     // 这样从扫描重建打开设置时不会提前占用校准/算法/设备相关资源。
     LoadLogger();
+    // 公共弹窗属于轻量 UI 基础设施，初始化阶段只解析函数地址，不创建任何窗口。
+    LoadUIComponents();
     WriteLog(LogLevel::Info, "Init", "SettingsUI initialized");
     return true;
 }
@@ -273,6 +275,8 @@ void SettingsUIImpl::Shutdown() {
     m_actionCallbackContext = nullptr;
     m_calibrationPreflightCallback = nullptr;
     m_calibrationPreflightContext = nullptr;
+    // UIComponents 单例由其 DLL 自己管理；SettingsUI 只清空借用的导出函数指针。
+    m_showNoticeDialog = nullptr;
     DestroyWidget();
 }
 
@@ -414,6 +418,61 @@ bool SettingsUIImpl::SetDataContextJson(const char* contextJsonUtf8) {
     m_dataContext = candidate;
     WriteLog(LogLevel::Info, "SetDataContextJson", "Host data context accepted");
     return true;
+}
+
+// 动态加载共享 UI 弹窗导出。
+// 弹窗使用独立 C ABI 函数，避免仅为增加弹窗就修改 IUIComponents 的虚函数表布局。
+void SettingsUIImpl::LoadUIComponents() {
+    if (m_showNoticeDialog || m_appDir.isEmpty()) {
+        // 已解析成功或应用目录无效时无需重复 load。
+        return;
+    }
+
+    // 使用 MainExe 注入的安装目录构造绝对路径，不受第三方启动进程工作目录影响。
+    m_uiComponentsLibrary.setLoadHints(QLibrary::PreventUnloadHint);
+    m_uiComponentsLibrary.setFileName(
+        QDir(m_appDir).filePath("MeyerScan_UIComponents.dll"));
+    if (!m_uiComponentsLibrary.load()) {
+        WriteLog(LogLevel::Warning,
+                 "LoadUIComponents",
+                 QString("UIComponents load failed: %1").arg(m_uiComponentsLibrary.errorString()));
+        return;
+    }
+
+    // 整数 API 门禁先于任何接口调用，避免误用同名旧 DLL。
+    auto apiVersion = reinterpret_cast<int (*)()>(
+        m_uiComponentsLibrary.resolve("GetMeyerModuleApiVersion"));
+    if (!apiVersion || apiVersion() != 1) {
+        WriteLog(LogLevel::Warning,
+                 "LoadUIComponents",
+                 "UIComponents API version mismatch");
+        return;
+    }
+
+    // 先初始化共享控件单例，使弹窗按钮能使用当前屏幕的辅助缩放系数。
+    auto getUIComponents = reinterpret_cast<IUIComponents* (*)()>(
+        m_uiComponentsLibrary.resolve("GetUIComponents"));
+    IUIComponents* uiComponents = getUIComponents ? getUIComponents() : nullptr;
+    const QByteArray appDirBytes = m_appDir.toUtf8();
+    if (!uiComponents || !uiComponents->Init(appDirBytes.constData())) {
+        WriteLog(LogLevel::Warning,
+                 "LoadUIComponents",
+                 "UIComponents initialization failed");
+        return;
+    }
+
+    // 只缓存本模块实际使用的单按钮弹窗函数；业务模块不拥有 UIComponents 单例。
+    m_showNoticeDialog = reinterpret_cast<MeyerShowNoticeDialogFunc>(
+        m_uiComponentsLibrary.resolve("MeyerUIComponents_ShowNoticeDialog"));
+    if (!m_showNoticeDialog) {
+        WriteLog(LogLevel::Warning,
+                 "LoadUIComponents",
+                 "UIComponents notice-dialog export is unavailable");
+        return;
+    }
+    WriteLog(LogLevel::Info,
+             "LoadUIComponents",
+             "UIComponents notice dialog loaded");
 }
 
 // 写结构化日志。
@@ -1005,11 +1064,13 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
     QObject::connect(button, &QPushButton::clicked, [this, actionId, title, button]() {
         SettingsCalibrationDeviceContext deviceContext = {};
         if (actionId == SettingsActionOpenColorCalibration) {
-            // 颜色校准必须先完成工作台、连接、USB3 和型号四层检查。
+            // 颜色校准必须依次完成工作台、连接、USB3、设备身份和型号检查；
+            // 生产设备编号未写入时可使用带来源的 effective 兼容身份继续。
             // DeviceSessionHost 等待期间会继续处理 Qt 事件，因此临时禁用按钮防止重复点击重入。
             button->setEnabled(false);
             const int status = RunCalibrationPreflight(actionId, &deviceContext);
             button->setEnabled(true);
+
             if (status != SettingsCalibrationPreflightReady) {
                 WriteLog(LogLevel::Warning,
                          "CalibrationBlocked",
@@ -1017,6 +1078,56 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
                 ShowCalibrationPreflightMessage(status);
                 return;
             }
+
+            // 预检通过后用一个弹窗集中展示设备编号、型号和推断来源。reported 与
+            // effective 可能不同，现场人员必须能看出当前是否使用了兼容默认值。
+            const QString effectiveNumber = QString::fromUtf8(
+                deviceContext.detection.effectiveDeviceNumberUtf8);
+            const QString effectiveModelCode = QString::fromUtf8(
+                deviceContext.detection.effectiveModelCodeUtf8);
+            QStringList informationLines;
+            informationLines << tr("Device number: %1").arg(effectiveNumber);
+            informationLines << tr("Device model: %1").arg(
+                QString::fromUtf8(deviceContext.productNameUtf8));
+            informationLines << tr("Device model code: %1").arg(effectiveModelCode);
+            if (deviceContext.detection.isProductionMode != 0) {
+                informationLines << tr("Production mode: Yes");
+            }
+            if (deviceContext.detection.usedCompatibilityDefaults != 0) {
+                informationLines << tr("Identity source: Compatibility default");
+            } else {
+                informationLines << tr("Identity source: Device reported");
+            }
+
+            // CE 诊断不会阻止旧设备继续使用兼容值，但必须在同一个提示中说明原因。
+            switch (deviceContext.detection.modelCodeStatus) {
+            case SettingsDeviceModelCodeReadFirmwareTooOld:
+                informationLines << tr("The device firmware version is too low; compatibility defaults are in use.");
+                break;
+            case SettingsDeviceModelCodeReadFrameInvalid:
+                informationLines << tr("The device model response is abnormal; compatibility defaults are in use.");
+                break;
+            case SettingsDeviceModelCodeReadChecksumInvalid:
+            case SettingsDeviceModelCodeReadUninitialized:
+                informationLines << tr("The device model code is not initialized; compatibility defaults are in use.");
+                break;
+            case SettingsDeviceModelCodeReadValueInvalid:
+                informationLines << tr("The device model code is invalid; compatibility defaults are in use.");
+                break;
+            default:
+                break;
+            }
+            ShowNoticeDialog(MeyerNoticeDialogInformation,
+                             tr("Device Information"),
+                             informationLines.join("\n"));
+            WriteLog(LogLevel::Info,
+                     "DeviceInformationDisplayed",
+                     QString("number=%1 modelCode=%2 product=%3 production=%4 compatibility=%5")
+                         .arg(effectiveNumber)
+                         .arg(effectiveModelCode)
+                         .arg(QString::fromUtf8(deviceContext.productNameUtf8))
+                         .arg(deviceContext.detection.isProductionMode)
+                         .arg(deviceContext.detection.usedCompatibilityDefaults));
 
             // 打开和关闭使用两个动作，MainExe 才能在弹窗整个生命周期内保留唯一设备会话。
             NotifyAction(actionId, title);
@@ -1079,7 +1190,7 @@ void SettingsUIImpl::ShowColorCalibrationDialog(
     // 把 SettingsUI 的宿主快照转换为颜色校准模块自己的稳定 POD。
     CalibrationColorDeviceContext colorContext = {};
     colorContext.structSize = sizeof(colorContext);
-    colorContext.schemaVersion = 1U;
+    colorContext.schemaVersion = MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
     colorContext.deviceModel = deviceContext.deviceModel;
     colorContext.modelSource = deviceContext.modelSource;
     colorContext.connectionState = deviceContext.connectionState;
@@ -1090,6 +1201,48 @@ void SettingsUIImpl::ShowColorCalibrationDialog(
     std::strncpy(colorContext.deviceIdUtf8,
                  deviceContext.deviceIdUtf8,
                  sizeof(colorContext.deviceIdUtf8) - 1U);
+    std::strncpy(colorContext.modelCodeUtf8,
+                 deviceContext.modelCodeUtf8,
+                 sizeof(colorContext.modelCodeUtf8) - 1U);
+    colorContext.productEvidence = deviceContext.productEvidence;
+    colorContext.productFamily = deviceContext.productFamily;
+    colorContext.productModel = deviceContext.productModel;
+    colorContext.productIdentificationStatus = deviceContext.productIdentificationStatus;
+    colorContext.protocolProfile = deviceContext.protocolProfile;
+    std::strncpy(colorContext.productSeriesNameUtf8,
+                 deviceContext.productSeriesNameUtf8,
+                 sizeof(colorContext.productSeriesNameUtf8) - 1U);
+    std::strncpy(colorContext.productNameUtf8,
+                 deviceContext.productNameUtf8,
+                 sizeof(colorContext.productNameUtf8) - 1U);
+    // 检测上下文逐字段复制，禁止用 reinterpret_cast 依赖两个 DLL 的结构布局偶然一致。
+    colorContext.detection.structSize = sizeof(colorContext.detection);
+    colorContext.detection.schemaVersion =
+        MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION;
+    colorContext.detection.detectionStatus = deviceContext.detection.detectionStatus;
+    colorContext.detection.deviceNumberStatus = deviceContext.detection.deviceNumberStatus;
+    colorContext.detection.modelCodeStatus = deviceContext.detection.modelCodeStatus;
+    colorContext.detection.seriesProbeStatus = deviceContext.detection.seriesProbeStatus;
+    colorContext.detection.isProductionMode = deviceContext.detection.isProductionMode;
+    colorContext.detection.usedCompatibilityDefaults =
+        deviceContext.detection.usedCompatibilityDefaults;
+    colorContext.detection.deviceNumberSource = deviceContext.detection.deviceNumberSource;
+    colorContext.detection.modelCodeSource = deviceContext.detection.modelCodeSource;
+    std::strncpy(colorContext.detection.reportedDeviceNumberUtf8,
+                 deviceContext.detection.reportedDeviceNumberUtf8,
+                 sizeof(colorContext.detection.reportedDeviceNumberUtf8) - 1U);
+    std::strncpy(colorContext.detection.effectiveDeviceNumberUtf8,
+                 deviceContext.detection.effectiveDeviceNumberUtf8,
+                 sizeof(colorContext.detection.effectiveDeviceNumberUtf8) - 1U);
+    std::strncpy(colorContext.detection.reportedModelCodeUtf8,
+                 deviceContext.detection.reportedModelCodeUtf8,
+                 sizeof(colorContext.detection.reportedModelCodeUtf8) - 1U);
+    std::strncpy(colorContext.detection.effectiveModelCodeUtf8,
+                 deviceContext.detection.effectiveModelCodeUtf8,
+                 sizeof(colorContext.detection.effectiveModelCodeUtf8) - 1U);
+    std::strncpy(colorContext.detection.detailUtf8,
+                 deviceContext.detection.detailUtf8,
+                 sizeof(colorContext.detection.detailUtf8) - 1U);
     if (!m_calibrationColor->SetDeviceContext(&colorContext)) {
         WriteLog(LogLevel::Warning,
                  "ShowColorCalibrationDialog",
@@ -1244,7 +1397,7 @@ int SettingsUIImpl::RunCalibrationPreflight(
     }
     std::memset(deviceContext, 0, sizeof(*deviceContext));
     deviceContext->structSize = sizeof(*deviceContext);
-    deviceContext->schemaVersion = 1U;
+    deviceContext->schemaVersion = MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
 
     // 创建、练习工作台已经持有设备连接，必须在访问 DeviceCmd 前直接拦截。
     if (!m_allowCalibration || m_openSource == SettingsOpenSourceScanReconstruct) {
@@ -1267,6 +1420,21 @@ int SettingsUIImpl::RunCalibrationPreflight(
         m_calibrationPreflightContext, actionId, deviceContext);
     // 宿主返回值和结构状态应一致；不一致时按更保守的回调返回值处理。
     deviceContext->status = callbackStatus;
+    if (callbackStatus == SettingsCalibrationPreflightReady &&
+        (deviceContext->detection.structSize !=
+             sizeof(SettingsDeviceDetectionContext) ||
+         deviceContext->detection.schemaVersion !=
+             MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION ||
+         deviceContext->detection.effectiveDeviceNumberUtf8[0] == '\0' ||
+         deviceContext->detection.effectiveModelCodeUtf8[0] == '\0')) {
+        // Ready 必须携带完整有效身份。旧 MainExe 或损坏 POD 不能继续弹出一个
+        // 空设备信息窗口，更不能把空值注入颜色校准算法入口。
+        deviceContext->status = SettingsCalibrationPreflightInternalError;
+        std::strncpy(deviceContext->detailUtf8,
+                     "Calibration preflight returned an invalid detection context",
+                     sizeof(deviceContext->detailUtf8) - 1U);
+        return deviceContext->status;
+    }
     return callbackStatus;
 }
 
@@ -1290,13 +1458,55 @@ void SettingsUIImpl::ShowCalibrationPreflightMessage(int status) {
     case SettingsCalibrationPreflightModelUnknown:
         message = tr("Unable to read the device model.");
         break;
+    case SettingsCalibrationPreflightMachineCodeReadFailed:
+        message = tr("Unable to read the device number.");
+        break;
+    case SettingsCalibrationPreflightProductIdentityConflict:
+        message = tr("The device number does not match the device model.");
+        break;
+    case SettingsCalibrationPreflightDeviceResponseAbnormal:
+        message = tr("The device response is abnormal.");
+        break;
+    case SettingsCalibrationPreflightDeviceNumberInvalid:
+        message = tr("The device number is invalid.");
+        break;
+    case SettingsCalibrationPreflightDeviceModelCodeInvalid:
+        message = tr("The device model code is invalid.");
+        break;
     default:
         message = tr("Unable to prepare the device for calibration.");
         break;
     }
 
+    const int level = status == SettingsCalibrationPreflightWorkspaceOwnsDevice
+        ? MeyerNoticeDialogInformation
+        : MeyerNoticeDialogError;
+    ShowNoticeDialog(level,
+                     level == MeyerNoticeDialogError ? tr("Error") : tr("Notice"),
+                     message);
+}
+
+// 显示统一单按钮提示。
+// 公共 DLL 缺失或 ABI 不匹配时保留 QMessageBox，避免提示失败反过来中断设置流程。
+void SettingsUIImpl::ShowNoticeDialog(int level,
+                                      const QString& title,
+                                      const QString& message) {
     QWidget* parent = m_pages ? m_pages->window() : nullptr;
-    QMessageBox::information(parent, tr("Notice"), message, QMessageBox::Ok);
+    if (m_showNoticeDialog) {
+        // QByteArray 的生命周期覆盖同步弹窗调用，传入 C ABI 的 const char* 始终有效。
+        const QByteArray titleBytes = title.toUtf8();
+        const QByteArray messageBytes = message.toUtf8();
+        const QByteArray confirmBytes = tr("Confirm").toUtf8();
+        m_showNoticeDialog(level,
+                           titleBytes.constData(),
+                           messageBytes.constData(),
+                           confirmBytes.constData(),
+                           parent);
+        return;
+    }
+
+    // 降级弹窗只负责保证客户看见信息；正常发布目录应始终使用 UIComponents。
+    QMessageBox::information(parent, title, message, QMessageBox::Ok);
 }
 
 // 把来源枚举转为日志可读文本。

@@ -9,8 +9,44 @@
 #  define MEYERSCAN_CALIBRATIONCOLORUI_API __declspec(dllimport)
 #endif
 
-// 颜色校准 UI 公共虚接口版本。增加设备快照注入后升级为 2。
-static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 2;
+// 颜色校准 UI 公共虚接口版本。设备快照增加完整检测记录后升级为 5。
+static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 5;
+static const std::uint32_t MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION = 4U;
+static const std::uint32_t MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION = 1U;
+
+// 颜色校准可接受的检测结果。数值与 DeviceCmd 保持一致，失败和冲突状态不会
+// 被 SettingsUI 传入本模块，因此这里只允许四种可继续结果。
+enum CalibrationColorDeviceDetectionStatus {
+    CalibrationColorDeviceDetectionNotRun = 0,
+    CalibrationColorDeviceDetectionExact = 1,
+    CalibrationColorDeviceDetectionCompatibilityInferred = 2,
+    CalibrationColorDeviceDetectionProductionExactModel = 3,
+    CalibrationColorDeviceDetectionProductionInferred = 4,
+};
+
+// DeviceCmd 检测记录在颜色校准模块边界上的只读副本。reported 是设备真实
+// 回包，effective 可能来自兼容规则；二者必须保留，不能只传最终显示值。
+struct CalibrationColorDeviceDetectionContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t detectionStatus;
+    std::int32_t deviceNumberStatus;
+    std::int32_t modelCodeStatus;
+    std::int32_t seriesProbeStatus;
+    std::int32_t isProductionMode;
+    std::int32_t usedCompatibilityDefaults;
+    std::int32_t deviceNumberSource;
+    std::int32_t modelCodeSource;
+    char reportedDeviceNumberUtf8[32];
+    char effectiveDeviceNumberUtf8[32];
+    char reportedModelCodeUtf8[16];
+    char effectiveModelCodeUtf8[16];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(CalibrationColorDeviceDetectionContext) == 424U,
+              "CalibrationColorDeviceDetectionContext ABI size changed");
 
 // MainExe/SettingsUI 传入的只读设备快照。它不包含 DeviceCmd 句柄，因而可以
 // 安全复制并在多个 UI 模块间传递；后续新增字段只能追加在 reserved 之前。
@@ -22,9 +58,26 @@ struct CalibrationColorDeviceContext {
     std::int32_t connectionState;
     std::int32_t isUsb2;
     char modelNameUtf8[32];
+    // 0xD4/0xD9 返回的 13 位设备编号，由 MainExe 设备会话宿主读取并注入。
     char deviceIdUtf8[32];
-    std::uint32_t reserved[8];
+    // 旧有线 0xCE payload 前 8 字节转换得到的型号代码，便于日志和实机联调核对。
+    // 本字段复用原 reserved[8] 的空间，结构体总大小不变。
+    char modelCodeUtf8[32];
+    // 产品识别结果由 DeviceCmd 解析、MainExe 持有并经 SettingsUI 原样复制。
+    std::uint64_t productEvidence;
+    std::int32_t productFamily;
+    std::int32_t productModel;
+    std::int32_t productIdentificationStatus;
+    std::int32_t protocolProfile;
+    char productSeriesNameUtf8[32];
+    char productNameUtf8[96];
+    // 颜色校准只保存和记录该检测副本，不重新解析 D9/C7/CE 原始回包。
+    CalibrationColorDeviceDetectionContext detection;
 };
+
+// 固定尺寸用于拦截独立升级时的新旧 DLL 合同错位。
+static_assert(sizeof(CalibrationColorDeviceContext) == 696U,
+               "CalibrationColorDeviceContext ABI size changed");
 
 // ICalibrationColorUI 是颜色校准 UI 模块的公共接口。
 // 模块边界:

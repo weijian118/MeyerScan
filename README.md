@@ -99,7 +99,7 @@ F:\MeyerScan\MyMainExe\bin\Release\MeyerScan.exe --smoke-main
 ctest --test-dir F:\MeyerScan\build -C Release --output-on-failure
 ```
 
-先用 `ctest --test-dir F:\MeyerScan\build -C Release -N` 检查测试清单。当前清单应包含 26 项：24 个模块测试，以及 MainExe 内部导航和第三方建单两个集成 smoke。根 CMake 会先重建 `build\ctest_runtime\Release` 隔离运行目录，复制同批次 MainExe 依赖和测试 EXE，避免各模块 `bin\Release` 中历史 DLL 污染测试。测试统一设置 120 秒超时并串行运行，避免共享日志、SQLite 测试库或 GUI 资源相互干扰。
+先用 `ctest --test-dir F:\MeyerScan\build -C Release -N` 检查测试清单。当前清单应包含 27 项：25 个模块测试，以及 MainExe 内部导航和第三方建单两个集成 smoke。根 CMake 会先重建 `build\ctest_runtime\Release` 隔离运行目录，复制同批次 MainExe 依赖和测试 EXE，避免各模块 `bin\Release` 中历史 DLL 污染测试。测试统一设置 120 秒超时并串行运行，避免共享日志、SQLite 测试库或 GUI 资源相互干扰。
 
 需要人工查看界面时：
 

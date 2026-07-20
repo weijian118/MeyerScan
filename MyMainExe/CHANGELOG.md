@@ -1,5 +1,34 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-20（v0.5.1，创建/练习设备身份准入）
+
+- DeviceSessionHost 增加场景级身份准入策略：只有创建订单扫描流程要求真实设备编号；练习、颜色校准和后续三维校准允许使用明确标记来源的生产兼容身份。
+- 创建模式进入 Scan/Process/Send 前统一执行设备预检；生产设备无真实编号时返回稳定状态 14、关闭设备会话并留在 Order 页面，不创建扫描重资源页面。
+- 练习模式在创建 ScanWorkflowUI 前完成预检，把 reported/effective 编号、型号代码、来源、产品身份和生产标志写入统一 `deviceIdentity` JSON，供 Scan/Process/Send 复用。
+- 离开创建/练习工作台时统一关闭 DeviceSessionHost 会话；`--smoke-main` 仅对自动化导航显式旁路物理 USB，并在上下文记录 `automationBypass=true`。
+
+## 2026-07-20（v0.5.0，完整设备型号检测记录编排）
+
+- DeviceSessionHost 适配 DeviceCmd ABI/schema 4，缓存最近一次完整预检 POD，而不只缓存基础状态快照。
+- 颜色校准预检日志完整记录 D9/C7/CE 步骤状态、reported/effective 编号和型号代码、生产模式、兼容标志、产品与识别状态。
+- MainExe 把检测记录逐字段复制到 SettingsUI 自有 POD，不让 SettingsUI 静态依赖 DeviceCmd，也不传递 USB 句柄或内部对象。
+- 设置/颜色校准接口门禁分别升级到 SettingsUI ABI 6/schema 4 和 CalibrationColorUI ABI 5/schema 4。
+- CMake、代码版本和 Windows 文件版本统一升级为 0.5.0。
+
+## 2026-07-20（v0.4.0，产品身份识别结果编排）
+
+- DeviceSessionHost 适配 DeviceCmd ABI/schema 3，并接收产品系列、具体产品型号、协议 Profile、识别状态和证据 POD。
+- MainExe 继续作为设备会话和跨 UI 上下文所有者，只把产品身份字段复制给 SettingsUI，不向界面传递 DeviceCmd 句柄、产品目录指针或 STL 容器。
+- 颜色校准预检日志增加产品名和识别状态；设备编号前缀与型号代码冲突时保留稳定状态 10 并阻止创建校准 UI。
+- CMake、代码版本和 Windows 文件版本统一升级为 0.4.0。
+
+## 2026-07-20（v0.3.0，设备编号和型号快照编排）
+
+- DeviceSessionHost 适配 DeviceCmd ABI 2/schema 2，颜色校准预检按 `0xD4/0xD9` 机器码后接 `0xCD/0xCE` 机型的顺序执行。
+- 向 SettingsUI 只复制固定 POD 字段：连接、USB 速率、机器码、机型枚举/名称/来源和机型原始标识；不传 DeviceCmd 句柄或 STL/Qt 容器。
+- SettingsUI 动态接口门禁升级为 ABI 4；MainExe 版本同步升级为 0.3.0，并补充机器码/机型关键日志。
+- 修复直接构建 `MeyerScan.vcxproj` 时根 `bin\Release` 旧 DLL 无条件覆盖模块目录新 DLL 的问题；根目录兜底复制改为仅复制更新时间更晚的文件。
+
 ## 2026-07-17（v0.2.0，颜色校准设备链路）
 
 - 新增 `src/device/DeviceSessionHost`，通过绝对路径动态加载 DeviceCmd/DeviceTransport，进程内只持有一个 `MeyerDeviceCmdHandle`。

@@ -2,6 +2,7 @@
 
 #include "SettingsUI.h"
 #include "Logger.h"
+#include "UIComponents.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -72,6 +73,9 @@ private:
     // 动态加载三维校准和颜色校准模块。
     void LoadCalibrationModules();
 
+    // 动态加载共享 UI 弹窗导出；加载失败时保留 QMessageBox 降级路径。
+    void LoadUIComponents();
+
     // 写结构化日志；日志不可用时静默返回。
     void WriteLog(LogLevel level, const char* operation, const QString& content) const;
 
@@ -140,6 +144,9 @@ private:
     // 根据预检状态显示客户可读提示；所有源文本保持英文并使用 tr()。
     void ShowCalibrationPreflightMessage(int status);
 
+    // 显示单按钮公共提示；UIComponents 不可用时降级为 Qt 标准 QMessageBox。
+    void ShowNoticeDialog(int level, const QString& title, const QString& message);
+
     void RestoreSettingsOverview();
 
 private:
@@ -150,6 +157,10 @@ private:
     // Logger DLL 句柄和缓存后的日志接口。
     QLibrary m_loggerLibrary;
     ILogger* m_logger = nullptr;
+
+    // 公共弹窗采用独立 C ABI 导出，不修改 IUIComponents 虚函数表。
+    QLibrary m_uiComponentsLibrary;
+    MeyerShowNoticeDialogFunc m_showNoticeDialog = nullptr;
 
     // MainExe 注入的版本化只读 domain 快照根对象。
     QJsonObject m_dataContext;

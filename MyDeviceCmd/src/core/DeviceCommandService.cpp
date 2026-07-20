@@ -5,6 +5,7 @@
 #include "DeviceCommandService.h"
 
 #include "../protocol/DeviceProtocolDefs.h"
+#include "../model/DeviceProductCatalog.h"
 #include "../support/ModuleLogger.h"
 #include "../transport/DeviceTransportLibrary.h"
 #include "../transport/SimulatedDeviceTransport.h"
@@ -53,6 +54,112 @@ namespace
             }
         }
         return result;
+    }
+
+    // 把设备协议中的逐位数值或 ASCII 数字严格转换为固定长度十进制文本。
+    // 与 DecodeMachineCode 不同，本函数遇到任意非数字立即失败，供合法性判断使用。
+    bool DecodeFixedDecimalDigits(const std::vector<std::uint8_t>& payload,
+                                  std::size_t expectedCount,
+                                  std::string& result)
+    {
+        result.clear();
+        if (payload.size() < expectedCount)
+        {
+            return false;
+        }
+        result.reserve(expectedCount);
+        for (std::size_t index = 0U; index < expectedCount; ++index)
+        {
+            const std::uint8_t value = payload[index];
+            if (value <= 9U)
+            {
+                result.push_back(static_cast<char>('0' + value));
+            }
+            else if (value >= static_cast<std::uint8_t>('0') &&
+                     value <= static_cast<std::uint8_t>('9'))
+            {
+                result.push_back(static_cast<char>(value));
+            }
+            else
+            {
+                result.clear();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // 设备编号必须是 13 位且以 620000 开始；仅“长度正确”仍不能视为合法编号。
+    bool IsValidDeviceNumber(const std::string& value)
+    {
+        return value.size() == MEYER_DEVICE_CMD_MACHINE_CODE_BYTES &&
+               value.compare(0U, 6U, "620000") == 0;
+    }
+
+    // 当前设备型号代码固定 8 位，并以 62 开头。未知但格式合法的代码仍需记录，
+    // 之后由产品目录决定是否已经支持该具体产品。
+    bool IsValidModelCode(const std::string& value)
+    {
+        return value.size() == 8U && value.compare(0U, 2U, "62") == 0;
+    }
+
+    // 把诊断短句追加到固定缓冲区，多个降级步骤之间使用分号分隔。
+    void AppendDetectionDetail(MeyerDeviceDetectionRecord& record, const std::string& detail)
+    {
+        if (detail.empty())
+        {
+            return;
+        }
+        std::string combined(record.detailUtf8);
+        if (!combined.empty())
+        {
+            combined.append("; ");
+        }
+        combined.append(detail);
+        CopyText(record.detailUtf8, combined);
+    }
+
+    // 已写设备编号但型号命令不可用时，优先按已知编号前缀选择同系列标准型号。
+    // 无已知前缀时按旧流程回退到最早的 mOS MyScan P1。
+    const char* CompatibilityModelCodeForDeviceNumber(const std::string& deviceNumber)
+    {
+        if (deviceNumber.compare(0U, 8U, "62000055") == 0)
+        {
+            return "62000055";
+        }
+        if (deviceNumber.compare(0U, 8U, "62000053") == 0)
+        {
+            return "62000053";
+        }
+        if (deviceNumber.compare(0U, 8U, "62000027") == 0)
+        {
+            return "62000027";
+        }
+        return "62000020";
+    }
+
+    // 按旧软件规则把若干无符号字节逐个转换成十进制文本后直接拼接。
+    // 该函数专门用于 0xCE 前 8 字节机型标识，不能与 13 位机器码解码混用。
+    std::string DecodeDecimalByteSequence(const std::vector<std::uint8_t>& payload,
+                                          std::size_t count)
+    {
+        std::ostringstream stream;
+        const std::size_t safeCount = (std::min)(count, payload.size());
+        for (std::size_t index = 0U; index < safeCount; ++index)
+        {
+            stream << static_cast<unsigned int>(payload[index]);
+        }
+        return stream.str();
+    }
+
+    // 旧有线设备把前 8 字节分别存成 0~9 数值。部分生产工具可能使用 ASCII
+    // 数字，因此两种形式都规范化成完整 8 位文本，再交给产品目录精确匹配。
+    bool DecodeLegacyModelCode(const std::vector<std::uint8_t>& payload,
+                               std::string& modelCode)
+    {
+        return DecodeFixedDecimalDigits(payload,
+                                        MEYER_DEVICE_CMD_MODEL_PREFIX_BYTES,
+                                        modelCode);
     }
 
     // 期限码当前仍需后续加解密模块解释，设备层只稳定返回原始十六进制。
@@ -305,16 +412,69 @@ namespace
         return true;
     }
 
-    // 将设备信息响应转换为公共结构，保留未知的预留字节。
-    void DecodeDeviceInfo(const std::vector<std::uint8_t>& payload,
-                          MeyerDeviceCmdDeviceInfo& info)
+    // 解析 MyScan 6 Wireless 授权布局。只有该布局才允许按 encrypted、deviceId、
+    // expirationCode 的偏移解释数据，旧有线设备不能调用本函数。
+    void DecodeWirelessDeviceInfo(const std::vector<std::uint8_t>& payload,
+                                  MeyerDeviceCmdDeviceInfo& info)
     {
+        info.responseLayout = MeyerDeviceInfoLayout_WirelessSecurityInfo;
         info.encrypted = payload[0U];
         info.encryptionType = payload[1U];
         std::vector<std::uint8_t> machineCode(payload.begin() + 2U, payload.begin() + 15U);
         CopyText(info.deviceIdUtf8, DecodeMachineCode(machineCode));
         std::memcpy(info.expirationCode, &payload[15U], MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES);
         std::memcpy(info.reservedData, &payload[45U], 337U);
+    }
+
+    // 解析旧有线 382 字节布局。现阶段只确认前 8 字节是型号代码，其余字段
+    // 原样保留供后续协议核对，不能套用无线授权信息偏移。
+    void DecodeLegacyWiredDeviceInfo(const std::vector<std::uint8_t>& payload,
+                                     MeyerDeviceCmdDeviceInfo& info)
+    {
+        info.responseLayout = MeyerDeviceInfoLayout_LegacyWiredModelCode;
+        std::string modelCode;
+        if (DecodeLegacyModelCode(payload, modelCode))
+        {
+            CopyText(info.modelCodeUtf8, modelCode);
+            info.detectedModel =
+                meyer::devicecmd::DeviceProductCatalog::ProtocolProfileForModelCode(
+                    modelCode.c_str());
+        }
+        else
+        {
+            // 非标准数据仍转成十进制串写日志，但绝不参与具体产品匹配。
+            CopyText(info.modelCodeUtf8,
+                     DecodeDecimalByteSequence(payload, MEYER_DEVICE_CMD_MODEL_PREFIX_BYTES));
+        }
+
+        const std::size_t copySize =
+            (std::min)(sizeof(info.reservedData), payload.size());
+        if (copySize > 0U)
+        {
+            std::memcpy(info.reservedData, &payload[0], copySize);
+        }
+    }
+
+    // 根据当前协议 Profile 选择唯一解析布局。Unknown 探测 Profile 对应当前
+    // Cypress 有线链路；无线连接后续会由独立探测入口显式选择无线 Profile。
+    void DecodeDeviceInfo(const std::vector<std::uint8_t>& payload,
+                          std::int32_t protocolFamily,
+                          MeyerDeviceCmdDeviceInfo& info)
+    {
+        const std::uint32_t structSize = info.structSize;
+        const std::uint32_t schemaVersion = info.schemaVersion;
+        std::memset(&info, 0, sizeof(info));
+        info.structSize = structSize;
+        info.schemaVersion = schemaVersion;
+
+        if (protocolFamily == MeyerDeviceProtocolFamily_Wireless20250808)
+        {
+            DecodeWirelessDeviceInfo(payload, info);
+        }
+        else
+        {
+            DecodeLegacyWiredDeviceInfo(payload, info);
+        }
     }
 
     // 把设备信息预留区转换为可搜索的 ASCII 小写文本。不可打印字节替换为空格，
@@ -342,6 +502,12 @@ namespace
     // 当前正式协议把 337 字节定义为预留区；实机确认新格式后只需扩展本函数。
     std::int32_t DetectModelFromDeviceInfo(const MeyerDeviceCmdDeviceInfo& info)
     {
+        // 先使用旧有线协议前 8 字节得到的可靠候选；无法映射时再兼容新格式
+        // 预留区中的明确 ASCII 标记。
+        if (info.detectedModel != MeyerDeviceModel_Unknown)
+        {
+            return info.detectedModel;
+        }
         const std::string text = BuildSearchableModelText(info);
         if (text.find("meyerscan_model=60") != std::string::npos ||
             text.find("myscan 6 wireless") != std::string::npos)
@@ -557,38 +723,199 @@ namespace meyer
                 return MeyerDeviceCmdResult_Ok;
             }
 
+            // 连接和 USB3 检查通过后，按文档固定执行 D9 -> 必要时 C7 -> CE。
+            // detectionRecord 分别保存设备真实上报值和旧流程兼容值。
+            MeyerDeviceCmdMachineCode machineCode = {};
+            machineCode.structSize = sizeof(MeyerDeviceCmdMachineCode);
+            machineCode.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            const std::int32_t machineResult =
+                ReadDeviceNumberForDetection(machineCode, preflight.detectionRecord);
+            if (machineResult != MeyerDeviceCmdResult_Ok)
+            {
+                preflight.commandResult = machineResult;
+                preflight.status = preflight.detectionRecord.deviceNumberStatus ==
+                    MeyerDeviceNumberRead_ValueInvalid
+                    ? MeyerDeviceCalibrationPreflight_DeviceNumberInvalid
+                    : MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal;
+                preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                preflight.state = m_state;
+                SetPreflightDetail(preflight, preflight.detectionRecord.detailUtf8);
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            if (preflight.detectionRecord.isProductionMode != 0)
+            {
+                const std::int32_t probeResult =
+                    ProbeProductionSeries(preflight.detectionRecord);
+                if (probeResult != MeyerDeviceCmdResult_Ok)
+                {
+                    preflight.commandResult = probeResult;
+                    preflight.status = MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal;
+                    preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                    preflight.state = m_state;
+                    SetPreflightDetail(preflight, preflight.detectionRecord.detailUtf8);
+                    Close();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+            }
+            else
+            {
+                preflight.detectionRecord.seriesProbeStatus =
+                    MeyerDeviceSeriesProbe_NotRequired;
+            }
+
             MeyerDeviceCmdDeviceInfo info = {};
             info.structSize = sizeof(MeyerDeviceCmdDeviceInfo);
             info.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
-            const std::int32_t infoResult = ReadDeviceInfo(info);
+            const std::int32_t infoResult =
+                ReadModelCodeForDetection(info, preflight.detectionRecord);
             if (infoResult != MeyerDeviceCmdResult_Ok)
             {
                 preflight.commandResult = infoResult;
-                preflight.status = MeyerDeviceCalibrationPreflight_DeviceInfoReadFailed;
+                preflight.status = MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal;
+                preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
                 preflight.state = m_state;
-                SetPreflightDetail(preflight, m_lastError);
+                SetPreflightDetail(preflight, preflight.detectionRecord.detailUtf8);
                 Close();
                 return MeyerDeviceCmdResult_Ok;
             }
             preflight.deviceInfo = info;
 
-            const std::int32_t detectedModel = DetectModelFromDeviceInfo(info);
-            if (!ApplyDetectedModel(detectedModel, MeyerDeviceModelSource_DeviceReported))
+            // 产品目录使用真实设备编号校验冲突；生产模式没有真实编号时传空串。
+            // 型号代码使用 effective 值，但通过 source/evidence 明确是否为兼容默认。
+            std::uint64_t evidence = MeyerDeviceProductEvidence_ConnectionType |
+                MeyerDeviceProductEvidence_CommandCapability;
+            if (preflight.detectionRecord.seriesProbeStatus !=
+                MeyerDeviceSeriesProbe_NotRequired)
+            {
+                evidence |= MeyerDeviceProductEvidence_CalibrationCommandProbe;
+            }
+            DeviceProductCatalog::Identify(
+                preflight.detectionRecord.reportedDeviceNumberUtf8,
+                preflight.detectionRecord.effectiveModelCodeUtf8,
+                evidence,
+                preflight.productIdentity);
+
+            // 生产模式没有真实编号前缀可供 ProductCatalog 交叉校验，因此还要把
+            // C7 命令能力候选与 CE 精确型号所属系列比较。两者冲突时不能静默
+            // 采用任意一方，否则校准参数可能套用到错误硬件系列。
+            const bool productionSeriesConflict =
+                preflight.detectionRecord.modelCodeSource ==
+                    MeyerDeviceIdentityValueSource_DeviceReported &&
+                ((preflight.detectionRecord.seriesProbeStatus ==
+                      MeyerDeviceSeriesProbe_MyScan &&
+                  preflight.productIdentity.productFamily !=
+                      MeyerDeviceProductFamily_MyScan) ||
+                 (preflight.detectionRecord.seriesProbeStatus ==
+                      MeyerDeviceSeriesProbe_MyScan5Or6 &&
+                  preflight.productIdentity.productFamily !=
+                      MeyerDeviceProductFamily_MyScan5 &&
+                  preflight.productIdentity.productFamily !=
+                      MeyerDeviceProductFamily_MyScan6));
+            if (productionSeriesConflict)
+            {
+                preflight.productIdentity.identificationStatus =
+                    MeyerDeviceProductIdentification_Conflict;
+                CopyText(preflight.productIdentity.detailUtf8,
+                         "0xC7 command capability conflicts with the reported model code");
+            }
+
+            if (preflight.detectionRecord.modelCodeSource ==
+                MeyerDeviceIdentityValueSource_CompatibilityDefault)
+            {
+                // ProductCatalog 会把格式合法代码标成 ModelCode 证据，这里根据真实
+                // 来源改成 CompatibilityDefault，避免日志把推断值写成设备上报。
+                preflight.productIdentity.evidence &=
+                    ~static_cast<std::uint64_t>(MeyerDeviceProductEvidence_ModelCode);
+                preflight.productIdentity.evidence |=
+                    MeyerDeviceProductEvidence_CompatibilityDefault;
+                // Identify 已发现的编号/型号冲突必须保留，兼容来源不能把冲突
+                // 状态覆盖掉；只有得到具体产品时才改写为“兼容推断”。
+                if (preflight.productIdentity.identificationStatus !=
+                        MeyerDeviceProductIdentification_Conflict &&
+                    preflight.productIdentity.productModel !=
+                        MeyerDeviceProductModel_Unknown)
+                {
+                    preflight.productIdentity.identificationStatus =
+                        MeyerDeviceProductIdentification_CompatibilityInferred;
+                }
+            }
+
+            // 无线或后续固件可能在预留区放置明确协议标记。该标记只补充系列和
+            // 协议 Profile，不允许覆盖产品目录已经发现的证据冲突。
+            const std::int32_t explicitProfile = DetectModelFromDeviceInfo(info);
+            DeviceProductCatalog::MergeProtocolProfileHint(explicitProfile,
+                                                           preflight.productIdentity);
+            if (preflight.productIdentity.identificationStatus ==
+                MeyerDeviceProductIdentification_Conflict)
+            {
+                preflight.status = MeyerDeviceCalibrationPreflight_ProductIdentityConflict;
+                preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Conflict;
+                preflight.state = m_state;
+                SetPreflightDetail(preflight, preflight.productIdentity.detailUtf8);
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            // 系列候选只说明后续应尝试哪组协议，不能代替具体产品识别。
+            // 颜色校准后续可能按国内/海外/贴牌/医院版选择参数，因此必须由完整
+            // 型号代码得到具体产品；设备编号未写入但型号代码精确时仍可继续。
+            if (preflight.productIdentity.productModel ==
+                MeyerDeviceProductModel_Unknown)
+            {
+                preflight.status = MeyerDeviceCalibrationPreflight_ModelUnknown;
+                preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                preflight.state = m_state;
+                SetPreflightDetail(preflight, preflight.productIdentity.detailUtf8);
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            if (preflight.detectionRecord.isProductionMode != 0)
+            {
+                preflight.detectionRecord.detectionStatus =
+                    preflight.detectionRecord.modelCodeSource ==
+                        MeyerDeviceIdentityValueSource_DeviceReported
+                    ? MeyerDeviceDetection_ProductionExactModel
+                    : MeyerDeviceDetection_ProductionInferred;
+            }
+            else
+            {
+                preflight.detectionRecord.detectionStatus =
+                    preflight.detectionRecord.usedCompatibilityDefaults != 0
+                    ? MeyerDeviceDetection_CompatibilityInferred
+                    : MeyerDeviceDetection_Exact;
+            }
+
+            const std::int32_t detectedModel = preflight.productIdentity.protocolProfile;
+            // 精确 CE 型号属于设备上报；兼容默认值是主机根据旧流程推断，只能
+            // 标成 AutoDetected，避免其它模块把默认值当成真实设备数据。
+            const std::int32_t detectedModelSource =
+                preflight.detectionRecord.modelCodeSource ==
+                    MeyerDeviceIdentityValueSource_DeviceReported
+                ? MeyerDeviceModelSource_DeviceReported
+                : MeyerDeviceModelSource_AutoDetected;
+            if (!ApplyDetectedModel(detectedModel, detectedModelSource))
             {
                 preflight.status = MeyerDeviceCalibrationPreflight_ModelUnknown;
                 preflight.state = m_state;
                 SetPreflightDetail(
                     preflight,
-                    "0xCE device information has no recognized model marker in its reserved field");
+                    "0xCE device information has no recognized model code or explicit marker");
                 Close();
                 return MeyerDeviceCmdResult_Ok;
             }
 
             preflight.status = MeyerDeviceCalibrationPreflight_Ready;
             preflight.state = m_state;
-            SetPreflightDetail(preflight, "Color calibration device preflight passed");
+            SetPreflightDetail(
+                preflight,
+                std::string("Color calibration device preflight passed: ") +
+                    preflight.productIdentity.detailUtf8 + "; " +
+                    preflight.detectionRecord.detailUtf8);
             logging::WriteInfo("PrepareColorCalibration",
-                               "Device connection, USB speed and model checks passed");
+                               preflight.detectionRecord.detailUtf8);
             // Ready 分支保留当前 DeviceCmd/Transport 会话，颜色校准关闭后由宿主 Close。
             return MeyerDeviceCmdResult_Ok;
         }
@@ -609,7 +936,10 @@ namespace meyer
 
             std::int32_t firstFailure = MeyerDeviceCmdResult_Ok;
             std::string firstFailureMessage;
-            const std::int32_t machineResult = RefreshMachineCode();
+            MeyerDeviceCmdMachineCode machineCode = {};
+            machineCode.structSize = sizeof(MeyerDeviceCmdMachineCode);
+            machineCode.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            const std::int32_t machineResult = ReadMachineCode(machineCode);
             if (machineResult != MeyerDeviceCmdResult_Ok)
             {
                 firstFailure = machineResult;
@@ -1113,14 +1443,32 @@ namespace meyer
             {
                 return result;
             }
-            DecodeDeviceInfo(payload, info);
-            m_state.encrypted = info.encrypted != 0U ? 1 : 0;
-            m_state.encryptionType = info.encryptionType;
-            CopyText(m_state.deviceIdUtf8, std::string(info.deviceIdUtf8));
-            CopyText(m_state.expirationCodeHex,
-                     EncodeHex(info.expirationCode, MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES));
-            m_state.validFields |= MeyerDeviceStateField_DeviceSecurityInfo |
-                                   MeyerDeviceStateField_MachineCode;
+            const std::int32_t protocolFamily = m_profile == nullptr
+                ? MeyerDeviceProtocolFamily_Unknown
+                : m_profile->protocolFamily;
+            DecodeDeviceInfo(payload, protocolFamily, info);
+            // 只有无线授权布局包含已确认的加密和期限字段；旧有线布局不能
+            // 把型号代码前两位误写成 encrypted/encryptionType。
+            if (info.responseLayout == MeyerDeviceInfoLayout_WirelessSecurityInfo)
+            {
+                m_state.encrypted = info.encrypted != 0U ? 1 : 0;
+                m_state.encryptionType = info.encryptionType;
+                CopyText(m_state.expirationCodeHex,
+                         EncodeHex(info.expirationCode,
+                                   MEYER_DEVICE_CMD_EXPIRATION_CODE_BYTES));
+                m_state.validFields |= MeyerDeviceStateField_DeviceSecurityInfo;
+            }
+            // 机器码优先由独立 0xD4/0xD9 命令提供。只有尚未读取机器码时，
+            // 才使用正式无线协议 0xCE 中的设备编号字段作为兼容回退。
+            if ((m_state.validFields & MeyerDeviceStateField_MachineCode) == 0U &&
+                info.responseLayout == MeyerDeviceInfoLayout_WirelessSecurityInfo &&
+                info.deviceIdUtf8[0] != '\0')
+            {
+                CopyText(m_state.deviceIdUtf8, std::string(info.deviceIdUtf8));
+                m_state.validFields |= MeyerDeviceStateField_MachineCode;
+            }
+            CopyText(m_state.modelCodeUtf8, std::string(info.modelCodeUtf8));
+            m_state.validFields |= MeyerDeviceStateField_ModelCode;
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -1343,8 +1691,14 @@ namespace meyer
                                                           std::size_t payloadSize,
                                                           std::int32_t expectedResponseCode,
                                                           protocol::CommandFrame* response,
-                                                          std::uint32_t timeoutMs)
+                                                          std::uint32_t timeoutMs,
+                                                          CommandExchangeDiagnostics* diagnostics)
         {
+            // 每次调用先重置诊断，调用方不会误读上一次命令留下的回包状态。
+            if (diagnostics != nullptr)
+            {
+                *diagnostics = CommandExchangeDiagnostics();
+            }
             if (!IsOpen())
             {
                 return SetError(MeyerDeviceCmdResult_NotOpen, "Device is not open");
@@ -1387,6 +1741,10 @@ namespace meyer
             {
                 return SetError(result, m_transport->LastError());
             }
+            if (diagnostics != nullptr)
+            {
+                diagnostics->requestSent = true;
+            }
 
             std::ostringstream sentMessage;
             sentMessage << "Command 0x" << std::hex << std::uppercase
@@ -1399,22 +1757,72 @@ namespace meyer
                 return MeyerDeviceCmdResult_Ok;
             }
 
+            // 旧软件在两条设备身份命令发送后分别等待 100/200 ms，再提交 Bulk IN。
+            // 只对真实 DeviceTransport 保留该时序；模拟后端无需人为拖慢自动化测试。
+            if (m_lastOpenParams.backendType == MeyerDeviceCmdBackend_DeviceTransport)
+            {
+                if (commandCode == protocol::ReadMachineCode)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                else if (commandCode == protocol::ReadDeviceInfo)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+            }
+
             std::vector<std::uint8_t> received;
             result = m_transport->ReceiveCommand(received,
                                                  MEYER_DEVICE_CMD_MAX_RAW_RESPONSE_BYTES + 10U,
                                                  effectiveTimeout);
             if (result != MeyerDeviceCmdResult_Ok)
             {
+                if (diagnostics != nullptr)
+                {
+                    // 身份探测会把“无回包”解释为旧固件/命令能力证据，因此先按
+                    // warning 保存诊断，最终是否失败由上层检测流程决定。
+                    m_lastError = m_transport->LastError();
+                    logging::WriteWarning("CommandReceiveDiagnostic", m_lastError.c_str());
+                    return result;
+                }
                 return SetError(result, m_transport->LastError());
+            }
+            if (diagnostics != nullptr)
+            {
+                diagnostics->responseReceived = true;
+                diagnostics->rawResponse = received;
             }
 
             protocol::CommandFrame decoded;
-            if (!protocol::DeviceCommandCodec::Parse(&received[0], received.size(), decoded, codecError))
+            const protocol::CommandParseStatus parseStatus =
+                protocol::DeviceCommandCodec::ParseDetailed(
+                    received.empty() ? nullptr : &received[0],
+                    received.size(),
+                    decoded,
+                    codecError);
+            if (diagnostics != nullptr)
             {
+                diagnostics->parseStatus = parseStatus;
+            }
+            if (parseStatus != protocol::CommandParseStatus::Ok)
+            {
+                if (diagnostics != nullptr)
+                {
+                    m_lastError = codecError;
+                    logging::WriteWarning("CommandParseDiagnostic", m_lastError.c_str());
+                    return MeyerDeviceCmdResult_ProtocolError;
+                }
                 return SetError(MeyerDeviceCmdResult_ProtocolError, codecError);
             }
             if (decoded.commandCode != static_cast<std::uint8_t>(expectedResponseCode))
             {
+                if (diagnostics != nullptr)
+                {
+                    diagnostics->parseStatus = protocol::CommandParseStatus::UnexpectedCommand;
+                    m_lastError = "Device returned an unexpected command response code";
+                    logging::WriteWarning("CommandParseDiagnostic", m_lastError.c_str());
+                    return MeyerDeviceCmdResult_ProtocolError;
+                }
                 return SetError(MeyerDeviceCmdResult_ProtocolError,
                                 "Device returned an unexpected command response code");
             }
@@ -1427,7 +1835,261 @@ namespace meyer
             return MeyerDeviceCmdResult_Ok;
         }
 
-        std::int32_t DeviceCommandService::RefreshMachineCode()
+        // 读取颜色校准预检使用的设备编号，并保留“校验失败表示未写号”的旧设备语义。
+        std::int32_t DeviceCommandService::ReadDeviceNumberForDetection(
+            MeyerDeviceCmdMachineCode& machineCode,
+            MeyerDeviceDetectionRecord& record)
+        {
+            protocol::CommandFrame response;
+            CommandExchangeDiagnostics diagnostics;
+            const std::int32_t result = ExecuteCommand(protocol::ReadMachineCode,
+                                                       nullptr,
+                                                       0U,
+                                                       protocol::UploadMachineCode,
+                                                       &response,
+                                                       0U,
+                                                       &diagnostics);
+            if (result != MeyerDeviceCmdResult_Ok)
+            {
+                if (diagnostics.responseReceived &&
+                    diagnostics.parseStatus == protocol::CommandParseStatus::ChecksumMismatch)
+                {
+                    // 旧生产流程故意用无效校验表示 13 位编号尚未写入。这里把它
+                    // 记录为生产模式并继续 C7/CE 探测，而不是误报普通通信故障。
+                    record.deviceNumberStatus =
+                        MeyerDeviceNumberRead_ChecksumIndicatesUnprogrammed;
+                    record.isProductionMode = 1;
+                    AppendDetectionDetail(record,
+                                          "0xD9 checksum indicates an unprogrammed device number");
+                    m_lastError.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+
+                record.deviceNumberStatus = diagnostics.responseReceived
+                    ? MeyerDeviceNumberRead_FrameInvalid
+                    : MeyerDeviceNumberRead_ResponseMissing;
+                AppendDetectionDetail(record, m_lastError);
+                return result;
+            }
+
+            if (response.payload.size() != MEYER_DEVICE_CMD_MACHINE_CODE_BYTES)
+            {
+                record.deviceNumberStatus = MeyerDeviceNumberRead_ValueInvalid;
+                AppendDetectionDetail(record, "0xD9 device number payload length is invalid");
+                return SetError(MeyerDeviceCmdResult_ProtocolError,
+                                "Device number response must contain exactly 13 bytes");
+            }
+
+            std::string deviceNumber;
+            if (!DecodeFixedDecimalDigits(response.payload,
+                                          MEYER_DEVICE_CMD_MACHINE_CODE_BYTES,
+                                          deviceNumber) ||
+                !IsValidDeviceNumber(deviceNumber))
+            {
+                record.deviceNumberStatus = MeyerDeviceNumberRead_ValueInvalid;
+                CopyText(record.reportedDeviceNumberUtf8, DecodeMachineCode(response.payload));
+                AppendDetectionDetail(record,
+                                      "0xD9 device number must be 13 digits with prefix 620000");
+                return SetError(MeyerDeviceCmdResult_ProtocolError,
+                                "Device number value is invalid");
+            }
+
+            std::memcpy(machineCode.rawDigits,
+                        &response.payload[0],
+                        MEYER_DEVICE_CMD_MACHINE_CODE_BYTES);
+            CopyText(machineCode.machineCodeUtf8, deviceNumber);
+            record.deviceNumberStatus = MeyerDeviceNumberRead_Valid;
+            record.deviceNumberSource = MeyerDeviceIdentityValueSource_DeviceReported;
+            CopyText(record.reportedDeviceNumberUtf8, deviceNumber);
+            CopyText(record.effectiveDeviceNumberUtf8, deviceNumber);
+            CopyText(m_state.deviceIdUtf8, deviceNumber);
+            m_state.validFields |= MeyerDeviceStateField_MachineCode;
+            AdvanceState();
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 设备编号未写入时，用 C2/C7 命令能力探测系列。MyScan 6 的进一步区分
+        // 尚无规则，因此当前 5/6 候选按文档暂用 MyScan 5 兼容默认值并保留来源。
+        std::int32_t DeviceCommandService::ProbeProductionSeries(
+            MeyerDeviceDetectionRecord& record)
+        {
+            protocol::CommandFrame response;
+            CommandExchangeDiagnostics diagnostics;
+            const std::int32_t result = ExecuteCommand(protocol::ReadCamera1Calibration,
+                                                       nullptr,
+                                                       0U,
+                                                       protocol::UploadCamera1Calibration,
+                                                       &response,
+                                                       0U,
+                                                       &diagnostics);
+
+            if (result == MeyerDeviceCmdResult_Ok || diagnostics.responseReceived)
+            {
+                // 能收到任意 C7 回包说明下位机具备该命令能力。即使帧本身异常，
+                // 也按旧流程记录响应异常并继续由 CE 给出最终型号代码。
+                record.seriesProbeStatus = MeyerDeviceSeriesProbe_MyScan5Or6;
+                record.usedCompatibilityDefaults = 1;
+                record.deviceNumberSource = MeyerDeviceIdentityValueSource_CompatibilityDefault;
+                CopyText(record.effectiveDeviceNumberUtf8, "6200005301200");
+                CopyText(record.effectiveModelCodeUtf8, "62000053");
+                if (result != MeyerDeviceCmdResult_Ok)
+                {
+                    AppendDetectionDetail(record,
+                                          "0xC7 was received but its frame is abnormal");
+                }
+                else
+                {
+                    AppendDetectionDetail(record,
+                                          "0xC7 capability indicates the MyScan 5/6 family");
+                }
+                m_lastError.clear();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            if (diagnostics.requestSent && !diagnostics.responseReceived &&
+                result == MeyerDeviceCmdResult_Timeout)
+            {
+                // 旧 mOS MyScan 不实现 C2/C7；请求超时是该流程定义的能力缺失证据。
+                record.seriesProbeStatus = MeyerDeviceSeriesProbe_MyScan;
+                record.usedCompatibilityDefaults = 1;
+                record.deviceNumberSource = MeyerDeviceIdentityValueSource_CompatibilityDefault;
+                CopyText(record.effectiveDeviceNumberUtf8, "6200002001200");
+                CopyText(record.effectiveModelCodeUtf8, "62000020");
+                AppendDetectionDetail(record,
+                                      "0xC7 timeout indicates the legacy mOS MyScan family");
+                m_lastError.clear();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            record.seriesProbeStatus = MeyerDeviceSeriesProbe_ResponseAbnormal;
+            AppendDetectionDetail(record, m_lastError);
+            return result;
+        }
+
+        // 读取型号代码。旧固件无回包、0xFFFF 未初始化和普通校验失败均保留
+        // 兼容默认值，但真实字段保持为空，调用方可通过 source/status 区分。
+        std::int32_t DeviceCommandService::ReadModelCodeForDetection(
+            MeyerDeviceCmdDeviceInfo& info,
+            MeyerDeviceDetectionRecord& record)
+        {
+            protocol::CommandFrame response;
+            CommandExchangeDiagnostics diagnostics;
+            const std::int32_t result = ExecuteCommand(protocol::ReadDeviceInfo,
+                                                       nullptr,
+                                                       0U,
+                                                       protocol::UploadDeviceInfo,
+                                                       &response,
+                                                       0U,
+                                                       &diagnostics);
+
+            bool useCompatibilityDefault = false;
+            if (result != MeyerDeviceCmdResult_Ok)
+            {
+                if (!diagnostics.requestSent)
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_FrameInvalid;
+                    AppendDetectionDetail(record, m_lastError);
+                    return result;
+                }
+                if (!diagnostics.responseReceived && result == MeyerDeviceCmdResult_Timeout)
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_FirmwareTooOld;
+                    AppendDetectionDetail(record,
+                                          "0xCE was not returned; device firmware is too old");
+                    useCompatibilityDefault = true;
+                }
+                else if (diagnostics.parseStatus ==
+                         protocol::CommandParseStatus::UninitializedLength)
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_Uninitialized;
+                    AppendDetectionDetail(record,
+                                          "0xCE reports that the model code is not initialized");
+                    useCompatibilityDefault = true;
+                }
+                else if (diagnostics.parseStatus ==
+                         protocol::CommandParseStatus::ChecksumMismatch)
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_ChecksumInvalid;
+                    AppendDetectionDetail(record, "0xCE checksum is invalid");
+                    useCompatibilityDefault = true;
+                }
+                else if (diagnostics.responseReceived)
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_FrameInvalid;
+                    AppendDetectionDetail(record, "0xCE response frame is abnormal");
+                    useCompatibilityDefault = true;
+                }
+                else
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_FrameInvalid;
+                    AppendDetectionDetail(record, m_lastError);
+                    return result;
+                }
+            }
+            else if (response.payload.size() != MEYER_DEVICE_CMD_CALIBRATION_BYTES)
+            {
+                record.modelCodeStatus = MeyerDeviceModelCodeRead_FrameInvalid;
+                AppendDetectionDetail(record, "0xCE payload length is not 382 bytes");
+                useCompatibilityDefault = true;
+            }
+            else
+            {
+                const std::int32_t protocolFamily = m_profile == nullptr
+                    ? MeyerDeviceProtocolFamily_Unknown
+                    : m_profile->protocolFamily;
+                DecodeDeviceInfo(response.payload, protocolFamily, info);
+
+                std::string modelCode;
+                if (protocolFamily == MeyerDeviceProtocolFamily_Wireless20250808)
+                {
+                    // 无线授权布局当前不含已确认的 8 位型号代码，继续等待无线机型规则。
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_ValueInvalid;
+                    AppendDetectionDetail(record,
+                                          "Wireless model-code extraction is not defined yet");
+                    useCompatibilityDefault = true;
+                }
+                else if (!DecodeLegacyModelCode(response.payload, modelCode) ||
+                         !IsValidModelCode(modelCode))
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_ValueInvalid;
+                    CopyText(record.reportedModelCodeUtf8,
+                             std::string(info.modelCodeUtf8));
+                    AppendDetectionDetail(record,
+                                          "0xCE model code must be 8 digits with prefix 62");
+                    useCompatibilityDefault = true;
+                }
+                else
+                {
+                    record.modelCodeStatus = MeyerDeviceModelCodeRead_Valid;
+                    record.modelCodeSource = MeyerDeviceIdentityValueSource_DeviceReported;
+                    CopyText(record.reportedModelCodeUtf8, modelCode);
+                    CopyText(record.effectiveModelCodeUtf8, modelCode);
+                    CopyText(m_state.modelCodeUtf8, modelCode);
+                    m_state.validFields |= MeyerDeviceStateField_ModelCode;
+                    m_lastError.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+            }
+
+            if (useCompatibilityDefault)
+            {
+                if (record.effectiveModelCodeUtf8[0] == '\0')
+                {
+                    CopyText(record.effectiveModelCodeUtf8,
+                             CompatibilityModelCodeForDeviceNumber(
+                                 std::string(record.effectiveDeviceNumberUtf8)));
+                }
+                record.modelCodeSource = MeyerDeviceIdentityValueSource_CompatibilityDefault;
+                record.usedCompatibilityDefaults = 1;
+                m_lastError.clear();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            return result;
+        }
+
+        // 读取并解析 0xD4/0xD9 设备编号，同时更新可共享状态快照。
+        std::int32_t DeviceCommandService::ReadMachineCode(MeyerDeviceCmdMachineCode& machineCode)
         {
             protocol::CommandFrame response;
             const std::int32_t result = ExecuteCommand(protocol::ReadMachineCode,
@@ -1446,8 +2108,14 @@ namespace meyer
                                 "Machine code response must contain exactly 13 bytes");
             }
 
-            CopyText(m_state.deviceIdUtf8, DecodeMachineCode(response.payload));
+            std::memcpy(machineCode.rawDigits,
+                        &response.payload[0],
+                        MEYER_DEVICE_CMD_MACHINE_CODE_BYTES);
+            const std::string decoded = DecodeMachineCode(response.payload);
+            CopyText(machineCode.machineCodeUtf8, decoded);
+            CopyText(m_state.deviceIdUtf8, decoded);
             m_state.validFields |= MeyerDeviceStateField_MachineCode;
+            AdvanceState();
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -1512,32 +2180,10 @@ namespace meyer
 
         std::int32_t DeviceCommandService::RefreshDeviceSecurityInfo()
         {
-            protocol::CommandFrame response;
-            const std::int32_t result = ExecuteCommand(protocol::ReadDeviceInfo,
-                                                       nullptr,
-                                                       0U,
-                                                       protocol::UploadDeviceInfo,
-                                                       &response,
-                                                       0U);
-            if (result != MeyerDeviceCmdResult_Ok)
-            {
-                return result;
-            }
-            if (response.payload.size() != 382U)
-            {
-                return SetError(MeyerDeviceCmdResult_ProtocolError,
-                                "Device security response must contain exactly 382 bytes");
-            }
-
-            m_state.encrypted = response.payload[0] != 0U ? 1 : 0;
-            m_state.encryptionType = response.payload[1];
-            const std::vector<std::uint8_t> deviceId(response.payload.begin() + 2,
-                                                     response.payload.begin() + 15);
-            CopyText(m_state.deviceIdUtf8, DecodeMachineCode(deviceId));
-            CopyText(m_state.expirationCodeHex, EncodeHex(&response.payload[15], 30U));
-            m_state.validFields |= MeyerDeviceStateField_DeviceSecurityInfo |
-                                   MeyerDeviceStateField_MachineCode;
-            return MeyerDeviceCmdResult_Ok;
+            MeyerDeviceCmdDeviceInfo info = {};
+            info.structSize = sizeof(MeyerDeviceCmdDeviceInfo);
+            info.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            return ReadDeviceInfo(info);
         }
 
         // 复制 DeviceTransport 的关键内存保护规则，使模拟后端和真实后端行为一致。

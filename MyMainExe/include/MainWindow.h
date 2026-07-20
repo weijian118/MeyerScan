@@ -29,6 +29,7 @@ class QVBoxLayout;
 class IDatabaseQtAdapter;
 class ILogger;
 class DeviceSessionHost;
+struct MeyerDeviceCalibrationPreflight;
 
 // MainWindow 是 MeyerScan.exe 的主窗口和轻量编排层。
 // 它只负责启动流程、登录衔接、页面容器切换和资源释放，
@@ -318,6 +319,18 @@ private:
     // 构造练习/默认扫描上下文 JSON，供 ScanWorkflowUI/DataProcessUI 暂时使用。
     QString BuildDefaultWorkspaceContextJson(const QString& mode) const;
 
+    // 按当前工作台模式执行设备准入：练习允许生产兼容身份，创建必须有真实编号。
+    bool PrepareWorkspaceDeviceSession();
+
+    // 把完整设备检测结果写入工作台 JSON，供扫描、处理和发送模块读取同一身份。
+    void SetWorkspaceDeviceIdentity(const MeyerDeviceCalibrationPreflight& preflight);
+
+    // 把最新工作台 JSON 同步给已经创建的 Scan/Process/Send 页面。
+    void RefreshWorkspaceContextConsumers();
+
+    // 使用 UIComponents 公共弹窗显示设备预检失败原因，公共模块不可用时降级到 Qt。
+    void ShowWorkspaceDevicePreflightMessage(int status);
+
     // 构造默认练习扫描流程，练习模式没有建单页，流程由 MainExe 固定提供。
     QJsonObject BuildDefaultScanProcessObject() const;
 
@@ -405,6 +418,10 @@ private:
     int m_settingsOpenSource = SettingsOpenSourceHome;
     // 记录打开设置时工作台是否仍是来源页；即使设置页释放工作台 QWidget，门禁仍保持有效。
     bool m_settingsOpenedFromActiveWorkspace = false;
+    // 自动化导航 smoke 不连接真实 USB；该旁路只由 StartWithoutLoginForSmoke 设置。
+    bool m_skipWorkspaceDevicePreflightForSmoke = false;
+    // 当前工作台是否已经完成设备准入；离开工作台时必须复位并关闭会话。
+    bool m_workspaceDeviceSessionReady = false;
     int m_currentWorkspaceMode = WorkspaceModeOrderCreate;
     QString m_workspaceContextJson;
 };

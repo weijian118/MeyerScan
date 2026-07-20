@@ -31,7 +31,9 @@
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
-- `src/device/DeviceSessionHost` 是 MainExe 进程内唯一设备会话所有者。颜色校准从首页/浏览设置进入时依次检查工作台占用、Cypress 连接、USB3、`0xCD/0xCE` 设备信息和明确型号标记；校准关闭后释放会话。
+- `src/device/DeviceSessionHost` 是 MainExe 进程内唯一设备会话所有者。颜色校准从首页/浏览设置进入时依次检查工作台占用、Cypress 连接、USB3、D4/D9 设备编号、生产模式 C2/C7 系列能力、CD/CE 型号代码和产品身份；宿主缓存最近一次完整预检，MainExe 只向 UI 复制固定 POD 快照，校准关闭后释放会话。
+- DeviceSessionHost 在检测完成后按工作流应用身份准入：只有创建订单扫描流程必须有真实 reported 设备编号，未写号时保持在 Order 并禁止加载 Scan/Process/Send；练习、颜色校准和后续三维校准允许生产设备使用带来源的 effective 默认编号/型号。
+- 通过准入的设备身份写入工作台 `deviceIdentity` JSON，必须同时携带 reported/effective 值、来源、生产/兼容标志和产品身份；Scan/Process/Send 不得只读取有效值后丢弃来源。
 - CaseUI/SettingsUI 不直接持有 RuntimeDataCenter。MainExe 从进程级缓存读取指定 domain，组装 `{schemaVersion, generatedAtUtc, domains}` 后在 CreateWidget 前注入。
 - 患者/订单快照由 MainExe 编排合并：CaseOrderService 新表摘要优先，RuntimeDataCenter 旧表记录按稳定 ID 补充；新建订单保存后无需硬写不稳定旧表即可在案例页显示。
 - CaseOrderService 是患者/订单正式写入口；MainExe 只补齐工作流 ID、复核权限和编排保存，不在主程序中拼患者/订单 SQL。
@@ -58,7 +60,7 @@
 - 运行时版本清单只记录 `config/version_modules.json` 中声明的拆分模块 EXE/DLL，不再扫描第三方库；当前清单使用 `{ file, versionFunction }` 格式，自研模块通过统一导出函数 `GetMeyerModuleVersion()` 记录 `fileVersion`、`codeVersion` 和 `versionMatch`；字段说明见同目录 `config/version_modules.md`。
 - `version_modules.json` 中声明的模块必须同步进入 MainExe Release 目录或后续安装包；缺失模块会在 `logs/versionList` 中记录为 `exists=false`，用于发现 PostBuild/打包漏复制。
 - DLL 文件“详细信息”页显示的版本来自 `Version.rc`，不是代码函数；`ModuleInfo::Version`、业务接口 `GetModuleVersion()` 和统一版本函数 `GetMeyerModuleVersion()` 用于运行时代码版本检查，必须与 `Version.rc` 同步维护。
-- 单模块 `MyMainExe` 输出目录也必须保持自研 DLL 版本一致。VS2015 PostBuild 会在单模块输出完成后，从根聚合输出目录存在的 `MeyerScan_*.dll` 兜底覆盖一次；CMake 构建入口通过 target 依赖和 POST_BUILD 复制同样的运行时 DLL。这个规则只影响运行文件复制，不代表 MainExe 恢复链接这些自研 DLL 的 import lib。
+- 单模块 `MyMainExe` 输出目录也必须保持自研 DLL 版本一致。VS2015 PostBuild 先从各模块 `bin\Release` 复制，再只把根聚合输出目录中更新时间更晚的 `MeyerScan_*.dll` 作为兜底，禁止旧根目录 DLL 反向覆盖新模块产物；CMake 构建入口通过 target 依赖和 POST_BUILD 复制同样的运行时 DLL。这个规则只影响运行文件复制，不代表 MainExe 恢复链接这些自研 DLL 的 import lib。
 - MainExe 自身工具栏、状态栏、等待页等界面可见文字统一使用 `tr("English source text")`；需求文案可写中文，但源码 source text 必须写英文。
 - 首页、浏览页、等待页由 MainExe 按需创建；切换完成后释放非当前页面 widget，避免不可见模块长期占用资源。
 - 页面释放使用 Qt 事件循环的安全释放方式，避免在按钮点击信号尚未返回时销毁当前 sender 所在控件树。

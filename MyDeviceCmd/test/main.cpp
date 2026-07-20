@@ -76,6 +76,89 @@ namespace
                     "machine-code response has the expected command and payload size");
     }
 
+    // 验证公开机器码语义接口同时返回 13 个原始数字和规范化 UTF-8 文本。
+    void TestMachineCodeRead(MeyerDeviceCmdHandle handle, TestContext& test)
+    {
+        MeyerDeviceCmdMachineCode machineCode;
+        test.Expect(MeyerDeviceCmd_InitMachineCode(&machineCode) == MeyerDeviceCmdResult_Ok,
+                    "machine-code output structure initializes");
+        const std::int32_t result = MeyerDeviceCmd_ReadMachineCode(handle, &machineCode);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    std::strcmp(machineCode.machineCodeUtf8, "6200005301203") == 0,
+                    "0xD4/0xD9 semantic API returns normalized machine code");
+        test.Expect(machineCode.rawDigits[0] == 6U && machineCode.rawDigits[12] == 3U,
+                    "machine-code semantic API preserves all raw digit bytes");
+    }
+
+    // 验证所有已知完整型号代码都精确映射，防止再次出现“看到首位 6 就当 MyScan 6”。
+    void TestProductIdentificationCatalog(TestContext& test)
+    {
+        struct ProductCase
+        {
+            const char* deviceNumber;
+            const char* modelCode;
+            std::int32_t expectedProduct;
+            std::int32_t expectedProfile;
+        };
+
+        const ProductCase cases[] =
+        {
+            { "6200002000001", "62000020", MeyerDeviceProductModel_MyScan_SY_KS1000_P1, MeyerDeviceModel_MyScan3 },
+            { "6200002000002", "62010025", MeyerDeviceProductModel_MyScan_SY_KS1000_P2, MeyerDeviceModel_MyScan3 },
+            { "6200002000003", "62010039", MeyerDeviceProductModel_MyScan_SY_KS1000_P3, MeyerDeviceModel_MyScan3 },
+            { "6200002700001", "62000027", MeyerDeviceProductModel_MyScan_InternationalStandard, MeyerDeviceModel_MyScan3 },
+            { "6200002700002", "62010036", MeyerDeviceProductModel_MyScan_InternationalPrivateLabel, MeyerDeviceModel_MyScan3 },
+            { "6200005300001", "62000053", MeyerDeviceProductModel_MyScan5_DomesticStandard, MeyerDeviceModel_MyScan5 },
+            { "6200005300002", "62010043", MeyerDeviceProductModel_MyScan5_InternationalStandard, MeyerDeviceModel_MyScan5 },
+            { "6200005500001", "62000055", MeyerDeviceProductModel_MyScan5H_PublicHospital, MeyerDeviceModel_MyScan5H }
+        };
+
+        const std::size_t caseCount = sizeof(cases) / sizeof(cases[0]);
+        for (std::size_t index = 0U; index < caseCount; ++index)
+        {
+            MeyerDeviceProductIdentity identity;
+            MeyerDeviceCmd_InitProductIdentity(&identity);
+            const std::int32_t result = MeyerDeviceCmd_IdentifyProduct(
+                cases[index].deviceNumber,
+                cases[index].modelCode,
+                MeyerDeviceProductEvidence_CommandCapability,
+                &identity);
+            test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                        identity.identificationStatus ==
+                            MeyerDeviceProductIdentification_ExactProduct &&
+                        identity.productModel == cases[index].expectedProduct &&
+                        identity.protocolProfile == cases[index].expectedProfile,
+                        std::string("full model code maps exactly: ") + cases[index].modelCode);
+        }
+
+        // 同系列的 62000053 与 62000055 仍代表不同设备前缀，不能因 family 相同而放过。
+        MeyerDeviceProductIdentity conflict;
+        MeyerDeviceCmd_InitProductIdentity(&conflict);
+        MeyerDeviceCmd_IdentifyProduct("6200005300001", "62000055", 0U, &conflict);
+        test.Expect(conflict.identificationStatus == MeyerDeviceProductIdentification_Conflict,
+                    "device prefix and full model-code conflict is rejected");
+
+        // 生产阶段全零编号不阻止型号代码识别，但状态必须明确保留“未写号”。
+        MeyerDeviceProductIdentity unprogrammed;
+        MeyerDeviceCmd_InitProductIdentity(&unprogrammed);
+        MeyerDeviceCmd_IdentifyProduct("0000000000000", "62010025", 0U, &unprogrammed);
+        test.Expect(unprogrammed.identificationStatus ==
+                        MeyerDeviceProductIdentification_DeviceNumberUnprogrammed &&
+                    unprogrammed.productModel == MeyerDeviceProductModel_MyScan_SY_KS1000_P2 &&
+                    unprogrammed.protocolProfile == MeyerDeviceModel_MyScan3,
+                    "unprogrammed device number keeps exact model-code result");
+
+        // 尚未登记的新型号代码可以保留系列候选，但不能伪造具体产品 ID。
+        MeyerDeviceProductIdentity seriesOnly;
+        MeyerDeviceCmd_InitProductIdentity(&seriesOnly);
+        MeyerDeviceCmd_IdentifyProduct("6200005300001", "62999999", 0U, &seriesOnly);
+        test.Expect(seriesOnly.identificationStatus ==
+                        MeyerDeviceProductIdentification_SeriesOnly &&
+                    seriesOnly.productFamily == MeyerDeviceProductFamily_MyScan5 &&
+                    seriesOnly.productModel == MeyerDeviceProductModel_Unknown,
+                    "known prefix and unknown model code returns series-only identity");
+    }
+
     // 验证基础信息查询后 validFields 和关键内容都被写入。
     void TestStateRefresh(MeyerDeviceCmdHandle handle, TestContext& test)
     {
@@ -313,49 +396,247 @@ namespace
         }
     }
 
-    // 验证颜色校准入口的四个关键设备分支。每次调用都由 DeviceCmd 自己
-    // 关闭旧会话并重建模拟会话，行为与 MainExe 的单会话宿主一致。
+    // 使用一组明确参数执行一次颜色校准预检。该辅助函数只减少测试重复代码，
+    // 每种分支的期望状态仍在具体断言处完整写出，便于初学者对照流程图阅读。
+    std::int32_t RunSimulatedPreflight(MeyerDeviceCmdHandle handle,
+                                       MeyerDeviceCmdOpenParams& params,
+                                       std::uint32_t simulatedFlags,
+                                       const char* deviceNumber,
+                                       std::int32_t modelHint,
+                                       MeyerDeviceCalibrationPreflight& preflight)
+    {
+        // 每轮重新初始化输出结构，防止上一个场景的状态和值影响本轮结果。
+        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+        // 模拟标志决定本轮命令在哪个步骤返回无回包、坏包或非法业务值。
+        params.simulatedFlags = simulatedFlags;
+        // modelHint 在模拟器中同时决定正常 0xCE 回包所携带的型号代码。
+        params.modelHint = modelHint;
+        // 固定数组先清零再复制，保证字符串始终以空字符结尾。
+        std::memset(params.simulatedDeviceIdUtf8, 0, sizeof(params.simulatedDeviceIdUtf8));
+        if (deviceNumber != nullptr)
+        {
+            std::strncpy(params.simulatedDeviceIdUtf8,
+                         deviceNumber,
+                         sizeof(params.simulatedDeviceIdUtf8) - 1U);
+        }
+        // Prepare 内部会先关闭旧会话再新建模拟会话，行为与 MainExe 单会话宿主一致。
+        return MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+    }
+
+    // 按设备型号读取流程逐项验证连接、D9、C7、CE、兼容默认值和证据冲突。
     void TestColorCalibrationPreflight(MeyerDeviceCmdHandle handle, TestContext& test)
     {
         MeyerDeviceCmdOpenParams params;
         MeyerDeviceCmd_InitOpenParams(&params);
         params.backendType = MeyerDeviceCmdBackend_SimulatorForTest;
-        params.modelHint = MeyerDeviceModel_MyScan6;
+        // 正式 MainExe 使用 Unknown 最小探测 profile；测试必须保持同一入口，
+        // 防止已知型号的完整能力表掩盖探测 profile 缺少 D4/CD 权限的问题。
+        params.modelHint = MeyerDeviceModel_Unknown;
         std::strcpy(params.simulatedDeviceIdUtf8, "6200005301203");
 
         MeyerDeviceCalibrationPreflight preflight;
-        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
 
-        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_DeviceNotConnected;
-        std::int32_t result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        std::int32_t result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_DeviceNotConnected,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
                     preflight.status == MeyerDeviceCalibrationPreflight_DeviceNotConnected,
                     "color calibration preflight reports disconnected device");
 
-        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
-        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_Usb2Connected;
-        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_Usb2Connected,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
                     preflight.status == MeyerDeviceCalibrationPreflight_Usb2Connected &&
                     preflight.state.isUsb2 == 1,
                     "color calibration preflight rejects USB 2.x connection");
 
-        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
-        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_OmitModelMarker;
-        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_MachineCodeReadFailure,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
-                    preflight.status == MeyerDeviceCalibrationPreflight_ModelUnknown,
-                    "color calibration preflight keeps unreported model unknown");
+                    preflight.status == MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal &&
+                    preflight.commandResult == MeyerDeviceCmdResult_Timeout &&
+                    preflight.detectionRecord.deviceNumberStatus ==
+                        MeyerDeviceNumberRead_ResponseMissing,
+                    "color calibration preflight stops when 0xD9 machine-code response is missing");
 
-        MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
-        params.simulatedFlags = MeyerDeviceCmdSimulatedFlag_None;
-        result = MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_DeviceNumberFrameInvalid,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal &&
+                    preflight.commandResult == MeyerDeviceCmdResult_ProtocolError &&
+                    preflight.detectionRecord.deviceNumberStatus ==
+                        MeyerDeviceNumberRead_FrameInvalid,
+                    "non-checksum 0xD9 frame errors remain response abnormalities");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_InvalidDeviceNumber,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_DeviceNumberInvalid &&
+                    preflight.detectionRecord.deviceNumberStatus ==
+                        MeyerDeviceNumberRead_ValueInvalid,
+                    "a checksum-valid but illegal 0xD9 device number is rejected");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeReadFailure,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
                     preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
-                    preflight.state.model == MeyerDeviceModel_MyScan6 &&
+                    preflight.detectionRecord.modelCodeStatus ==
+                        MeyerDeviceModelCodeRead_FirmwareTooOld &&
+                    preflight.detectionRecord.modelCodeSource ==
+                        MeyerDeviceIdentityValueSource_CompatibilityDefault &&
+                    std::strcmp(preflight.detectionRecord.reportedModelCodeUtf8, "") == 0 &&
+                    std::strcmp(preflight.detectionRecord.effectiveModelCodeUtf8,
+                                "62000053") == 0 &&
+                    preflight.state.modelSource == MeyerDeviceModelSource_AutoDetected,
+                    "0xCE timeout keeps firmware diagnosis and a separate compatibility value");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeUninitialized,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.modelCodeStatus ==
+                        MeyerDeviceModelCodeRead_Uninitialized &&
+                    preflight.detectionRecord.usedCompatibilityDefaults == 1,
+                    "0xCE 0xFFFF length records an uninitialized model code");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeChecksumFailure,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.modelCodeStatus ==
+                        MeyerDeviceModelCodeRead_ChecksumInvalid &&
+                    preflight.detectionRecord.usedCompatibilityDefaults == 1,
+                    "0xCE checksum failure is recorded before compatibility fallback");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeFrameInvalid,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.modelCodeStatus ==
+                        MeyerDeviceModelCodeRead_FrameInvalid &&
+                    preflight.detectionRecord.usedCompatibilityDefaults == 1,
+                    "non-checksum 0xCE frame errors are diagnosed before compatibility fallback");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_InvalidModelCode,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.modelCodeStatus ==
+                        MeyerDeviceModelCodeRead_ValueInvalid &&
+                    preflight.detectionRecord.usedCompatibilityDefaults == 1,
+                    "a checksum-valid but illegal model code uses a labelled compatibility value");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure |
+                MeyerDeviceCmdSimulatedFlag_Camera1ProbeUnsupported |
+                MeyerDeviceCmdSimulatedFlag_InvalidModelCode,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.isProductionMode == 1 &&
+                    preflight.detectionRecord.seriesProbeStatus ==
+                        MeyerDeviceSeriesProbe_MyScan &&
+                    preflight.detectionRecord.detectionStatus ==
+                        MeyerDeviceDetection_ProductionInferred &&
+                    std::strcmp(preflight.detectionRecord.effectiveDeviceNumberUtf8,
+                                "6200002001200") == 0 &&
+                    std::strcmp(preflight.detectionRecord.effectiveModelCodeUtf8,
+                                "62000020") == 0,
+                    "production mode uses the legacy MyScan defaults when 0xC7 is unsupported");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.seriesProbeStatus ==
+                        MeyerDeviceSeriesProbe_MyScan5Or6 &&
+                    preflight.detectionRecord.detectionStatus ==
+                        MeyerDeviceDetection_ProductionExactModel &&
+                    preflight.detectionRecord.modelCodeSource ==
+                        MeyerDeviceIdentityValueSource_DeviceReported &&
+                    std::strcmp(preflight.detectionRecord.effectiveDeviceNumberUtf8,
+                                "6200005301200") == 0,
+                    "production mode combines a 0xC7 response with an exact 0xCE model code");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure |
+                MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.seriesProbeStatus ==
+                        MeyerDeviceSeriesProbe_MyScan5Or6 &&
+                    std::strstr(preflight.detectionRecord.detailUtf8,
+                                "0xC7 was received but its frame is abnormal") != nullptr,
+                    "a malformed 0xC7 still records the MyScan 5/6 command capability candidate");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_DeviceNumberChecksumFailure |
+                MeyerDeviceCmdSimulatedFlag_Camera1ProbeUnsupported,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductIdentityConflict &&
+                    preflight.detectionRecord.detectionStatus ==
+                        MeyerDeviceDetection_Conflict,
+                    "production 0xC7 capability and exact 0xCE family conflicts are blocked");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_None,
+            "6200005301203", MeyerDeviceModel_MyScan5H, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductIdentityConflict,
+                    "preflight blocks conflicting device prefix and model code");
+
+        result = RunSimulatedPreflight(
+            handle, params, MeyerDeviceCmdSimulatedFlag_None,
+            "6200005301203", MeyerDeviceModel_Unknown, preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.state.model == MeyerDeviceModel_MyScan5 &&
                     preflight.state.modelSource == MeyerDeviceModelSource_DeviceReported &&
-                    std::strcmp(preflight.deviceInfo.deviceIdUtf8, "6200005301203") == 0,
-                    "color calibration preflight reads device information and reported model");
+                    std::strcmp(preflight.state.deviceIdUtf8, "6200005301203") == 0 &&
+                    std::strcmp(preflight.deviceInfo.modelCodeUtf8, "62000053") == 0 &&
+                    preflight.productIdentity.productModel ==
+                        MeyerDeviceProductModel_MyScan5_DomesticStandard,
+                    "preflight combines machine code and exact model code into product identity");
+        test.Expect(preflight.detectionRecord.detectionStatus == MeyerDeviceDetection_Exact &&
+                    preflight.detectionRecord.deviceNumberSource ==
+                        MeyerDeviceIdentityValueSource_DeviceReported &&
+                    preflight.detectionRecord.modelCodeSource ==
+                        MeyerDeviceIdentityValueSource_DeviceReported &&
+                    std::strcmp(preflight.detectionRecord.reportedDeviceNumberUtf8,
+                                preflight.detectionRecord.effectiveDeviceNumberUtf8) == 0 &&
+                    std::strcmp(preflight.detectionRecord.reportedModelCodeUtf8,
+                                preflight.detectionRecord.effectiveModelCodeUtf8) == 0,
+                    "exact detection keeps reported and effective identity values identical");
         test.Expect(MeyerDeviceCmd_IsOpen(handle) == 1,
                     "successful color calibration preflight keeps one device session open");
         MeyerDeviceCmd_Close(handle);
@@ -372,6 +653,8 @@ namespace
             return 1;
         }
 
+        TestProductIdentificationCatalog(test);
+
         MeyerDeviceCmdOpenParams params;
         test.Expect(MeyerDeviceCmd_InitOpenParams(&params) == MeyerDeviceCmdResult_Ok,
                     "open parameters initialize");
@@ -384,6 +667,7 @@ namespace
         if (openResult == MeyerDeviceCmdResult_Ok)
         {
             TestRawCommand(handle, test);
+            TestMachineCodeRead(handle, test);
             TestStateRefresh(handle, test);
             test.Expect(MeyerDeviceCmd_SetLight(handle, 1) == MeyerDeviceCmdResult_Ok,
                         "light-on command succeeds");
@@ -446,8 +730,8 @@ namespace
     }
 
     // 使用真实 DeviceTransport 执行颜色校准入口的只读预检。
-    // 与 --probe-real 只验证 DLL/ABI 不同，本模式会继续发送 0xCD 请求并接收
-    // 0xCE 设备信息，从而验证“连接 -> USB 速率 -> 设备信息 -> 型号解析”完整链路。
+    // 与 --probe-real 只验证 DLL/ABI 不同，本模式会先发送 0xD4/接收 0xD9，
+    // 再发送 0xCD/接收 0xCE，验证连接、USB、机器码和型号解析完整链路。
     // 本函数不会调用任何 Store/Set/Flash 接口，因此不会修改设备参数。
     int RunRealCalibrationPreflight(const char* transportPath)
     {
@@ -496,7 +780,8 @@ namespace
                   << "Device model: " << preflight.state.model << "\n"
                   << "Model source: " << preflight.state.modelSource << "\n"
                   << "Model name: " << preflight.state.modelNameUtf8 << "\n"
-                  << "Device ID: " << preflight.deviceInfo.deviceIdUtf8 << "\n"
+                  << "Machine code: " << preflight.state.deviceIdUtf8 << "\n"
+                  << "Model code: " << preflight.deviceInfo.modelCodeUtf8 << "\n"
                   << "Detail: " << preflight.detailUtf8 << "\n";
 
         if (apiResult != MeyerDeviceCmdResult_Ok)

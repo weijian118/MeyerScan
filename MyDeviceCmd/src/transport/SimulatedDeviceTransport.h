@@ -70,6 +70,9 @@ namespace meyer
             bool m_lightOn;
             bool m_isUsb2;
             bool m_omitModelMarker;
+            bool m_failMachineCodeRead;
+            // 保存完整模拟标志，QueueResponse 可按具体命令构造坏校验/未初始化回包。
+            std::uint32_t m_simulatedFlags;
             std::int32_t m_model;
             std::string m_deviceId;
             std::string m_lastError;

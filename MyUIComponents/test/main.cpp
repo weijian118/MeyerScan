@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateEdit>
+#include <QDialog>
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
@@ -29,6 +30,61 @@ bool Check(bool condition, const char* message) {
     // 失败检查写入 stderr，脚本可以根据 stderr 快速定位失败原因。
     std::fprintf(stderr, "[FAIL] %s\n", message);
     return false;
+}
+
+// 自动关闭一个公共弹窗并检查 objectName、级别属性和按钮数量。
+// QTimer 回调运行在 dialog.exec() 的局部事件循环中，不需要真实鼠标输入。
+bool RunDialogProbe(QWidget* parent,
+                    bool decisionDialog,
+                    int level,
+                    const char* expectedLevel,
+                    bool acceptDecision) {
+    bool dialogStructureValid = false;
+    QTimer::singleShot(0, [&dialogStructureValid,
+                           decisionDialog,
+                           expectedLevel,
+                           acceptDecision]() {
+        QDialog* dialog = nullptr;
+        const QWidgetList topLevels = QApplication::topLevelWidgets();
+        for (QWidget* candidate : topLevels) {
+            if (candidate && candidate->objectName() == "MeyerMessageDialog") {
+                dialog = qobject_cast<QDialog*>(candidate);
+                break;
+            }
+        }
+        if (!dialog) {
+            return;
+        }
+
+        const QList<QPushButton*> buttons = dialog->findChildren<QPushButton*>();
+        dialogStructureValid = dialog->property("dialogLevel").toString() == expectedLevel &&
+                               buttons.size() == (decisionDialog ? 2 : 1);
+        QPushButton* target = dialog->findChild<QPushButton*>(
+            acceptDecision ? "MeyerDialogConfirmButton" : "MeyerDialogCancelButton");
+        if (target) {
+            target->click();
+        } else {
+            dialog->reject();
+        }
+    });
+
+    int result = MeyerDialogRejected;
+    if (decisionDialog) {
+        result = MeyerUIComponents_ShowDecisionDialog(level,
+                                                       "Decision",
+                                                       "Choose an action",
+                                                       "Confirm",
+                                                       "Cancel",
+                                                       parent);
+    } else {
+        result = MeyerUIComponents_ShowNoticeDialog(level,
+                                                    "Notice",
+                                                    "Shared dialog message",
+                                                    "Confirm",
+                                                    parent);
+    }
+    const int expectedResult = acceptDecision ? MeyerDialogAccepted : MeyerDialogRejected;
+    return dialogStructureValid && result == expectedResult;
 }
 
 }
@@ -92,6 +148,20 @@ int main(int argc, char* argv[]) {
     if (!Check(primary && secondary && danger && tool && edit && combo && dateEdit && textEdit && fieldLabel && table && title,
                "常用 UI 控件全部创建成功")) {
         return 5;
+    }
+
+    // 单按钮弹窗分别覆盖信息、成功和错误三级；它们都由自动化点击确认关闭。
+    if (!Check(RunDialogProbe(&root, false, MeyerNoticeDialogInformation, "information", true) &&
+               RunDialogProbe(&root, false, MeyerNoticeDialogSuccess, "success", true) &&
+               RunDialogProbe(&root, false, MeyerNoticeDialogError, "error", true),
+               "单按钮信息、成功和错误弹窗均可创建并确认")) {
+        return 6;
+    }
+    // 双按钮弹窗覆盖警告取消和高危确认，验证返回值不会与按钮文案耦合。
+    if (!Check(RunDialogProbe(&root, true, MeyerDecisionDialogWarning, "warning", false) &&
+               RunDialogProbe(&root, true, MeyerDecisionDialogCritical, "critical", true),
+               "双按钮警告和高危弹窗返回稳定选择结果")) {
+        return 7;
     }
 
     // 默认不显示窗口，自动化测试只验证控件树和样式入口；传 --show 时可人工查看。

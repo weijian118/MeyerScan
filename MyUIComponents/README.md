@@ -7,7 +7,7 @@
 - 提供统一 DPI 缩放系数查询。
 - 提供启动等待页、标题、字段标签、按钮、输入框、下拉框、日期框、多行文本框、基础表格等基础控件工厂。
 - 按“按钮角色 + 内容布局”统一管理常用按钮样式，例如主按钮、次按钮、纯文字按钮、危险按钮、首页入口按钮，以及纯文字/纯图标/左图右文/上图下文。
-- 后续承载主题、公共弹窗、复杂表格能力、多语言刷新通知等 UI 基础能力。
+- 已提供公共分级弹窗；后续继续承载主题、复杂表格能力和多语言刷新通知等 UI 基础能力。
 - 控件工厂参数必须由调用方传入 `tr("English source text")` 后的结果；UIComponents 只负责显示和样式，不把中文 UI 源文案写进控件工厂。
 
 设计结论：
@@ -30,9 +30,18 @@
 
 调用方可以直接创建标准按钮，也可以对已经创建的按钮调用 `ApplyButtonStyle()` / `ApplyToolButtonStyle()` 套用统一样式。按钮的 `clicked` 连接、权限显隐、业务动作仍由调用方模块负责。
 
+## 公共弹窗
+
+- 单按钮 `MeyerUIComponents_ShowNoticeDialog` 支持信息、成功、失败/错误三级。
+- 双按钮 `MeyerUIComponents_ShowDecisionDialog` 支持警告、高危两级；高危确认按钮使用危险角色样式。
+- 两个接口是独立 C ABI，不插入 `IUIComponents` 虚函数表；动态调用方可只解析所需函数。
+- 标题、正文和按钮文字必须由业务模块先通过 `tr("English source text")` 翻译；UIComponents 不决定错误原因、是否继续、权限或日志内容。
+- 消息正文支持鼠标选择复制。正常发布使用公共 QSS，调用方可以在 DLL 缺失或 ABI 不兼容时保留功能性降级弹窗。
+
 ## 迁移状态
 
 - MainExe 已使用 UIComponents 创建启动等待页。
+- SettingsUI 的机器码和预检提示已使用公共单按钮弹窗；OrderCreateUI 的清空牙位确认已使用警告级双按钮弹窗。
 - HomeUI 首页入口按钮已接入 `MeyerButtonRoleEntry`。
 - CaseUI 顶部返回/设置按钮和患者/订单工具栏按钮已接入 Primary / Secondary / Danger 样式。
 - OrderCreateUI 建单表单中的通用按钮、字段标签、输入框、下拉框、日期框、多行备注框和已选牙位表格基础样式已接入 UIComponents；牙位按钮、扫描类型按钮等建单业务控件仍留在 OrderCreateUI。

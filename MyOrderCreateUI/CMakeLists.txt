@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.5.4 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.5.5 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 

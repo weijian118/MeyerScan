@@ -1,5 +1,26 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-20 - 0.6.0 完整设备检测记录
+
+- 公共接口 ABI 升级为 5、设备上下文 schema 升级为 4，新增完整检测记录副本。
+- `SetDeviceContext` 额外检查检测状态和 effective 编号/型号代码，失败、冲突或空兼容值不能创建颜色校准页面。
+- 模块按值保存 D9/C7/CE 步骤状态、生产模式、reported/effective 身份和值来源，并写入结构化日志。
+- 根控件 `deviceId/modelCode` 使用 effective 值，同时增加 reported 值、检测状态、生产模式和兼容标志动态属性，后续算法入口无需解析协议兼容规则。
+- 测试宿主补充精确检测记录和根控件属性断言；代码版本、CMake 版本和 Windows 文件版本统一升级为 0.6.0。
+
+## 2026-07-20 - 0.5.0 产品身份快照
+
+- 公共接口 ABI 升级为 4、设备上下文 schema 升级为 3，增加产品系列、具体产品、协议 Profile、识别状态、证据和产品名称字段。
+- `SetDeviceContext` 按值保存产品身份 POD，并在日志及根控件动态属性中记录产品结果，便于后续按 Profile 接入颜色校准设备参数。
+- 本模块仍不解析 `0xD9/0xCE` 原始回包、不维护型号映射、不创建第二个 DeviceCmd/Transport 会话。
+- 独立测试宿主改用 `mOS MyScan 5/mOS MyScan 5` 的一致设备编号/型号代码快照；CMake、代码版本和 Windows 文件版本统一升级为 0.5.0。
+
+## 2026-07-20 - 0.4.0 设备身份快照扩展
+
+- 公共接口 ABI 升级为 3，设备上下文 schema 升级为 2；在原保留空间加入 `modelCodeUtf8[32]`，结构总大小保持不变。
+- 保存并记录 MainExe 注入的机器码、机型枚举、机型名称和 `0xCE` 原始机型标识，不解析设备原始回包，也不创建第二个 USB 会话。
+- 根控件增加只读 `modelCode` 动态属性，独立测试宿主补充确定性机型原始标识并通过 smoke。
+
 ## 2026-07-17 - 0.3.0 设备快照接入
 
 - 公共接口 ABI 升级为 2，新增 `SetDeviceContext`；只接收 MainExe 已验证的固定 POD 快照，不持有 DeviceCmd 句柄。

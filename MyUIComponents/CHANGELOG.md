@@ -1,5 +1,13 @@
 ﻿# MeyerScan UIComponents 变更记录
 
+## 2026-07-20 - 0.5.0
+
+- 新增单按钮公共提示弹窗：信息、成功、失败/错误三级；新增双按钮选择弹窗：警告、高危两级。
+- 弹窗通过独立 C ABI `MeyerUIComponents_ShowNoticeDialog` / `MeyerUIComponents_ShowDecisionDialog` 导出，不修改既有 `IUIComponents` 虚函数表。
+- 调用方负责 `tr("English source text")`、业务日志和后续动作；UIComponents 只负责布局、标准图标、按钮和 QSS。
+- 消息文本支持鼠标选择复制，便于复制设备机器码和错误详情；SettingsUI 和 OrderCreateUI 已接入，缺失新版 DLL 时保留 Qt 标准弹窗降级。
+- `UIComponentsTest` 自动覆盖信息、成功、错误、警告和高危五种弹窗及确认/取消返回值。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.4.1`；新增公共接口 ABI 版本导出，Home/Case/OrderCreate/Send 等动态调用方在使用控件工厂前校验版本。

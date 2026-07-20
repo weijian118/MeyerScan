@@ -65,7 +65,7 @@
 
 ### 设置持久化策略
 
-- **骨架期（当前 v0.3.0）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
+- **骨架期（当前 v0.6.0）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
   修改后暂不持久化，仅停留在 UI 控件层面。
 - **正式阶段（规划）**：设置项的读写统一走 `ConfigCenter.dll` 的 `runtime_config.json`，由 ConfigCenter 负责配置的版本校验、迁移回滚和变更通知。设置模块不直接访问文件系统或数据库。
 - **路径字段备注**：订单存储路径和打包路径在正式阶段应从 ConfigCenter 读取用户/客户配置，
@@ -75,9 +75,11 @@
 
 - 3D Calibration 和 Color Calibration 通过 `QLibrary` 按需动态加载（懒加载）。
 - DLL 加载、工厂解析和 `Init()` 是三个独立成功条件；Init 返回 false 时 SettingsUI 调用子模块 Shutdown、清空接口并显示不可用占位，不影响其它设置页。
-- 颜色校准按钮先同步调用 MainExe 的 `DeviceSessionHost`：创建/练习工作台占用设备、未连接、USB2、`0xCD/0xCE` 读取失败或型号未知时只显示对应提示，不加载颜色校准 DLL。
-- 预检通过后，SettingsUI 把只读设备 POD 快照注入 CalibrationColorUI，再显示全窗口半透明遮罩和居中面板；关闭时上报独立动作让宿主释放设备会话。
-- `SettingsUITest --capture-color-calibration <png>` 验证成功链路；`--test-preflight-status 2/3/4/7` 分别验证工作台、未连接、USB2 和型号未知提示。
+- 颜色校准按钮先同步调用 MainExe 的 `DeviceSessionHost`，固定顺序为：创建/练习工作台门禁、连接、USB3、D4/D9 设备编号、生产模式 C2/C7 系列探测、CD/CE 型号代码和产品身份识别。
+- 颜色校准不要求设备已经写入正式编号；生产调试设备可使用带来源标记的 effective 默认身份。后续三维校准接入设备预检时采用相同规则，但连接、USB3、系列/型号识别和证据冲突门禁仍然生效。
+- 预检通过后只显示一次设备信息弹窗，内容包括 effective 设备编号、具体产品、effective 型号代码、生产模式和兼容来源；CE 降级原因附在同一弹窗中。真实 reported 值继续保存在 POD 和日志中。
+- SettingsUI 把连接、产品身份和完整检测记录组成的只读 POD 快照注入 CalibrationColorUI，再显示全窗口半透明遮罩和居中面板；关闭时上报独立动作让宿主释放设备会话。
+- `SettingsUITest --capture-color-calibration <png>` 验证设备信息弹窗和成功进入遮罩；`--test-preflight-status 2/3/4/7/9/10/11/12/13` 可验证工作台、连接、USB、型号、冲突、回包异常及非法值提示。
 - 加载失败时记录 Warning；三维校准显示不可用占位，颜色校准不创建空白遮罩。
 - 正式阶段需考虑：
   - 加载超时机制（如 `QTimer::singleShot` 兜底）
@@ -88,6 +90,8 @@
 
 - 设置模块是界面模块，可以使用 Qt Widgets、Layout、信号槽、`QString`；设置保存、权限判断、业务数据维护和校准算法/设备重资源仍通过宿主、ConfigCenter、Permission、校准模块或后续服务接口完成。
 - 设置模块不直接读写业务数据库；后续配置保存统一走 ConfigCenter 或专门设置服务。
+- 设备原始回包由 DeviceCmd 集中解析；SettingsUI 只消费固定 POD，不接收 `std::string`、字符串数组、USB 句柄或原始命令缓冲区。
+- 通用提示使用 UIComponents 独立 C ABI；共享 DLL 不可用时降级为 Qt 标准弹窗，业务门禁仍必须生效。
 - Information 页面只读取 MainExe 注入的版本化 JSON 快照；SettingsUI 不知道 RuntimeDataCenter、表名或数据库配置。
 - `SetDataContextJson()` 采用先校验后替换，非法 JSON 不覆盖上一份有效快照。
 - 可见文本必须使用 `tr("English source text")`，中文显示由 qm 翻译。

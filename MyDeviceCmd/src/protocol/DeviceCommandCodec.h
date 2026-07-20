@@ -15,6 +15,22 @@ namespace meyer
     {
         namespace protocol
         {
+            // 解析状态比 bool 更细，设备身份探测需要区分校验失败、未初始化长度和
+            // 普通坏包。该枚举仅在 DeviceCmd DLL 内部使用，不形成公共 ABI。
+            enum class CommandParseStatus : std::int32_t
+            {
+                NotRun = 0,
+                Ok = 1,
+                TooShort = 2,
+                InvalidHeader = 3,
+                UninitializedLength = 4,
+                InvalidLength = 5,
+                Truncated = 6,
+                InvalidTrailer = 7,
+                ChecksumMismatch = 8,
+                UnexpectedCommand = 9
+            };
+
             // 解码后的帧只在 DLL 内部使用，因此可以安全使用 std::vector。
             struct CommandFrame
             {
@@ -44,6 +60,13 @@ namespace meyer
                                   std::size_t size,
                                   CommandFrame& frame,
                                   std::string& error);
+
+                // 返回详细解析状态；普通业务继续使用 Parse，身份探测使用本接口
+                // 区分生产模式、旧固件和真正的协议异常。
+                static CommandParseStatus ParseDetailed(const std::uint8_t* data,
+                                                        std::size_t size,
+                                                        CommandFrame& frame,
+                                                        std::string& error);
 
             private:
                 // 计算命令码、两字节长度和命令数据的 16 位无符号累加和。

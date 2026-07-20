@@ -80,6 +80,15 @@ namespace meyer
                                            CommandFrame& frame,
                                            std::string& error)
             {
+                return ParseDetailed(data, size, frame, error) == CommandParseStatus::Ok;
+            }
+
+            // 详细解析与普通 Parse 共用唯一实现，避免两套校验规则逐渐不一致。
+            CommandParseStatus DeviceCommandCodec::ParseDetailed(const std::uint8_t* data,
+                                                                  std::size_t size,
+                                                                  CommandFrame& frame,
+                                                                  std::string& error)
+            {
                 // 先重置输出，失败分支不会泄漏旧命令数据。
                 frame.commandCode = 0U;
                 frame.payload.clear();
@@ -89,14 +98,22 @@ namespace meyer
                 if (data == nullptr || size < 7U)
                 {
                     error = "Command response is shorter than the protocol header";
-                    return false;
+                    return CommandParseStatus::TooShort;
                 }
 
                 // 数据头用于区分 A 类响应和 B 类图像包。
                 if (data[0] != kHeader0 || data[1] != kHeader1)
                 {
                     error = "Command response header is invalid";
-                    return false;
+                    return CommandParseStatus::InvalidHeader;
+                }
+
+                // 旧设备用 0xFFFF 长度表示命令功能存在但参数尚未初始化。必须在
+                // 通用最大长度判断前识别，否则只能得到模糊的 InvalidLength。
+                if (data[3] == 0xFFU && data[4] == 0xFFU)
+                {
+                    error = "Command response reports an uninitialized payload";
+                    return CommandParseStatus::UninitializedLength;
                 }
 
                 // 长度字段是网络序/大端：先读高字节，再读低字节。
@@ -106,7 +123,7 @@ namespace meyer
                 if (payloadSize > kMaximumPayloadBytes)
                 {
                     error = "Command response payload exceeds the supported limit";
-                    return false;
+                    return CommandParseStatus::InvalidLength;
                 }
 
                 // requiredSize 不包含可选尾部补零；收到的数据至少要覆盖校验字段。
@@ -114,7 +131,7 @@ namespace meyer
                 if (size < requiredSize)
                 {
                     error = "Command response is truncated";
-                    return false;
+                    return CommandParseStatus::Truncated;
                 }
 
                 // 按文档只接受 0~3 字节数据尾，避免把下一帧或垃圾数据误当作补零。
@@ -122,14 +139,14 @@ namespace meyer
                 if (trailerSize > 3U)
                 {
                     error = "Command response trailer is longer than the protocol allows";
-                    return false;
+                    return CommandParseStatus::InvalidTrailer;
                 }
                 for (std::size_t index = requiredSize; index < size; ++index)
                 {
                     if (data[index] != 0U)
                     {
                         error = "Command response trailer contains non-zero data";
-                        return false;
+                        return CommandParseStatus::InvalidTrailer;
                     }
                 }
 
@@ -142,13 +159,13 @@ namespace meyer
                 if (expectedChecksum != actualChecksum)
                 {
                     error = "Command response checksum does not match";
-                    return false;
+                    return CommandParseStatus::ChecksumMismatch;
                 }
 
                 // 所有校验通过后才写入输出对象，保证返回 true 的帧一定完整。
                 frame.commandCode = data[2];
                 frame.payload.assign(data + 5U, data + 5U + payloadSize);
-                return true;
+                return CommandParseStatus::Ok;
             }
 
             // 使用 32 位中间值累加，最后按协议截取低 16 位。
