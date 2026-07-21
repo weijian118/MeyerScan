@@ -16,7 +16,7 @@
 | VS2015 根方案 | 最近一轮 Release x64 通过；仅保留既有外部登录头文件编码/声明警告 |
 | 版本清单 | 已生成 `MyMainExe/bin/Release/logs/versionList/versionList_20260721_095406_185.json`；包含 MainExe `0.6.0`、DeviceCmd `0.7.0`、SettingsUI/CalibrationColorUI `0.7.0`、ConfigCenter `0.2.0`、UIResources `0.2.0`，文件版本与代码版本均匹配 |
 | UIResources VS2015 | `MeyerScan_UIResources.sln` Release x64 Rebuild 通过，0 个警告、0 个错误；`UIResourcesTest.exe` 合同和资源生命周期检查通过 |
-| 设备实机预检 | 2026-07-20 确认 Cypress、USB3 和 D4/D9 设备编号 `6200002002566`；CD 后 CE 仍超时。新流程记录 `FirmwareTooOld + CompatibilityInferred` 并使用 `62000020` effective 值继续，但 P1/P2/P3 尚未实机精确确定 |
+| 设备实机预检 | 2026-07-21 确认 Cypress、USB3；当前设备 D9 长度 `0xFFFF`，状态为 `UninitializedLength`，继续识别 C7 MyScan 5/6 候选、CE 未初始化、effective 型号代码 `62000053`、主控板版本 `1.3.235`，预检 Ready；未写入设备 |
 | 注释安全 | 0 错误、0 警告 |
 | 文档备份脚本 | PowerShell 5.1 AST、BOM 和两次隔离幂等执行通过 |
 
@@ -40,7 +40,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.1 | 转换链路可用；已提供 API 版本导出 |
 | DeviceTransport | 1.2.0 | 默认自动遍历 CyAPI 设备，严格区分 USB2/USB3；32 项无硬件 smoke 通过，实机枚举和 USB3 判断已确认；长时间采集和拔插恢复待联调 |
-| DeviceCmd | 0.7.0 | 50 个 A 类命令码可用；D9/C7/CE 详细诊断、主控板/投图板版本、reported/effective 检测记录、产品目录、8 个精确型号、生产模式/兼容/冲突预检和状态 15 合同已通；完整 CE 实机链路、MyScan5/6 区分、Wireless 连接和 Flash 写入待联调 |
+| DeviceCmd | 0.7.7 | 50 个 A 类命令码可用；默认命令超时 `200 ms`；上一条命令未收到可识别响应时，下一条发送前等待 `20 ms`，普通合法帧或业务可识别终态完成后立即发送下一条；MyScan 3 投图板切换增加 Profile 专属 `20 ms`，D4/CD 当前命令回包前额外等待 `50 ms`；新设备实机可读取 USB3、设备编号 `6200002002566`、产品型号 `mOS MyScan/SY-KS1000(P1)`、主控板 `1.5.3993`、投图板 `1.4.3992`，完整预检恢复为 Ready；完整 CE 链路、MyScan5/6 区分、Wireless 连接和 Flash 写入待联调 |
 | ConfigCenter | 0.2.0 | 读取骨架可用；新增练习/创建生产模式独立策略；迁移、通知、加密待完成 |
 | Permission | 0.1.1 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.1 | 本地/云端 JSON 快照骨架可用；由 MainExe 统一读取并注入 UI |

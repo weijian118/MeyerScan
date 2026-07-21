@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.7.0
+// 版本: 0.7.7
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -10,7 +10,8 @@
 //
 // 设备识别与版本读取流程:
 //   1. DeviceTransport 只完成 Cypress 枚举、USB2/USB3 判断和原始字节收发。
-//   2. DeviceCmd 发送 D4/D9 读取真实设备编号；只有 D9 校验失败表示生产未写号。
+//   2. DeviceCmd 发送 D4/D9 读取真实设备编号；D9 长度 0xFFFF 和求和
+//      校验失败都表示生产未写号，但在状态字段中分别记录。
 //   3. 生产状态使用 C2/C7 探测系列候选，随后所有设备都读取 CD/CE 型号代码。
 //   4. DeviceProductCatalog 综合编号前缀、完整型号代码和命令证据，输出产品系列、
 //      具体产品和协议 Profile；UI 不得复制这套映射。
@@ -237,7 +238,10 @@ enum MeyerDeviceNumberReadStatus : std::int32_t
     MeyerDeviceNumberRead_ResponseMissing = 2,
     MeyerDeviceNumberRead_FrameInvalid = 3,
     MeyerDeviceNumberRead_ChecksumIndicatesUnprogrammed = 4,
-    MeyerDeviceNumberRead_ValueInvalid = 5
+    MeyerDeviceNumberRead_ValueInvalid = 5,
+    // 设备明确返回 0xD9，但 payload 长度字段为 0xFFFF。该状态表示
+    // 设备编号参数未初始化，与求和校验失败的旧生产回包分开记录。
+    MeyerDeviceNumberRead_UninitializedLength = 6
 };
 
 // 0xCD/0xCE 型号代码步骤状态。
@@ -401,7 +405,9 @@ enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
     MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid = 1U << 13,
     // 版本读取失败标志用于验证主控板和投图板的独立错误记录。
     MeyerDeviceCmdSimulatedFlag_MainBoardVersionReadFailure = 1U << 14,
-    MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure = 1U << 15
+    MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure = 1U << 15,
+    // 生成长度字段为 0xFFFF 的 0xD9 回包，验证新生产模式分支。
+    MeyerDeviceCmdSimulatedFlag_DeviceNumberUninitialized = 1U << 16
 };
 
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，

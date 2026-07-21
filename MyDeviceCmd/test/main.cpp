@@ -14,6 +14,10 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace
 {
     class TestContext
@@ -71,6 +75,8 @@ namespace
             return "ChecksumIndicatesUnprogrammed (0xD9 checksum did not pass; production device)";
         case MeyerDeviceNumberRead_ValueInvalid:
             return "ValueInvalid (0xD9 frame passed but device number content is invalid)";
+        case MeyerDeviceNumberRead_UninitializedLength:
+            return "UninitializedLength (0xD9 payload length is 0xFFFF; production device)";
         default:
             return "Unknown";
         }
@@ -588,6 +594,31 @@ namespace
                         MeyerDeviceNumberRead_ValueInvalid,
                     "a checksum-valid but illegal 0xD9 device number is rejected");
 
+        // 新旧下位机表示“未写设备编号”的方式不同。本场景验证
+        // 0xFFFF 长度能单独记录，同时仍继续 C7/CE 生产设备识别流程。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_DeviceNumberUninitialized |
+                MeyerDeviceCmdSimulatedFlag_Camera1ProbeUnsupported |
+                MeyerDeviceCmdSimulatedFlag_InvalidModelCode,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.detectionRecord.deviceNumberStatus ==
+                        MeyerDeviceNumberRead_UninitializedLength &&
+                    preflight.detectionRecord.isProductionMode == 1 &&
+                    preflight.detectionRecord.seriesProbeStatus ==
+                        MeyerDeviceSeriesProbe_MyScan &&
+                    preflight.detectionRecord.detectionStatus ==
+                        MeyerDeviceDetection_ProductionInferred &&
+                    std::strcmp(preflight.detectionRecord.reportedDeviceNumberUtf8, "") == 0 &&
+                    std::strcmp(preflight.detectionRecord.effectiveDeviceNumberUtf8,
+                                "6200002001200") == 0,
+                    "0xD9 0xFFFF length records a distinct production-mode reason");
+
         result = RunSimulatedPreflight(
             handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeReadFailure,
             "6200005301203", MeyerDeviceModel_Unknown, preflight);
@@ -805,6 +836,17 @@ namespace
     int RunSmoke()
     {
         TestContext test;
+
+        // 三种版本各有不同用途：字符串 API 描述语义能力，整数 API 保护公共
+        // POD/函数表兼容性，模块版本用于运行时版本清单。测试同时锁住三者，
+        // 可及时发现只修改 Version.rc 或只修改代码常量造成的版本来源不一致。
+        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.3.6") == 0,
+                    "semantic API version matches the current command behavior");
+        test.Expect(GetMeyerModuleApiVersion() == MEYER_DEVICE_CMD_API_VERSION,
+                    "integer ABI version matches the public header contract");
+        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.7.7") != nullptr,
+                    "module code version matches the current release");
+
         MeyerDeviceCmdHandle handle = MeyerDeviceCmd_Create();
         test.Expect(handle != nullptr, "device command context is created");
         if (handle == nullptr)
@@ -817,6 +859,8 @@ namespace
         MeyerDeviceCmdOpenParams params;
         test.Expect(MeyerDeviceCmd_InitOpenParams(&params) == MeyerDeviceCmdResult_Ok,
                     "open parameters initialize");
+        test.Expect(params.commandTimeoutMs == 200U,
+                    "open parameters use the 200 ms command timeout");
         params.backendType = MeyerDeviceCmdBackend_SimulatorForTest;
         params.modelHint = MeyerDeviceModel_MyScan6Wireless;
         std::strcpy(params.simulatedDeviceIdUtf8, "6200005301203");
@@ -920,8 +964,15 @@ namespace
 
         MeyerDeviceCalibrationPreflight preflight;
         MeyerDeviceCmd_InitCalibrationPreflight(&preflight);
+#if defined(_WIN32)
+        // 只在测试宿主中打开 DeviceCmd 内部预检时序输出，正式程序不会受控制台输出影响。
+        ::SetEnvironmentVariableA("MEYERSCAN_DEVICE_CMD_TIMING", "1");
+#endif
         const std::int32_t apiResult =
             MeyerDeviceCmd_PrepareColorCalibration(handle, &params, &preflight);
+#if defined(_WIN32)
+        ::SetEnvironmentVariableA("MEYERSCAN_DEVICE_CMD_TIMING", nullptr);
+#endif
 
         // isUsb2=0 既可能表示 USB3，也可能只是结构默认值；必须结合 validFields
         // 判断该字段是否由 Transport 真实填充，避免未连接时误报为 USB3。

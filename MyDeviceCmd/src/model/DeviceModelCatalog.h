@@ -29,6 +29,9 @@ namespace meyer
             const char* protocolName;
             StopSequence stopSequence;
             std::uint32_t stopCommandDelayMs;
+            // 主控板版本回包后切换到投图板命令所需的机型特定稳定时间。
+            // 仅旧 mOS MyScan 实机确认需要，其它无投图板机型保持 0。
+            std::uint32_t projectionBoardSwitchDelayMs;
             MeyerDeviceCmdCaptureParams defaultCapture;
         };
 

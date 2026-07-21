@@ -10,17 +10,151 @@
 #include "../transport/DeviceTransportLibrary.h"
 #include "../transport/SimulatedDeviceTransport.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include <sstream>
 #include <thread>
 #include <vector>
 
 namespace
 {
+    // 上一条命令未得到普通合法帧或业务可识别终态时，下一条发送前保留兜底响应窗口。
+    // 这不是固定命令间隔：一旦设备返回可识别响应，下一条命令即可立即发送。
+    const std::chrono::milliseconds kUnresolvedResponseWaitMs(20);
+    const std::chrono::milliseconds kDeviceInformationResponseDelayMs(50);
+
+    // 只有 DeviceCmdTest 主动设置该标志时输出预检步骤耗时，正式 MainExe 默认不打印控制台调试信息。
+    bool IsPreflightTimingTraceEnabled()
+    {
+        char value[2] = {};
+        const DWORD length = ::GetEnvironmentVariableA(
+            "MEYERSCAN_DEVICE_CMD_TIMING", value, static_cast<DWORD>(sizeof(value)));
+        return length == 1U && value[0] == '1';
+    }
+
+    // 输出一条统一格式的时序记录。独立函数既供预检编排使用，也供版本命令的内部子步骤使用。
+    void ReportPreflightTiming(
+        const char* step,
+        const char* purpose,
+        const std::chrono::steady_clock::time_point& startedAt)
+    {
+        if (!IsPreflightTimingTraceEnabled())
+        {
+            return;
+        }
+        const std::int64_t elapsedMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - startedAt).count();
+        std::cout << "[TIMING] step=" << step
+                  << " purpose=" << purpose
+                  << " elapsedMs=" << elapsedMs << std::endl;
+    }
+
+    std::uint64_t ElapsedMicroseconds(
+        const std::chrono::steady_clock::time_point& startedAt)
+    {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - startedAt).count());
+    }
+
+    void FinishCommandDiagnostics(
+        meyer::devicecmd::CommandExchangeDiagnostics* diagnostics,
+        std::int32_t result,
+        const std::chrono::steady_clock::time_point& startedAt)
+    {
+        if (diagnostics != nullptr)
+        {
+            diagnostics->result = result;
+            diagnostics->exchangeTotalUs = ElapsedMicroseconds(startedAt);
+        }
+    }
+
+    void ReportCommandExchangeTiming(
+        std::uint8_t requestCode,
+        std::uint8_t responseCode,
+        const meyer::devicecmd::CommandExchangeDiagnostics& diagnostics)
+    {
+        if (!IsPreflightTimingTraceEnabled())
+        {
+            return;
+        }
+        std::cout << "[COMMAND_TIMING] request=0x" << std::hex << std::uppercase
+                  << static_cast<unsigned int>(requestCode)
+                  << " response=0x" << static_cast<unsigned int>(responseCode)
+                  << std::dec << " preSendWaitUs=" << diagnostics.preSendWaitUs
+                  << " profileSettleWaitUs=" << diagnostics.profileSettleWaitUs
+                  << " sendUs=" << diagnostics.sendUs
+                  << " postSendWaitUs=" << diagnostics.postSendWaitUs
+                  << " receiveUs=" << diagnostics.receiveUs
+                  << " frameParseUs=" << diagnostics.frameParseUs
+                  << " exchangeTotalUs=" << diagnostics.exchangeTotalUs
+                  << " result=" << diagnostics.result << std::endl;
+    }
+
+    // 在不修改公共 POD 的前提下为测试宿主输出预检时间。时间包含对应步骤内部的 USB 超时、
+    // 20 ms 响应未完成兜底等待和机型特定板间切换等待。
+    class PreflightTimingReporter
+    {
+    public:
+        PreflightTimingReporter()
+            : m_enabled(IsPreflightTimingTraceEnabled()),
+              m_totalStartedAt(std::chrono::steady_clock::now())
+        {
+        }
+
+        ~PreflightTimingReporter()
+        {
+            ReportAggregate("Total", "Complete color-calibration device preflight", m_totalStartedAt);
+        }
+
+        void Report(const char* step,
+                    const char* purpose,
+                    const std::chrono::steady_clock::time_point& startedAt) const
+        {
+            if (m_enabled)
+            {
+                ReportPreflightTiming(step, purpose, startedAt);
+            }
+        }
+
+        void ReportSkipped(const char* step, const char* reason) const
+        {
+            if (m_enabled)
+            {
+                std::cout << "[TIMING] step=" << step
+                          << " status=SKIPPED reason=" << reason << std::endl;
+            }
+        }
+
+        void ReportAggregate(
+            const char* step,
+            const char* purpose,
+            const std::chrono::steady_clock::time_point& startedAt) const
+        {
+            if (!m_enabled)
+            {
+                return;
+            }
+            const std::int64_t elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - startedAt).count();
+            std::cout << "[TIMING] step=" << step
+                      << " type=AGGREGATE purpose=" << purpose
+                      << " elapsedMs=" << elapsedMs << std::endl;
+        }
+
+    private:
+        bool m_enabled;
+        std::chrono::steady_clock::time_point m_totalStartedAt;
+    };
+
     // 将内部 UTF-8 文本安全复制到固定长度公共字段，并强制补齐字符串结尾。
     template<std::size_t Capacity>
     void CopyText(char (&destination)[Capacity], const std::string& source)
@@ -554,7 +688,7 @@ namespace meyer
     {
         // 构造阶段只初始化公共状态结构，不加载 DLL 或访问设备，便于先创建句柄再配置参数。
         DeviceCommandService::DeviceCommandService()
-            : m_profile(nullptr)
+            : m_profile(nullptr), m_waitBeforeNextCommand(false)
         {
             std::memset(&m_lastOpenParams, 0, sizeof(m_lastOpenParams));
             std::memset(&m_state, 0, sizeof(m_state));
@@ -648,6 +782,7 @@ namespace meyer
             m_state.validFields |= MeyerDeviceStateField_Connection | MeyerDeviceStateField_Capture;
             AdvanceState();
             m_lastError.clear();
+            m_waitBeforeNextCommand = false;
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -676,6 +811,7 @@ namespace meyer
             }
 
             m_lastError.clear();
+            m_waitBeforeNextCommand = false;
             logging::WriteInfo("Reconnect", "Device command session reconnected");
             return MeyerDeviceCmdResult_Ok;
         }
@@ -686,6 +822,7 @@ namespace meyer
             const MeyerDeviceCmdOpenParams& params,
             MeyerDeviceCalibrationPreflight& preflight)
         {
+            PreflightTimingReporter timing;
             preflight.status = MeyerDeviceCalibrationPreflight_NotRun;
             preflight.commandResult = MeyerDeviceCmdResult_Ok;
             SetPreflightDetail(preflight, "Color calibration device preflight started");
@@ -700,7 +837,10 @@ namespace meyer
                 return MeyerDeviceCmdResult_Ok;
             }
 
+            const std::chrono::steady_clock::time_point openStartedAt =
+                std::chrono::steady_clock::now();
             const std::int32_t openResult = Open(params);
+            timing.Report("Open", "Enumerate and open the matching USB device", openStartedAt);
             if (openResult != MeyerDeviceCmdResult_Ok)
             {
                 preflight.commandResult = openResult;
@@ -715,8 +855,13 @@ namespace meyer
 
             // Open 已从 DeviceTransport 取得 USB 速率。USB2 状态只需读取内存
             // 快照，不再访问设备；失败分支复制快照后立即关闭唯一会话。
-            if ((m_state.validFields & MeyerDeviceStateField_UsbSpeed) != 0U &&
-                m_state.isUsb2 != 0)
+            const std::chrono::steady_clock::time_point usbCheckStartedAt =
+                std::chrono::steady_clock::now();
+            const bool usbSpeedKnown =
+                (m_state.validFields & MeyerDeviceStateField_UsbSpeed) != 0U;
+            const bool usb2Connected = usbSpeedKnown && m_state.isUsb2 != 0;
+            timing.Report("USB", "Read USB speed from the open-session snapshot", usbCheckStartedAt);
+            if (usb2Connected)
             {
                 preflight.status = MeyerDeviceCalibrationPreflight_Usb2Connected;
                 preflight.state = m_state;
@@ -730,8 +875,11 @@ namespace meyer
             MeyerDeviceCmdMachineCode machineCode = {};
             machineCode.structSize = sizeof(MeyerDeviceCmdMachineCode);
             machineCode.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            const std::chrono::steady_clock::time_point machineStartedAt =
+                std::chrono::steady_clock::now();
             const std::int32_t machineResult =
                 ReadDeviceNumberForDetection(machineCode, preflight.detectionRecord);
+            timing.Report("D4-D9", "Read and parse the 13-digit device number", machineStartedAt);
             if (machineResult != MeyerDeviceCmdResult_Ok)
             {
                 preflight.commandResult = machineResult;
@@ -748,8 +896,11 @@ namespace meyer
 
             if (preflight.detectionRecord.isProductionMode != 0)
             {
+                const std::chrono::steady_clock::time_point probeStartedAt =
+                    std::chrono::steady_clock::now();
                 const std::int32_t probeResult =
                     ProbeProductionSeries(preflight.detectionRecord);
+                timing.Report("C2-C7", "Probe the production-device family capability", probeStartedAt);
                 if (probeResult != MeyerDeviceCmdResult_Ok)
                 {
                     preflight.commandResult = probeResult;
@@ -765,13 +916,17 @@ namespace meyer
             {
                 preflight.detectionRecord.seriesProbeStatus =
                     MeyerDeviceSeriesProbe_NotRequired;
+                timing.ReportSkipped("C2-C7", "A valid device number was already reported");
             }
 
             MeyerDeviceCmdDeviceInfo info = {};
             info.structSize = sizeof(MeyerDeviceCmdDeviceInfo);
             info.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            const std::chrono::steady_clock::time_point infoStartedAt =
+                std::chrono::steady_clock::now();
             const std::int32_t infoResult =
                 ReadModelCodeForDetection(info, preflight.detectionRecord);
+            timing.Report("CD-CE", "Read and parse the product model code", infoStartedAt);
             if (infoResult != MeyerDeviceCmdResult_Ok)
             {
                 preflight.commandResult = infoResult;
@@ -786,6 +941,8 @@ namespace meyer
 
             // 产品目录使用真实设备编号校验冲突；生产模式没有真实编号时传空串。
             // 型号代码使用 effective 值，但通过 source/evidence 明确是否为兼容默认。
+            const std::chrono::steady_clock::time_point productStartedAt =
+                std::chrono::steady_clock::now();
             std::uint64_t evidence = MeyerDeviceProductEvidence_ConnectionType |
                 MeyerDeviceProductEvidence_CommandCapability;
             if (preflight.detectionRecord.seriesProbeStatus !=
@@ -853,6 +1010,9 @@ namespace meyer
             const std::int32_t explicitProfile = DetectModelFromDeviceInfo(info);
             DeviceProductCatalog::MergeProtocolProfileHint(explicitProfile,
                                                            preflight.productIdentity);
+            timing.Report("ProductCatalog",
+                          "Combine device evidence and select the product identity",
+                          productStartedAt);
             if (preflight.productIdentity.identificationStatus ==
                 MeyerDeviceProductIdentification_Conflict)
             {
@@ -916,7 +1076,12 @@ namespace meyer
             // 设备身份确定后再读取下位机版本。主控板版本是所有已支持系列的
             // 必需信息；只有 mOS MyScan 还必须读取独立投图板版本。其它系列
             // 不发送 0x12，避免把“没有投图板”误判为设备故障。
+            const std::chrono::steady_clock::time_point firmwareStartedAt =
+                std::chrono::steady_clock::now();
             const std::int32_t firmwareResult = RefreshFirmwareVersions();
+            timing.ReportAggregate("FirmwareTotal",
+                                   "Aggregate of main-board and projection-board version steps",
+                                   firmwareStartedAt);
             FillFirmwareVersionSnapshot(preflight.firmwareVersions, firmwareResult);
             if (firmwareResult != MeyerDeviceCmdResult_Ok)
             {
@@ -1104,7 +1269,8 @@ namespace meyer
                                                             std::size_t expectedPayloadSize,
                                                             std::vector<std::uint8_t>& payload,
                                                             const char* operation,
-                                                            std::uint32_t timeoutMs)
+                                                            std::uint32_t timeoutMs,
+                                                            CommandExchangeDiagnostics* diagnostics)
         {
             if (!IsOpen())
             {
@@ -1122,7 +1288,8 @@ namespace meyer
                                                        0U,
                                                        expectedResponseCode,
                                                        &response,
-                                                       timeoutMs);
+                                                       timeoutMs,
+                                                       diagnostics);
             if (result != MeyerDeviceCmdResult_Ok)
             {
                 return result;
@@ -1720,6 +1887,8 @@ namespace meyer
                                                           std::uint32_t timeoutMs,
                                                           CommandExchangeDiagnostics* diagnostics)
         {
+            const std::chrono::steady_clock::time_point exchangeStartedAt =
+                std::chrono::steady_clock::now();
             // 每次调用先重置诊断，调用方不会误读上一次命令留下的回包状态。
             if (diagnostics != nullptr)
             {
@@ -1762,15 +1931,64 @@ namespace meyer
             const std::uint32_t effectiveTimeout = timeoutMs == 0U
                 ? m_lastOpenParams.commandTimeoutMs
                 : timeoutMs;
+            // 只有上一条请求没有完成“收到、校验并解析期望回包”的完整交换时，
+            // 才在本次发送前等待 20 ms。若上一条回包已处理完成，设备已经响应，
+            // 无需再人为补足固定间隔，本次命令可立即发送。
+            if (m_waitBeforeNextCommand)
+            {
+                if (m_lastOpenParams.backendType == MeyerDeviceCmdBackend_DeviceTransport)
+                {
+                    const std::chrono::steady_clock::time_point waitStartedAt =
+                        std::chrono::steady_clock::now();
+                    std::this_thread::sleep_for(kUnresolvedResponseWaitMs);
+                    if (diagnostics != nullptr)
+                    {
+                        diagnostics->preSendWaitUs = ElapsedMicroseconds(waitStartedAt);
+                    }
+                }
+
+                // 等待结束后，上一条请求的兜底响应窗口已经结束。随后仅由本次
+                // SendCommand 的成功结果决定是否要求下一条命令再次等待。
+                m_waitBeforeNextCommand = false;
+            }
+
+            // 实机确认旧 mOS MyScan 在主控板 0x15 已返回后，仍不能立即处理
+            // 紧随其后的投图板 0x12。该等待属于机型硬件板间切换时序，集中
+            // 保存在 Profile，不得重新扩大为所有命令之间的固定间隔。
+            if (m_lastOpenParams.backendType == MeyerDeviceCmdBackend_DeviceTransport &&
+                commandCode == protocol::ReadProjectionBoardVersion &&
+                m_profile != nullptr &&
+                m_profile->projectionBoardSwitchDelayMs > 0U)
+            {
+                const std::chrono::steady_clock::time_point settleStartedAt =
+                    std::chrono::steady_clock::now();
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(m_profile->projectionBoardSwitchDelayMs));
+                if (diagnostics != nullptr)
+                {
+                    diagnostics->profileSettleWaitUs = ElapsedMicroseconds(settleStartedAt);
+                }
+            }
+
+            const std::chrono::steady_clock::time_point sendStartedAt =
+                std::chrono::steady_clock::now();
             std::int32_t result = m_transport->SendCommand(encoded, effectiveTimeout);
+            if (diagnostics != nullptr)
+            {
+                diagnostics->sendUs = ElapsedMicroseconds(sendStartedAt);
+            }
             if (result != MeyerDeviceCmdResult_Ok)
             {
+                FinishCommandDiagnostics(diagnostics, result, exchangeStartedAt);
                 return SetError(result, m_transport->LastError());
             }
             if (diagnostics != nullptr)
             {
                 diagnostics->requestSent = true;
             }
+            // 请求一旦成功发出，在收到并解析期望回包前，都必须认为设备仍可能响应。
+                // 无响应命令也保持该状态，使下一条命令发送前补足 20 ms 响应窗口。
+            m_waitBeforeNextCommand = true;
 
             std::ostringstream sentMessage;
             sentMessage << "Command 0x" << std::hex << std::uppercase
@@ -1779,36 +1997,42 @@ namespace meyer
 
             if (expectedResponseCode == MEYER_DEVICE_CMD_NO_RESPONSE)
             {
+                FinishCommandDiagnostics(diagnostics, MeyerDeviceCmdResult_Ok, exchangeStartedAt);
                 m_lastError.clear();
                 return MeyerDeviceCmdResult_Ok;
             }
 
-            // 旧软件在设备身份和版本请求发送后先等待固定时间，再提交 Bulk IN。
-            // 只对真实 DeviceTransport 保留该时序；模拟后端无需人为拖慢自动化测试。
+            // D4/D9 和 CD/CE 按实机要求在当前命令发送后等待 50 ms，再提交 Bulk IN。
+            // 这是当前请求的接收时序，不是两条命令之间的固定间隔。版本命令发送后
+            // 直接提交阻塞式 Bulk IN，由 ReceiveCommand 等待设备回包。
             if (m_lastOpenParams.backendType == MeyerDeviceCmdBackend_DeviceTransport)
             {
-                if (commandCode == protocol::ReadMachineCode)
+                if (commandCode == protocol::ReadMachineCode ||
+                    commandCode == protocol::ReadDeviceInfo)
                 {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                }
-                else if (commandCode == protocol::ReadDeviceInfo)
-                {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                }
-                else if (commandCode == protocol::ReadMainBoardVersion ||
-                         commandCode == protocol::ReadProjectionBoardVersion)
-                {
-                    // 用户提供的旧软件实例在 0x14/0x12 后均等待 50 ms 再读回包。
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    const std::chrono::steady_clock::time_point waitStartedAt =
+                        std::chrono::steady_clock::now();
+                    std::this_thread::sleep_for(kDeviceInformationResponseDelayMs);
+                    if (diagnostics != nullptr)
+                    {
+                        diagnostics->postSendWaitUs = ElapsedMicroseconds(waitStartedAt);
+                    }
                 }
             }
 
             std::vector<std::uint8_t> received;
+            const std::chrono::steady_clock::time_point receiveStartedAt =
+                std::chrono::steady_clock::now();
             result = m_transport->ReceiveCommand(received,
                                                  MEYER_DEVICE_CMD_MAX_RAW_RESPONSE_BYTES + 10U,
                                                  effectiveTimeout);
+            if (diagnostics != nullptr)
+            {
+                diagnostics->receiveUs = ElapsedMicroseconds(receiveStartedAt);
+            }
             if (result != MeyerDeviceCmdResult_Ok)
             {
+                FinishCommandDiagnostics(diagnostics, result, exchangeStartedAt);
                 if (diagnostics != nullptr)
                 {
                     // 身份探测会把“无回包”解释为旧固件/命令能力证据，因此先按
@@ -1826,6 +2050,8 @@ namespace meyer
             }
 
             protocol::CommandFrame decoded;
+            const std::chrono::steady_clock::time_point parseStartedAt =
+                std::chrono::steady_clock::now();
             const protocol::CommandParseStatus parseStatus =
                 protocol::DeviceCommandCodec::ParseDetailed(
                     received.empty() ? nullptr : &received[0],
@@ -1834,10 +2060,32 @@ namespace meyer
                     codecError);
             if (diagnostics != nullptr)
             {
+                diagnostics->frameParseUs = ElapsedMicroseconds(parseStartedAt);
+            }
+            if (diagnostics != nullptr)
+            {
                 diagnostics->parseStatus = parseStatus;
             }
             if (parseStatus != protocol::CommandParseStatus::Ok)
             {
+                // 0xFFFF 未初始化和求和校验失败虽然不能生成普通 CommandFrame，
+                // 但身份识别流程能够把它们解析成明确的设备终态。只要帧头和
+                // 命令码表明它确实是当前请求的期望回包，就说明设备已经响应，
+                // 下一条命令无需再为本请求保留 20 ms 响应窗口。
+                const bool isRecognizedTerminalResponse =
+                    received.size() >= 5U &&
+                    received[0] == protocol::kHeader0 &&
+                    received[1] == protocol::kHeader1 &&
+                    received[2] == static_cast<std::uint8_t>(expectedResponseCode) &&
+                    (parseStatus == protocol::CommandParseStatus::UninitializedLength ||
+                     parseStatus == protocol::CommandParseStatus::ChecksumMismatch);
+                if (isRecognizedTerminalResponse)
+                {
+                    m_waitBeforeNextCommand = false;
+                }
+
+                FinishCommandDiagnostics(
+                    diagnostics, MeyerDeviceCmdResult_ProtocolError, exchangeStartedAt);
                 if (diagnostics != nullptr)
                 {
                     m_lastError = codecError;
@@ -1848,6 +2096,8 @@ namespace meyer
             }
             if (decoded.commandCode != static_cast<std::uint8_t>(expectedResponseCode))
             {
+                FinishCommandDiagnostics(
+                    diagnostics, MeyerDeviceCmdResult_ProtocolError, exchangeStartedAt);
                 if (diagnostics != nullptr)
                 {
                     diagnostics->parseStatus = protocol::CommandParseStatus::UnexpectedCommand;
@@ -1863,11 +2113,16 @@ namespace meyer
                 *response = decoded;
             }
 
+            // 已经收到、校验并解析出期望命令码，上一条请求的响应窗口在此结束。
+            // 下一条命令可以立即发送，无需再等待 20 ms。
+            m_waitBeforeNextCommand = false;
+            FinishCommandDiagnostics(diagnostics, MeyerDeviceCmdResult_Ok, exchangeStartedAt);
             m_lastError.clear();
             return MeyerDeviceCmdResult_Ok;
         }
 
-        // 读取颜色校准预检使用的设备编号，并保留“校验失败表示未写号”的旧设备语义。
+        // 读取颜色校准预检使用的设备编号。长度 0xFFFF 和求和校验失败
+        // 都表示生产未写号，但必须保存为两种不同状态以便追踪下位机差异。
         std::int32_t DeviceCommandService::ReadDeviceNumberForDetection(
             MeyerDeviceCmdMachineCode& machineCode,
             MeyerDeviceDetectionRecord& record)
@@ -1881,9 +2136,33 @@ namespace meyer
                                                        &response,
                                                        0U,
                                                        &diagnostics);
+            // 实机预检开启时输出完整交换时序，直接区分“当前 D4 发送后等待”
+            // 与“上一条命令未完成响应导致的发送前等待”。正式程序默认不输出。
+            ReportCommandExchangeTiming(
+                protocol::ReadMachineCode, protocol::UploadMachineCode, diagnostics);
             if (result != MeyerDeviceCmdResult_Ok)
             {
-                if (diagnostics.responseReceived &&
+                // 只有原始回包中的命令码确实是 0xD9，才能把特殊帧解释为
+                // “设备编号未写入”。其它命令的异常回包仍属于通信故障。
+                const bool isMachineCodeResponse =
+                    diagnostics.rawResponse.size() >= 3U &&
+                    diagnostics.rawResponse[2] == protocol::UploadMachineCode;
+
+                if (diagnostics.responseReceived && isMachineCodeResponse &&
+                    diagnostics.parseStatus == protocol::CommandParseStatus::UninitializedLength)
+                {
+                    // 部分下位机用 payload 长度 0xFFFF 明确表示设备编号参数
+                    // 尚未初始化。记录独立原因后继续 C7/CE 探测，不伪造 reported 值。
+                    record.deviceNumberStatus = MeyerDeviceNumberRead_UninitializedLength;
+                    record.isProductionMode = 1;
+                    AppendDetectionDetail(
+                        record,
+                        "0xD9 payload length 0xFFFF indicates an uninitialized device number");
+                    m_lastError.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+
+                if (diagnostics.responseReceived && isMachineCodeResponse &&
                     diagnostics.parseStatus == protocol::CommandParseStatus::ChecksumMismatch)
                 {
                     // 旧生产流程故意用无效校验表示 13 位编号尚未写入。这里把它
@@ -1954,6 +2233,12 @@ namespace meyer
                                                        &response,
                                                        0U,
                                                        &diagnostics);
+            // C2/C7 的发送前等待可证明上一条 D9 是否完成有效响应交换；
+            // C7 自身成功后应清除等待标记，使后续 CD 可以立即发送。
+            ReportCommandExchangeTiming(
+                protocol::ReadCamera1Calibration,
+                protocol::UploadCamera1Calibration,
+                diagnostics);
 
             if (result == MeyerDeviceCmdResult_Ok || diagnostics.responseReceived)
             {
@@ -2013,6 +2298,10 @@ namespace meyer
                                                        &response,
                                                        0U,
                                                        &diagnostics);
+            // CD/CE 的 preSendWaitUs 用于验证合法 C7 后不再固定等待；
+            // postSendWaitUs 则单独表示当前 CD 发送后、开始接收前的等待。
+            ReportCommandExchangeTiming(
+                protocol::ReadDeviceInfo, protocol::UploadDeviceInfo, diagnostics);
 
             bool useCompatibilityDefault = false;
             if (result != MeyerDeviceCmdResult_Ok)
@@ -2161,17 +2450,30 @@ namespace meyer
             std::uint64_t stateField,
             const char* operation)
         {
+            const std::chrono::steady_clock::time_point versionStartedAt =
+                std::chrono::steady_clock::now();
             std::vector<std::uint8_t> payload;
+            CommandExchangeDiagnostics diagnostics;
             const std::int32_t result = ReadFixedPayload(
                 requestCode,
                 responseCode,
                 4U,
                 payload,
-                operation);
+                operation,
+                0U,
+                &diagnostics);
+            ReportCommandExchangeTiming(requestCode, responseCode, diagnostics);
             if (result != MeyerDeviceCmdResult_Ok)
             {
+                ReportPreflightTiming(
+                    requestCode == protocol::ReadMainBoardVersion ? "14-15" : "12-13",
+                    "Attempt the firmware-version command and preserve its failure diagnosis",
+                    versionStartedAt);
                 return result;
             }
+
+            const std::chrono::steady_clock::time_point semanticParseStartedAt =
+                std::chrono::steady_clock::now();
 
             const std::uint16_t revision =
                 static_cast<std::uint16_t>((static_cast<std::uint16_t>(payload[2]) << 8U) |
@@ -2189,6 +2491,20 @@ namespace meyer
             std::memset(destination, 0, destinationCapacity);
             std::strncpy(destination, version, destinationCapacity - 1U);
             m_state.validFields |= stateField;
+            if (IsPreflightTimingTraceEnabled())
+            {
+                std::cout << "[SEMANTIC_TIMING] step="
+                          << (requestCode == protocol::ReadMainBoardVersion ? "14-15" : "12-13")
+                          << " purpose=Validate four-byte payload and format the firmware version"
+                          << " semanticParseUs=" << ElapsedMicroseconds(semanticParseStartedAt)
+                          << std::endl;
+            }
+            ReportPreflightTiming(
+                requestCode == protocol::ReadMainBoardVersion ? "14-15" : "12-13",
+                requestCode == protocol::ReadMainBoardVersion
+                    ? "Send, receive, validate and parse the main-board firmware version"
+                    : "Send, receive, validate and parse the projection-board firmware version",
+                versionStartedAt);
             return MeyerDeviceCmdResult_Ok;
         }
 

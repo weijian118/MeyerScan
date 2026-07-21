@@ -10,7 +10,7 @@ if(POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
 endif()
 
-project(MeyerScan_DeviceCmd VERSION 0.7.0 LANGUAGES CXX)
+project(MeyerScan_DeviceCmd VERSION 0.7.7 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)

@@ -2,7 +2,9 @@
 
 `MyDeviceCmd` 生成 `MeyerScan_DeviceCmd.dll`，是设备协议命令层。它把口扫设备 A 类命令帧、设备基础信息、状态快照、灯光控制、相机/标定参数、固件分包和采集启停封装成稳定的纯 C++/C ABI，底层通过运行时动态加载 `MeyerScan_DeviceTransport.dll` 完成 USB 收发。
 
-当前模块代码版本为 `0.7.0`，公共语义 API 版本为 `2.2.0`，公共结构 schema 和整数 ABI 版本均为 `5`。
+当前模块代码版本为 `0.7.7`，公共语义 API 版本为 `2.3.6`，公共结构 schema 和整数 ABI 版本均为 `5`。
+
+默认命令回包超时为 `200 ms`，图像流超时仍为 `1500 ms`。真实 DeviceTransport 后端只有在上一条命令没有收到普通合法帧或业务可识别终态回包时，才在下一条命令发送前等待 `20 ms`；D9/CE 的 `0xFFFF` 未初始化及已识别校验失败均表示设备已经响应，下一条命令立即发送。D4/D9、CD/CE 当前命令发送后仍等待 `50 ms` 再提交 Bulk IN。实机确认 MyScan 3 在主控板 `0x15` 返回后仍需机型特定板间切换时间才能可靠接收投图板 `0x12`，当前设置为 `20 ms`，该特例只保存在 MyScan 3 Profile，不扩大为全局命令间隔。模拟后端不人为等待。
 
 ## 当前范围
 
@@ -15,7 +17,7 @@
 - 颜色校准入口使用 `MeyerDeviceCmd_PrepareColorCalibration`，按“打开 Cypress 设备 -> 检查 USB3 -> `0xD4/0xD9` 读取 13 位设备编号 -> 编号未写入时用 `0xC2/0xC7` 探测系列 -> `0xCD/0xCE` 读取型号代码 -> 综合识别 -> `0x14/0x15` 读取主控板版本 -> mOS MyScan 再用 `0x12/0x13` 读取投图板版本”执行。API 中 `MachineCode` 是历史协议命名，产品含义统一为设备编号。
 - `MeyerDeviceDetectionRecord` 同时保存 D9/C7/CE 步骤状态、生产模式、真实 `reported*` 值、最终 `effective*` 值和值来源。兼容默认值只能写入 effective 字段，禁止覆盖或伪装成设备上报值。
 - DeviceCmd 不决定生产兼容身份能否进入业务流程：只有创建订单扫描流程由宿主要求真实设备编号，被拦截时使用稳定状态 `ProductionDeviceNumberRequired=14`；练习、颜色校准和后续三维校准可使用带来源的兼容身份。
-- D9 无回包或普通坏包返回回包异常；校验通过但编号不是 13 位/`620000` 前缀返回编号异常；只有 D9 求和校验失败按旧生产流程进入“未写设备编号”分支。
+- D9 无回包或普通坏包返回回包异常；校验通过但编号不是 13 位/`620000` 前缀返回编号异常。D9 payload 长度为 `0xFFFF` 或求和校验失败时都进入“生产未写设备编号”分支，但分别记录 `UninitializedLength` 和 `ChecksumIndicatesUnprogrammed`。
 - 生产模式下 C7 无回包形成 mOS MyScan 候选，收到 C7 形成 mOS MyScan 5/6 候选。MyScan 5 与 MyScan 6 的区分规则待定，当前兼容值明确标成推断。
 - CE 无回包、普通坏包、坏校验、`0xFFFF` 未初始化或型号值非法都会保留各自诊断；旧设备可以继续使用与已知系列一致的 compatibility effective 值，但产品身份状态明确为 `CompatibilityInferred`。
 - 已写合法设备编号时，compatibility 型号代码按已登记前缀选择同系列标准值（62000020/27/53/55），未知前缀才回退 62000020。该安全修正避免把已知 MyScan 5/5H 设备错误套用为 MyScan 3。
@@ -68,6 +70,8 @@ DeviceCmdTest.exe --preflight-real "F:\MeyerScan\bin\Release\MeyerScan_DeviceTra
 DeviceCmdTest.exe --help
 ```
 
-`--smoke` 覆盖 8 个已知型号代码精确映射、D9 无回包/坏包/非法值、生产模式 C7 两类候选、CE 精确/旧固件/未初始化/坏校验/坏包/非法值、证据冲突、基础状态、全部协议命令组和采集。它使用显式模拟后端，不连接真实 USB。
+`--smoke` 覆盖 8 个已知型号代码精确映射、D9 无回包/坏包/非法值/`0xFFFF` 未初始化/求和校验失败、生产模式 C7 两类候选、CE 精确/旧固件/未初始化/坏校验/坏包/非法值、证据冲突、基础状态、全部协议命令组和采集。它使用显式模拟后端，不连接真实 USB。
 
 `--preflight-real` 只执行颜色校准入口所需的只读链路：枚举 Cypress 设备、判断 USB2/USB3、发送 D4/D9、生产模式下发送 C2/C7、发送 CD/CE、读取主控板/投图板版本，并逐项输出回包缺失、帧解析、求和校验、reported/effective 身份和兼容来源。它不会调用设备信息写入、参数固化或 Flash 命令；返回码 `0` 表示可以继续（可能带兼容推断），`3` 表示被未连接、USB2、D9 回包异常、编号非法、身份冲突或 Profile 未知等门禁拦截。
+
+真实预检测试还会输出 `[TIMING]`：Open、USB、D4-D9、C2-C7、CD-CE、ProductCatalog、Firmware 和 Total。每条包含步骤用途与实际毫秒数；未需要的 C2-C7 显示 `SKIPPED` 及原因。该输出由测试宿主临时开启，正式 MainExe 默认不打印。

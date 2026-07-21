@@ -373,6 +373,15 @@ namespace meyer
                     m_pendingResponse.clear();
                     return MeyerDeviceCmdResult_Ok;
                 }
+                if ((m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_DeviceNumberUninitialized) != 0U)
+                {
+                    // 真实生产设备可能用 0xFFFF 长度表示设备编号参数尚未写入。
+                    // 保留正确的 5A 33 帧头和 D9 响应码，使测试只针对该语义分支。
+                    m_pendingResponse = { protocol::kHeader0, protocol::kHeader1,
+                        protocol::UploadMachineCode, 0xFFU, 0xFFU, 0x00U, 0x00U };
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadMachineCode;
                 BuildMachineCodePayload(payload);
                 if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_InvalidDeviceNumber) != 0U)

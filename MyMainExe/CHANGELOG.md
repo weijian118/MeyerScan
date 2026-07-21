@@ -1,5 +1,11 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-22 - 颜色校准与设备链路回归
+
+- 使用最新 `MeyerScan_DeviceCmd.dll` 完成真实 MyScan 3 设备预检回归；MainExe 所需的设备会话、设备身份、产品型号和主控板/投图板版本 POD 复制链路保持兼容。
+- MainExe Release 重建通过；`MeyerScan.exe --smoke-main` 通过，覆盖等待页、首页、设置、创建/练习工作台、Scan/Process/Send 切换、浏览页和扫描前资源释放。
+- 本轮没有把真实 USB 检查加入 `--smoke-main`，避免无设备测试被硬件依赖阻断；真实设备命令链路由 `DeviceCmdTest --preflight-real` 单独验收。
+
 ## 2026-07-21（v0.6.0，下位机版本与生产模式配置）
 
 - DeviceSessionHost 适配 DeviceCmd ABI/schema 5，缓存并记录主控板/投图板版本；MainExe 将版本快照继续复制给 SettingsUI 和颜色校准模块。
@@ -250,3 +256,10 @@
 - 递归检查 Release 目录 EXE/DLL 依赖闭包，非 API Set DLL 缺失为空；当前 Release 目录共 50 个 DLL。
 - 对照重构文档复核：MainExe 仍保持“薄主 EXE”定位，只做 Logger、Database 健康检查、Login、HomeUI、CaseUI 编排；未加入业务 SQL、订单规则、扫描算法或设备协议。
 - 后续建议优先新增 `LoginAdapter`，并把登录 URL、语言、许可路径、数据库配置路径迁入 ConfigCenter，避免框架期硬编码继续扩散。
+# MeyerScan MainExe 变更记录
+
+## 2026-07-22 - 颜色校准与设备链路回归
+
+- 使用最新 `MeyerScan_DeviceCmd.dll` 完成真实 MyScan 3 设备预检回归；MainExe 所需的设备会话、设备身份、产品型号和主控板/投图板版本 POD 复制链路保持兼容。
+- MainExe Release 重建通过；`MeyerScan.exe --smoke-main` 通过，覆盖等待页、首页、设置、创建/练习工作台、Scan/Process/Send 切换、浏览页和扫描前资源释放。
+- 本轮没有把真实 USB 检查加入 `--smoke-main`，避免无设备测试被硬件依赖阻断；真实设备命令链路由 `DeviceCmdTest --preflight-real` 单独验收。

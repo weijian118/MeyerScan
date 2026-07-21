@@ -74,6 +74,7 @@ namespace meyer
                   "Legacy device information probe",
                   StopSequence::LightOffThenStop,
                   80U,
+                  0U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan3,
                   MeyerDeviceProtocolFamily_LegacySimilar,
@@ -84,6 +85,7 @@ namespace meyer
                   "Legacy similar protocol (pending verification)",
                   StopSequence::LightOffThenStop,
                   80U,
+                  20U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan5,
                   MeyerDeviceProtocolFamily_LegacySimilar,
@@ -94,6 +96,7 @@ namespace meyer
                   "Legacy similar protocol (pending verification)",
                   StopSequence::LightOffThenStop,
                   80U,
+                  0U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan5H,
                   MeyerDeviceProtocolFamily_LegacySimilar,
@@ -104,6 +107,7 @@ namespace meyer
                   "Same protocol profile as MyScan 5 (pending verification)",
                   StopSequence::LightOffThenStop,
                   80U,
+                  0U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan6,
                   MeyerDeviceProtocolFamily_LegacySimilar,
@@ -114,6 +118,7 @@ namespace meyer
                   "Legacy similar protocol (pending verification)",
                   StopSequence::LightOffThenStop,
                   80U,
+                  0U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) },
                 { MeyerDeviceModel_MyScan6Wireless,
                   MeyerDeviceProtocolFamily_Wireless20250808,
@@ -124,6 +129,7 @@ namespace meyer
                   "Wireless protocol 2025-08-08",
                   StopSequence::StopThenLightOff,
                   80U,
+                  0U,
                   BuildDefaultCapture(MeyerDeviceWorkMode_Scan) }
             };
 

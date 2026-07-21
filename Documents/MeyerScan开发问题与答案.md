@@ -15,7 +15,7 @@
 ```text
 连接/USB3
   -> 0xD4 请求/0xD9 回包读取 13 位设备编号
-  -> D9 校验失败时标记生产未写号
+  -> D9 长度 0xFFFF 或求和校验失败时标记生产未写号
   -> 生产状态发送 0xC2 等待 0xC7 探测系列能力
   -> 0xCD 请求/0xCE 回包读取完整型号代码
   -> DeviceProductCatalog 综合编号、型号和命令证据
@@ -24,6 +24,8 @@
 ```
 
 设备能力 Profile、产品系列和具体销售型号是三个不同层次，不能使用同一个枚举替代。13 位设备编号前缀只能形成系列候选，完整 8 位型号代码才能区分 P1/P2/P3 等具体产品。
+
+`0xD9` 两种生产回包必须区分：长度字段 `0xFFFF` 记录为 `UninitializedLength`，求和校验失败记录为 `ChecksumIndicatesUnprogrammed`。两者都设置 `isProductionMode=1` 并继续探测，但 reported 设备编号保持为空。错误帧头、截断、异常尾部或非 D9 回包仍是通信异常，不得判为生产模式。
 
 ## 3. 颜色校准如何取得设备编号和版本
 
@@ -78,6 +80,10 @@ m_deviceContext.firmwareVersions.projectionBoardVersionUtf8;
 DeviceCmd 对外使用 `extern "C"`、固定布局 POD 和不透明 `MeyerDeviceCmdHandle`，避免 `QString`、`std::string`、QObject 和 USB 内部对象跨 DLL。
 
 `ExecuteCommand` 是 A 类命令的唯一通道：检查设备和机型能力、组装 `5A 33 + 命令码 + 长度 + payload + 校验和`、调用 Transport 发送、接收回包、检查帧头/长度/尾部/校验和/期望响应码。它只返回通用 `CommandFrame`，`ReadMachineCode` 等上层函数再解释 payload 的业务含义。公共 API 层还通过每句柄 mutex 串行调用。
+
+当前低频命令默认回包超时为 `200 ms`。上一条命令未收到并解析出期望回包时，下一条命令发送前等待 `20 ms`；上一条命令已收到期望命令码，并解析为普通合法帧或业务可识别的终态回包时，立即发送下一条。D9/CE 的 `0xFFFF` 未初始化及已识别校验失败都表示设备已经响应，不再补固定间隔。实机确认 MyScan 3 的主控板到投图板版本读取需要机型特定的 `20 ms` 板间切换等待，该等待只由 MyScan 3 Profile 提供。D4/D9、CD/CE 请求发送后仍等待 `50 ms` 再读回包，这是当前命令的接收时序，不是 A/B 两条命令之间的固定间隔；主控板/投图板版本命令发送后立即提交阻塞式 Bulk IN。图像流仍使用独立的 `1500 ms` 默认超时。
+
+`--preflight-real` 的 `[COMMAND_TIMING]` 把一条命令拆成 `preSendWaitUs`、`profileSettleWaitUs`、`sendUs`、`postSendWaitUs`、`receiveUs`、`frameParseUs` 和 `exchangeTotalUs`。`preSendWaitUs` 只表示上一条命令尚未得到普通合法帧或业务可识别终态时的 `20 ms` 兜底等待；`profileSettleWaitUs` 表示机型 Profile 为硬件板间切换增加的等待；`postSendWaitUs` 表示 D4/D9、CD/CE 当前命令发送后、开始接收前的协议时序等待。`[SEMANTIC_TIMING]` 是业务字段解析时间。`FirmwareTotal` 和 `Total` 带 `type=AGGREGATE`，只是子步骤合计，不是额外命令，不得与子步骤重复相加。
 
 ## 7. UI 资源编译与使用
 

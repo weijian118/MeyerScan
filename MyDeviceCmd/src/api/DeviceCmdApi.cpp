@@ -119,7 +119,8 @@ extern "C"
         params->vendorId = 0x04B4U;
         params->productId = 0x00F1U;
         params->deviceIndex = 0U;
-        params->commandTimeoutMs = 1500U;
+        // 低频设备信息命令默认在 200 ms 内等待回包；上层仍可根据实际设备覆盖。
+        params->commandTimeoutMs = 200U;
         params->streamTimeoutMs = 1500U;
         return MeyerDeviceCmdResult_Ok;
     }

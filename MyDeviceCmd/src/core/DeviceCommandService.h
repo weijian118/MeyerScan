@@ -36,11 +36,22 @@ namespace meyer
             bool responseReceived;
             protocol::CommandParseStatus parseStatus;
             std::vector<std::uint8_t> rawResponse;
+            std::int32_t result;
+            std::uint64_t preSendWaitUs;
+            std::uint64_t profileSettleWaitUs;
+            std::uint64_t sendUs;
+            std::uint64_t postSendWaitUs;
+            std::uint64_t receiveUs;
+            std::uint64_t frameParseUs;
+            std::uint64_t exchangeTotalUs;
 
             // 默认状态表示尚未发出请求，便于失败分支准确判断停在哪一步。
             CommandExchangeDiagnostics()
                 : requestSent(false), responseReceived(false),
-                  parseStatus(protocol::CommandParseStatus::NotRun)
+                  parseStatus(protocol::CommandParseStatus::NotRun),
+                  result(MeyerDeviceCmdResult_Ok), preSendWaitUs(0U),
+                  profileSettleWaitUs(0U), sendUs(0U),
+                  postSendWaitUs(0U), receiveUs(0U), frameParseUs(0U), exchangeTotalUs(0U)
             {
             }
         };
@@ -171,7 +182,8 @@ namespace meyer
             std::int32_t RefreshBattery();
             // 读取设备授权信息并更新状态快照。
             std::int32_t RefreshDeviceSecurityInfo();
-            // 读取并严格验证 0xD4/0xD9 设备编号；校验失败可识别为生产模式。
+            // 读取并严格验证 0xD4/0xD9 设备编号；长度 0xFFFF 和求和校验失败
+            // 均进入生产模式，同时保留不同的 deviceNumberStatus。
             std::int32_t ReadDeviceNumberForDetection(MeyerDeviceCmdMachineCode& machineCode,
                                                       MeyerDeviceDetectionRecord& record);
             // 生产模式下通过 0xC2/0xC7 命令能力探测 MyScan 与 MyScan5/6 系列。
@@ -191,7 +203,8 @@ namespace meyer
                                            std::size_t expectedPayloadSize,
                                            std::vector<std::uint8_t>& payload,
                                            const char* operation,
-                                           std::uint32_t timeoutMs = 0U);
+                                           std::uint32_t timeoutMs = 0U,
+                                           CommandExchangeDiagnostics* diagnostics = nullptr);
             // 校验图像尺寸、分包几何和内存预算，阻止非法参数进入 Transport。
             std::int32_t ValidateCaptureParams(const MeyerDeviceCmdCaptureParams& params);
             // 按型号配置发送停止传图和可选关灯命令。
@@ -210,6 +223,10 @@ namespace meyer
             MeyerDeviceCmdOpenParams m_lastOpenParams;
             MeyerDeviceStateSnapshot m_state;
             std::string m_lastError;
+            // 为 true 表示上一条请求尚未收到普通合法帧或业务可识别终态回包。
+            // 下一条真实设备命令发送前需等待 20 ms，为上一条请求留足响应窗口；
+            // 若上一条请求已得到可识别响应，该值会立即清零，下一条命令无需等待 20 ms。
+            bool m_waitBeforeNextCommand;
         };
     }
 }

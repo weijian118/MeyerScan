@@ -1,5 +1,12 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-22 - 回归验证
+
+- VS2015 Release 重建通过，颜色校准 DLL 和 `CalibrationColorUITest.exe` 均生成成功。
+- `CalibrationColorUITest.exe --smoke` 通过，验证工厂函数、初始化、设备快照注入、根 QWidget、关键控件、动态设备属性和释放链路。
+- `CalibrationColorUITest.exe --drag-test` 通过，验证无边框颜色校准面板标题栏拖动行为。
+- MainExe 仍由 `DeviceSessionHost` 完成设备预检和 POD 复制，颜色校准 UI 不直接加载 DeviceCmd/DeviceTransport，也不自行解析设备回包。
+
 ## 2026-07-21 - 0.7.0 下位机版本快照
 
 - 公共接口 ABI 升级为 6、设备上下文 schema 升级为 5，新增主控板/投图板版本值和读取状态副本。
@@ -111,3 +118,18 @@
 - 新增 `CalibrationColorUITest.exe` 最小自动测试宿主，覆盖模块初始化、核心接口、关闭流程和关键边界。
 - 同步 VS2015 `.vcxproj/.sln` 与 CMake 测试入口，便于单模块调试和聚合构建。
 - 测试配置和测试数据写入测试 EXE 输出目录，避免污染源码目录和正式发布配置。
+# MeyerScan CalibrationColorUI 变更记录
+
+## 2026-07-22 - 回归验证
+
+- VS2015 Release 重建通过，颜色校准 DLL 和 `CalibrationColorUITest.exe` 均生成成功。
+- `CalibrationColorUITest.exe --smoke` 通过，验证工厂函数、初始化、设备快照注入、根 QWidget、关键控件、动态设备属性和释放链路。
+- `CalibrationColorUITest.exe --drag-test` 通过，验证无边框颜色校准面板标题栏拖动行为。
+- MainExe 仍由 `DeviceSessionHost` 完成设备预检和 POD 复制，颜色校准 UI 不直接加载 DeviceCmd/DeviceTransport，也不自行解析设备回包。
+
+## 2026-07-22 - 回归验证
+
+- VS2015 Release 重建通过，颜色校准 DLL 和 `CalibrationColorUITest.exe` 均生成成功。
+- `CalibrationColorUITest.exe --smoke` 通过，验证工厂函数、初始化、设备快照注入、根 QWidget、关键控件、动态设备属性和释放链路。
+- `CalibrationColorUITest.exe --drag-test` 通过，验证无边框颜色校准面板标题栏拖动行为。
+- MainExe 仍由 `DeviceSessionHost` 完成设备预检和 POD 复制，颜色校准 UI 不直接加载 DeviceCmd/DeviceTransport，也不自行解析设备回包。
