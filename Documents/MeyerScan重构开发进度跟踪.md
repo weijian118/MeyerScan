@@ -14,7 +14,8 @@
 | 根 CTest | 2026-07-21 按“仅创建要求正式编号”的最终口径重新执行全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke |
 | MainExe smoke | `MeyerScan.exe --smoke-main` 重新执行并以退出码 0 通过；根 CTest 中的 `--smoke`、`--smoke-external-order` 同样通过 |
 | VS2015 根方案 | 最近一轮 Release x64 通过；仅保留既有外部登录头文件编码/声明警告 |
-| 版本清单 | 已生成 `MyMainExe/bin/Release/logs/versionList/versionList_20260721_091346_667.json`；包含 MainExe `0.6.0`、DeviceCmd `0.7.0`、SettingsUI/CalibrationColorUI `0.7.0`、ConfigCenter `0.2.0`，文件版本与代码版本均匹配 |
+| 版本清单 | 已生成 `MyMainExe/bin/Release/logs/versionList/versionList_20260721_095406_185.json`；包含 MainExe `0.6.0`、DeviceCmd `0.7.0`、SettingsUI/CalibrationColorUI `0.7.0`、ConfigCenter `0.2.0`、UIResources `0.2.0`，文件版本与代码版本均匹配 |
+| UIResources VS2015 | `MeyerScan_UIResources.sln` Release x64 Rebuild 通过，0 个警告、0 个错误；`UIResourcesTest.exe` 合同和资源生命周期检查通过 |
 | 设备实机预检 | 2026-07-20 确认 Cypress、USB3 和 D4/D9 设备编号 `6200002002566`；CD 后 CE 仍超时。新流程记录 `FirmwareTooOld + CompatibilityInferred` 并使用 `62000020` effective 值继续，但 P1/P2/P3 尚未实机精确确定 |
 | 注释安全 | 0 错误、0 警告 |
 | 文档备份脚本 | PowerShell 5.1 AST、BOM 和两次隔离幂等执行通过 |
@@ -46,7 +47,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | CaseOrderService | 0.2.2 | 标准嵌套建单保存/查询、患者/订单轻量列表和最小 schema 可用；完整 CRUD、事务和迁移待完成 |
 | ScanSchemaService | 0.1.0 | 扫描步骤规则服务和测试可用；规则已从 UI/MainExe 移出 |
 | UIComponents | 0.5.0 | 常用控件工厂和信息/成功/错误/警告/高危公共弹窗可用；复杂表格和统一语言刷新待扩展 |
-| UIResources | 0.1.4 | 统一资源 DLL 可用；已收录颜色校准 QSS、预览图和关闭按钮状态资源 |
+| UIResources | 0.2.0 | 统一资源 DLL、RCDATA 101/API/清单/前缀公共合同、加载前校验和客户旧版本独立覆盖规则可用；客户专属覆盖目录与哈希清单仍待扩展 |
 | HomeUI | 0.3.3 | 页面和入口动作可用；只接收应用目录，不再带数据库语义 |
 | CaseUI | 0.3.3 | 宿主快照列表和动作上报可用；真实 CRUD/Workflow 未闭环 |
 | SettingsUI | 0.7.0 | 颜色校准工作台/连接/USB3/D9/C7/CE/产品身份/主控板和投图板版本预检、一次设备信息提示、完整 POD 注入和可拖动模态遮罩可用；生产设备未写正式编号不拦截；配置保存/刷新未闭环 |

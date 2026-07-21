@@ -92,6 +92,18 @@ DeviceCmd 对外使用 `extern "C"`、固定布局 POD 和不透明 `MeyerDevice
 
 正式安装包只需要资源 DLL，不需要散落 PNG/QSS。单模块开发时公共加载器可以回退到源码 `Resources`，但完整集成测试必须使用同批次资源 DLL。
 
+### 7.1 资源 DLL 能否单独覆盖旧版客户
+
+可以，但资源 DLL 是完整资源包，不是只包含几张图片的增量文件。最稳妥的方式是从客户原交付版本的 Git tag/worktree 构建，只替换相同 alias 的图标，并保留该版本使用的全部旧资源路径。项目后来仅新增资源时不会影响旧代码；新增路径也不会自动生效，因为旧 EXE/DLL 不会引用它。
+
+覆盖前必须关闭 MeyerScan，并保持 `MeyerScan_UIResources.dll` 文件名、Qt 5.6.3、MSVC2015、Release x64、既有导出函数和资源路径合同不变。完成后运行 `UIResourcesTest.exe`、客户原版 `MeyerScan.exe --smoke-main` 和关键页面截图回归。
+
+### 7.2 RCDATA 101 与导出函数如何匹配
+
+`101 RCDATA` 是 DLL 内嵌 `.rcc` 的 Win32 资源编号，不是导出函数序号。资源合同集中在 `Common/include/MeyerUiResourceContract.h`：API 版本 `1`、RCDATA 编号 `101`、清单 schema `1`、qrc 前缀 `/MeyerScan/Modules`。`Version.rc`、C++ 注册代码和 qrc 生成脚本都引用该合同。
+
+资源 DLL 继续保留旧版使用的初始化、状态、注销和模块版本函数，并追加 API、RCDATA、清单版本和路径前缀查询函数。新加载器会在注册前校验这些值；旧客户程序不调用新增函数，仍可加载保持旧导出函数的新版资源 DLL。
+
 ## 8. minMain 的当前含义
 
 历史沟通中的 `minMain` 现在统一指：

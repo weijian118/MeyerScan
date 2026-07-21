@@ -4,6 +4,8 @@
 #include <QFile>
 #include <QString>
 
+#include <Windows.h>
+
 #include <cstdio>
 
 // 输出单项检查结果并返回是否成功。
@@ -28,20 +30,45 @@ int main(int argc, char* argv[]) {
     failed += Check(MeyerScanInitializeUiResources(), "repeated initialize is idempotent") ? 0 : 1;
     failed += Check(MeyerScanUiResourcesInitialized(), "resource state is initialized") ? 0 : 1;
 
+    // 合同查询接口让新宿主在初始化前确认 DLL、RCDATA 和 qrc 路径属于同一批次。
+    failed += Check(GetMeyerUiResourcesApiVersion() == MEYER_UI_RESOURCE_API_VERSION,
+                    "resource API version matches public contract") ? 0 : 1;
+    failed += Check(GetMeyerUiResourcesPayloadId() == MEYER_UI_RESOURCE_PAYLOAD_ID,
+                    "RCDATA payload id matches public contract") ? 0 : 1;
+    failed += Check(GetMeyerUiResourcesManifestSchemaVersion() ==
+                        MEYER_UI_RESOURCE_MANIFEST_SCHEMA_VERSION,
+                    "resource manifest schema matches public contract") ? 0 : 1;
+    failed += Check(QString::fromLatin1(GetMeyerUiResourcesPrefix()) ==
+                        QString::fromLatin1(MEYER_UI_RESOURCE_QRC_PREFIX),
+                    "qrc prefix matches public contract") ? 0 : 1;
+
+    // 显式从已加载 DLL 查找合同声明的 RCDATA，避免初始化函数和 Version.rc
+    // 因人工修改不同步而仅在客户机器上暴露问题。
+    const HMODULE resourceModule = GetModuleHandleW(L"MeyerScan_UIResources.dll");
+    const HRSRC resourcePayload = resourceModule
+        ? FindResourceW(resourceModule,
+                        MAKEINTRESOURCEW(GetMeyerUiResourcesPayloadId()),
+                        MAKEINTRESOURCEW(10))
+        : nullptr;
+    failed += Check(resourcePayload != nullptr,
+                    "declared RCDATA payload exists in resource dll") ? 0 : 1;
+
     // 同时抽查 QSS 和 PNG，防止清单只收录了某一种资源类型。
-    const QString homeQssPath = ":/MeyerScan/Modules/MyHomeUI/qss/home.qss";
-    const QString homeIconPath = ":/MeyerScan/Modules/MyHomeUI/icon/home/HomeCreate_b.png";
+    const QString resourceRoot = QString::fromLatin1(MEYER_UI_RESOURCE_RUNTIME_ROOT);
+    const QString homeQssPath = resourceRoot + "/MyHomeUI/qss/home.qss";
+    const QString homeIconPath = resourceRoot + "/MyHomeUI/icon/home/HomeCreate_b.png";
     failed += Check(QFile::exists(homeQssPath), "HomeUI qss exists in resource dll") ? 0 : 1;
     failed += Check(QFile::exists(homeIconPath), "HomeUI icon exists in resource dll") ? 0 : 1;
 
     // 颜色校准本轮新增三张图片和新版 QSS；逐项断言可防止清单规则或路径拼写漏包。
-    const QString colorQssPath = ":/MeyerScan/Modules/MyCalibrationColorUI/qss/calibration_color.qss";
+    const QString colorQssPath = resourceRoot +
+        "/MyCalibrationColorUI/qss/calibration_color.qss";
     const QString colorPreviewPath =
-        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/init_image.png";
+        resourceRoot + "/MyCalibrationColorUI/icon/color_calibration/init_image.png";
     const QString colorCloseNormalPath =
-        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/close_b.png";
+        resourceRoot + "/MyCalibrationColorUI/icon/color_calibration/close_b.png";
     const QString colorCloseHoverPath =
-        ":/MeyerScan/Modules/MyCalibrationColorUI/icon/color_calibration/close_h.png";
+        resourceRoot + "/MyCalibrationColorUI/icon/color_calibration/close_h.png";
     failed += Check(QFile::exists(colorQssPath), "CalibrationColorUI qss exists in resource dll") ? 0 : 1;
     failed += Check(QFile::exists(colorPreviewPath), "CalibrationColorUI preview exists in resource dll") ? 0 : 1;
     failed += Check(QFile::exists(colorCloseNormalPath), "CalibrationColorUI normal close icon exists") ? 0 : 1;

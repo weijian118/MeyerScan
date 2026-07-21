@@ -12,12 +12,12 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_UIResources";
 
 // 代码版本必须与 Version.rc 的 FILEVERSION/PRODUCTVERSION 同步修改。
-const char* Version = "MeyerScan_UIResources v0.1.4 (2026-07-16)";
+const char* Version = "MeyerScan_UIResources v0.2.0 (2026-07-21)";
 }
 
 // Version.rc 中 RCDATA 资源的固定编号。
 // 编号一旦发布就不要随意修改，否则旧版本代码会找不到内嵌资源包。
-const int kUiResourcePayloadId = 101;
+const int kUiResourcePayloadId = MEYER_UI_RESOURCE_PAYLOAD_ID;
 
 // 注册状态由本 DLL 自己维护。
 // 多个 UI DLL 可能同时调用初始化接口，因此必须通过互斥锁保护。
@@ -104,6 +104,26 @@ extern "C" MEYERSCAN_UIRESOURCES_API void MeyerScanShutdownUiResources() {
     QResource::unregisterResource(g_resourceData);
     g_resourceData = nullptr;
     g_resourceInitialized = false;
+}
+
+// 返回资源加载合同 API 版本。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesApiVersion() {
+    return MEYER_UI_RESOURCE_API_VERSION;
+}
+
+// 返回内嵌 .rcc 对应的 Win32 RCDATA 编号。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesPayloadId() {
+    return MEYER_UI_RESOURCE_PAYLOAD_ID;
+}
+
+// 返回资源清单结构版本。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesManifestSchemaVersion() {
+    return MEYER_UI_RESOURCE_MANIFEST_SCHEMA_VERSION;
+}
+
+// 返回 qrc 前缀。常量来自公共合同头，不能由调用方释放。
+extern "C" MEYERSCAN_UIRESOURCES_API const char* GetMeyerUiResourcesPrefix() {
+    return MEYER_UI_RESOURCE_QRC_PREFIX;
 }
 
 // 返回代码版本。

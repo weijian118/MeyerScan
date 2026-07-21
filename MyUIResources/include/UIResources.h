@@ -6,6 +6,8 @@
 #define MEYERSCAN_UIRESOURCES_API __declspec(dllimport)
 #endif
 
+#include "MeyerUiResourceContract.h"
+
 // 注册 DLL 内嵌的 Qt 二进制资源。
 //
 // 调用要求：
@@ -21,6 +23,21 @@ extern "C" MEYERSCAN_UIRESOURCES_API bool MeyerScanUiResourcesInitialized();
 // 注销当前 DLL 注册的 Qt 资源。
 // 正式程序通常让资源保持到进程退出；该接口主要供测试宿主验证完整生命周期。
 extern "C" MEYERSCAN_UIRESOURCES_API void MeyerScanShutdownUiResources();
+
+// 返回资源加载合同的 API 版本。
+// 新版公共加载器在注册资源前校验该值，拒绝误装 ABI 不兼容的资源 DLL。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesApiVersion();
+
+// 返回 DLL 中二进制 Qt 资源包的 Win32 RCDATA 编号。
+// 该值必须与 Version.rc 中嵌入 .rcc 时使用的编号保持一致。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesPayloadId();
+
+// 返回资源清单结构版本。资源路径合同变化时必须升级该值。
+extern "C" MEYERSCAN_UIRESOURCES_API int GetMeyerUiResourcesManifestSchemaVersion();
+
+// 返回 qrc 资源前缀，例如 /MeyerScan/Modules。
+// 返回值指向 DLL 内静态字符串，调用方只读取且不能释放。
+extern "C" MEYERSCAN_UIRESOURCES_API const char* GetMeyerUiResourcesPrefix();
 
 // 返回资源模块代码版本，供 versionList 同时记录文件版本和代码版本。
 extern "C" MEYERSCAN_UIRESOURCES_API const char* GetMeyerModuleVersion();

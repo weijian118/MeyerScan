@@ -1,12 +1,13 @@
 #include <windows.h>
+#include "..\..\Common\include\MeyerUiResourceContract.h"
 
 // Keep this RC file ASCII-only for the VS2015 resource compiler.
 // UIResources.cpp uses the same numeric id to register the embedded RCC data.
-101 RCDATA "..\\generated\\MeyerScanUiResources.rcc"
+MEYER_UI_RESOURCE_PAYLOAD_ID RCDATA "..\\generated\\MeyerScanUiResources.rcc"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION     0,1,4,0
- PRODUCTVERSION  0,1,4,0
+ FILEVERSION     0,2,0,0
+ PRODUCTVERSION  0,2,0,0
  FILEFLAGSMASK   0x3fL
 #ifdef _DEBUG
  FILEFLAGS       VS_FF_DEBUG
@@ -24,11 +25,17 @@ BEGIN
             VALUE "CompanyName",      "Hefei Meyer Optoelectronic Technology Co., Ltd."
             VALUE "LegalCopyright",   "Copyright (C) 2026 HEFEI MEYER"
             VALUE "FileDescription",  "MeyerScan UI Resources Module"
-            VALUE "FileVersion",      "0.1.4"
+            VALUE "FileVersion",      "0.2.0"
             VALUE "InternalName",     "MeyerScan_UIResources"
             VALUE "OriginalFilename", "MeyerScan_UIResources.dll"
             VALUE "ProductName",      "MeyerScan Digital Dental Scanner"
-            VALUE "ProductVersion",   "0.1.4"
+            VALUE "ProductVersion",   "0.2.0"
+            VALUE "ResourceApiVersion", MEYER_UI_RESOURCE_API_VERSION_TEXT
+            VALUE "ResourcePayloadId", MEYER_UI_RESOURCE_PAYLOAD_ID_TEXT
+            VALUE "ResourceManifestSchema", MEYER_UI_RESOURCE_MANIFEST_SCHEMA_VERSION_TEXT
+            VALUE "ResourcePrefix", MEYER_UI_RESOURCE_QRC_PREFIX
+            VALUE "ResourceManifest", MEYER_UI_RESOURCE_MANIFEST_NAME
+            VALUE "ResourceExports", MEYER_UI_RESOURCE_EXPORTS_TEXT
         END
     END
     BLOCK "VarFileInfo"

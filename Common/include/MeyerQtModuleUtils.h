@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Logger.h"
+#include "MeyerUiResourceContract.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -26,13 +27,15 @@ inline QString AppDir() {
 // Resource DLL 的初始化接口本身是幂等的，并且使用 PreventUnloadHint 保持到进程退出，
 // 所以多个 UI 模块先后调用不会重复注册或出现函数指针悬空。
 inline bool EnsureUiResourcesLoaded() {
-    const QString resourceRoot = ":/MeyerScan/Modules";
+    const QString resourceRoot = QString::fromLatin1(MEYER_UI_RESOURCE_RUNTIME_ROOT);
     if (QDir(resourceRoot).exists()) {
         // 其它模块或 MainExe 已经完成注册时直接复用全局 Qt 资源树。
         return true;
     }
 
     typedef bool (*InitializeUiResourcesFunc)();
+    typedef int (*ReadUiResourceIntegerFunc)();
+    typedef const char* (*ReadUiResourceTextFunc)();
     static bool attempted = false;
     static bool initialized = false;
     static QLibrary* resourceLibrary = nullptr;
@@ -47,6 +50,29 @@ inline bool EnsureUiResourcesLoaded() {
     resourceLibrary->setLoadHints(QLibrary::PreventUnloadHint);
     if (!resourceLibrary->load()) {
         // 加载失败时不抛异常，ModuleResourceDir 会继续尝试安装目录和源码目录降级。
+        return false;
+    }
+
+    // 初始化前先校验资源加载合同。仅有同名 DLL 不代表它使用相同的 RCDATA
+    // 编号、qrc 路径或清单结构；严格校验可以在页面创建前发现错误覆盖。
+    const ReadUiResourceIntegerFunc readApiVersion =
+        reinterpret_cast<ReadUiResourceIntegerFunc>(
+            resourceLibrary->resolve("GetMeyerUiResourcesApiVersion"));
+    const ReadUiResourceIntegerFunc readPayloadId =
+        reinterpret_cast<ReadUiResourceIntegerFunc>(
+            resourceLibrary->resolve("GetMeyerUiResourcesPayloadId"));
+    const ReadUiResourceIntegerFunc readManifestSchema =
+        reinterpret_cast<ReadUiResourceIntegerFunc>(
+            resourceLibrary->resolve("GetMeyerUiResourcesManifestSchemaVersion"));
+    const ReadUiResourceTextFunc readPrefix =
+        reinterpret_cast<ReadUiResourceTextFunc>(
+            resourceLibrary->resolve("GetMeyerUiResourcesPrefix"));
+    if (!readApiVersion || !readPayloadId || !readManifestSchema || !readPrefix ||
+        readApiVersion() != MEYER_UI_RESOURCE_API_VERSION ||
+        readPayloadId() != MEYER_UI_RESOURCE_PAYLOAD_ID ||
+        readManifestSchema() != MEYER_UI_RESOURCE_MANIFEST_SCHEMA_VERSION ||
+        QString::fromLatin1(readPrefix()) !=
+            QString::fromLatin1(MEYER_UI_RESOURCE_QRC_PREFIX)) {
         return false;
     }
 

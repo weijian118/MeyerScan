@@ -5,6 +5,31 @@
 
 $ErrorActionPreference = "Stop"
 
+# qrc 前缀必须与 C++ 加载器和 Version.rc 使用同一份合同定义。
+# 脚本只解析 ASCII 合同头中的字符串宏，不复制一份容易漂移的常量。
+$contractPath = Join-Path $RepositoryRoot "Common\include\MeyerUiResourceContract.h"
+
+function Read-ContractStringMacro {
+    param(
+        [string]$Path,
+        [string]$MacroName
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "UI resource contract header not found: $Path"
+    }
+
+    $pattern = '^\s*#define\s+' + [Regex]::Escape($MacroName) + '\s+"([^"]+)"\s*$'
+    foreach ($line in [System.IO.File]::ReadAllLines($Path, [System.Text.Encoding]::ASCII)) {
+        $match = [Regex]::Match($line, $pattern)
+        if ($match.Success) {
+            return $match.Groups[1].Value
+        }
+    }
+
+    throw "UI resource contract macro not found: $MacroName"
+}
+
 # 只纳入正式 UI 资源类型。
 # 临时文件、快捷方式和运行数据即使误放进 Resources，也不会进入客户发布 DLL。
 $allowedExtensions = @(".png", ".qss", ".svg", ".ico", ".jpg", ".jpeg", ".bmp", ".gif", ".qm")
@@ -25,6 +50,12 @@ function ConvertTo-PortableRelativePath {
 }
 
 $repository = (Resolve-Path -LiteralPath $RepositoryRoot).Path
+$contractPath = Join-Path $repository "Common\include\MeyerUiResourceContract.h"
+$resourcePrefix = Read-ContractStringMacro -Path $contractPath `
+                                           -MacroName "MEYER_UI_RESOURCE_QRC_PREFIX"
+if (-not $resourcePrefix.StartsWith("/")) {
+    throw "UI resource qrc prefix must start with '/': $resourcePrefix"
+}
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $repository "MyUIResources\resources\MeyerScanUiResources.qrc"
 }
@@ -71,7 +102,7 @@ try {
     $writer.WriteStartDocument()
     $writer.WriteStartElement("RCC")
     $writer.WriteStartElement("qresource")
-    $writer.WriteAttributeString("prefix", "/MeyerScan/Modules")
+    $writer.WriteAttributeString("prefix", $resourcePrefix)
 
     foreach ($entry in $entries) {
         $writer.WriteStartElement("file")
@@ -87,4 +118,4 @@ try {
     $writer.Dispose()
 }
 
-Write-Host "Qt resource manifest generated: $outputFullPath ($($entries.Count) files)"
+Write-Host "Qt resource manifest generated: $outputFullPath ($($entries.Count) files, prefix=$resourcePrefix)"

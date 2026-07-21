@@ -1,5 +1,13 @@
 # 修改记录
 
+## 2026-07-21 - 0.2.0
+
+- 新增 `Common/include/MeyerUiResourceContract.h`，统一维护 RCDATA 编号 `101`、资源 API 版本、清单版本和 qrc 路径前缀。
+- 新增资源合同查询导出函数，公共 Qt 加载器在注册前校验资源 DLL，避免错误资源包覆盖后才出现路径或 ABI 问题。
+- Version.rc 增加 `ResourceApiVersion`、`ResourcePayloadId`、`ResourceManifestSchema`、`ResourcePrefix`、`ResourceManifest` 和 `ResourceExports` 详细信息字段。
+- 资源清单脚本改为读取公共合同头，不再单独硬编码 qrc 前缀；测试增加 RCDATA 101 和合同字段验证。
+- 明确客户定制资源必须保留旧 alias，从客户交付版本构建并在关闭 MeyerScan 后替换完整资源 DLL。
+
 ## 2026-07-16
 
 - 版本升级为 `v0.1.4`，同步 CMake、代码版本和 Windows DLL 文件版本。

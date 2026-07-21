@@ -10,8 +10,8 @@
 - Qt `rcc -binary` 生成二进制资源包，随后作为 Windows `RCDATA` 嵌入 DLL。
 - DLL 初始化后使用 `:/MeyerScan/Modules/<模块名>/...` 访问资源。
 - MainExe 正式发布目录不再需要散落的 `Resources/Modules/.../icon` 和 `qss` 文件。
-- 当前构建清单自动收集 608 个 PNG/QSS/qm 等允许类型资源；数量由生成脚本输出和测试确认，不在业务代码中硬编码。
-- 当前代码/文件版本为 `v0.1.4`；除既有建单资源外，新增 MyCalibrationColorUI v0.2.0 的弹窗 QSS、相机初始预览图和关闭按钮 normal/hover 图片。
+- 当前构建清单自动收集 611 个 PNG/QSS/qm 等允许类型资源；数量由生成脚本输出和测试确认，不在业务代码中硬编码。
+- 当前代码/文件版本为 `v0.2.0`；本版本增加资源包合同查询接口和 RCDATA/路径一致性校验。
 
 ## 设计边界
 
@@ -21,12 +21,19 @@
 
 资源编译进 DLL 可以防止客户直接修改或误删单个 PNG/QSS，但不能作为加密或版权保护手段。熟悉 PE/Qt 资源格式的人仍可能提取资源；真正的完整性保障应由安装包文件清单、哈希校验和自动修复承担。
 
-资源 DLL 是全部 UI 发布资源的单一产物。任一模块新增、删除或修改正式发布资源时，所属 UI 模块需要按功能变化递增版本，`MyUIResources` 也必须递增版本并重新生成清单；否则现场只能看到图片已变化，却无法从 versionList 判断资源包批次。后续可在 DLL 内再生成分模块资源哈希清单，减少人工核对。
+## 资源替换合同
+
+- 资源加载合同集中在 `Common/include/MeyerUiResourceContract.h`：RCDATA 编号固定为 `101`，资源 API 版本为 `1`，qrc 前缀为 `/MeyerScan/Modules`，清单结构版本为 `1`。C++ 加载器、Version.rc 和生成脚本不得各自复制这些常量。
+- 资源 DLL 导出合同查询函数：`GetMeyerUiResourcesApiVersion`、`GetMeyerUiResourcesPayloadId`、`GetMeyerUiResourcesManifestSchemaVersion` 和 `GetMeyerUiResourcesPrefix`。公共加载器在注册资源前校验它们，防止错误 DLL 覆盖后页面才失败。
+- 客户定制资源应从客户交付版本的 Git tag/worktree 构建，保留原有资源 alias，只替换相同路径的图标或 QSS；旧 alias 不得删除或改名。覆盖 DLL 前必须关闭 MeyerScan，并使用客户原 EXE 做资源 smoke 和关键页面验证。
+- 若 UI 业务代码没有变化，不要为了资源补丁伪造业务 DLL 的二进制版本；资源包版本由 `MeyerScan_UIResources.dll` 和 versionList 单独记录。
+
+资源 DLL 是全部 UI 发布资源的单一产物。任一正式发布资源变化时，`MyUIResources` 必须递增版本并重新生成清单；所属 UI 模块只需在 CHANGELOG 记录资源变化，只有业务代码或其公共接口变化时才递增业务 DLL 版本。这样资源补丁可以独立发布，versionList 仍能识别资源包批次。后续可在 DLL 内再生成分模块资源哈希清单，减少人工核对。
 
 ## 构建与测试
 
 - VS2015：打开 `MeyerScan_UIResources.sln`，构建 `Release|x64`。
 - CMake：由根 `F:\MeyerScan\CMakeLists.txt` 聚合构建。
-- 测试：运行 `bin\Release\UIResourcesTest.exe`，验证重复初始化幂等、QSS/PNG 读取、版本接口、注销、重新注册和重注册后资源可读生命周期。
+- 测试：运行 `bin\Release\UIResourcesTest.exe`，验证重复初始化幂等、资源合同、RCDATA 101、QSS/PNG 读取、版本接口、注销、重新注册和重注册后资源可读生命周期。
 
 脚本必须保存为带 BOM 的 UTF-8，并使用 Windows PowerShell 5.1 兼容语法。

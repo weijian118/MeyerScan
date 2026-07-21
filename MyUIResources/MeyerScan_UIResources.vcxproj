@@ -64,6 +64,7 @@ if errorlevel 1 exit /b %errorlevel%</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\UIResources.h" />
+    <ClInclude Include="..\Common\include\MeyerUiResourceContract.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\MeyerScanUiResources.qrc" />
