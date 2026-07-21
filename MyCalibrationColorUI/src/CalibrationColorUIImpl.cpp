@@ -24,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CalibrationColorUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CalibrationColorUI v0.6.0 (2026-07-20)";
+const char* Version = "MeyerScan_CalibrationColorUI v0.7.0 (2026-07-21)";
 }
 
 // CalibrationPreviewWidget 保持预览区域为正方形，并按比例绘制色卡采集图片。
@@ -200,7 +200,21 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
         context->detection.detectionStatus >
             CalibrationColorDeviceDetectionProductionInferred ||
         context->detection.effectiveDeviceNumberUtf8[0] == '\0' ||
-        context->detection.effectiveModelCodeUtf8[0] == '\0') {
+        context->detection.effectiveModelCodeUtf8[0] == '\0' ||
+        context->firmwareVersions.structSize !=
+            sizeof(CalibrationColorFirmwareVersionContext) ||
+        context->firmwareVersions.schemaVersion !=
+            MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION ||
+        context->firmwareVersions.mainBoardStatus !=
+            CalibrationColorFirmwareVersionValid ||
+        context->firmwareVersions.mainBoardVersionUtf8[0] == '\0' ||
+        (context->firmwareVersions.projectionBoardStatus !=
+             CalibrationColorFirmwareVersionValid &&
+         context->firmwareVersions.projectionBoardStatus !=
+             CalibrationColorFirmwareVersionNotRequired) ||
+        (context->firmwareVersions.projectionBoardStatus ==
+             CalibrationColorFirmwareVersionValid &&
+         context->firmwareVersions.projectionBoardVersionUtf8[0] == '\0')) {
         m_hasDeviceContext = false;
         std::memset(&m_deviceContext, 0, sizeof(m_deviceContext));
         WriteLog(LogLevel::Warning,
@@ -215,12 +229,17 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
     WriteLog(LogLevel::Info,
              "SetDeviceContext",
               QString("Device context accepted: detection=%1 profile=%2 profileName=%3 "
-                      "reportedNumber=%4 effectiveNumber=%5 reportedModelCode=%6 "
-                      "effectiveModelCode=%7 product=%8 identityStatus=%9 production=%10 "
-                      "compatibility=%11 detail=%12")
+                      "mainBoardVersion=%4 projectionBoardVersion=%5 "
+                      "reportedNumber=%6 effectiveNumber=%7 reportedModelCode=%8 "
+                      "effectiveModelCode=%9 product=%10 identityStatus=%11 production=%12 "
+                      "compatibility=%13 detail=%14")
                   .arg(m_deviceContext.detection.detectionStatus)
                   .arg(m_deviceContext.deviceModel)
                   .arg(QString::fromUtf8(m_deviceContext.modelNameUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.firmwareVersions.mainBoardVersionUtf8))
+                  .arg(QString::fromUtf8(
+                      m_deviceContext.firmwareVersions.projectionBoardVersionUtf8))
                   .arg(QString::fromUtf8(
                       m_deviceContext.detection.reportedDeviceNumberUtf8))
                   .arg(QString::fromUtf8(
@@ -261,6 +280,10 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
         m_deviceContext.detection.reportedDeviceNumberUtf8));
     root->setProperty("reportedModelCode", QString::fromUtf8(
         m_deviceContext.detection.reportedModelCodeUtf8));
+    root->setProperty("mainBoardFirmwareVersion", QString::fromUtf8(
+        m_deviceContext.firmwareVersions.mainBoardVersionUtf8));
+    root->setProperty("projectionBoardFirmwareVersion", QString::fromUtf8(
+        m_deviceContext.firmwareVersions.projectionBoardVersionUtf8));
     root->setProperty("deviceDetectionStatus", m_deviceContext.detection.detectionStatus);
     root->setProperty("deviceProductionMode", m_deviceContext.detection.isProductionMode);
     root->setProperty("deviceUsesCompatibilityDefaults",

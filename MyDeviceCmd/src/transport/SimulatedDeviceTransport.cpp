@@ -382,11 +382,32 @@ namespace meyer
                 }
                 break;
             case protocol::ReadMainBoardVersion:
+                if ((m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_MainBoardVersionReadFailure) != 0U)
+                {
+                    // 发送成功但不生成响应，测试可验证主控板版本是必需步骤。
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadMainBoardVersion;
                 payload.push_back(1U);
                 payload.push_back(2U);
                 payload.push_back(0x03U);
                 payload.push_back(0xE9U);
+                break;
+            case protocol::ReadProjectionBoardVersion:
+                if ((m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure) != 0U)
+                {
+                    // 投图板版本只在 MyScan3 Profile 中发送；失败时按版本预检失败处理。
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+                responseCode = protocol::UploadProjectionBoardVersion;
+                payload.push_back(2U);
+                payload.push_back(3U);
+                payload.push_back(0x01U);
+                payload.push_back(0x2CU);
                 break;
             case protocol::ReadBattery:
                 responseCode = protocol::UploadBattery;

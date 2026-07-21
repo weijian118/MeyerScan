@@ -309,7 +309,15 @@ extern "C"
         MeyerDeviceCmd_InitDeviceInfo(&preflight->deviceInfo);
         MeyerDeviceCmd_InitProductIdentity(&preflight->productIdentity);
         MeyerDeviceCmd_InitDetectionRecord(&preflight->detectionRecord);
+        MeyerDeviceCmd_InitFirmwareVersionSnapshot(&preflight->firmwareVersions);
         return MeyerDeviceCmdResult_Ok;
+    }
+
+    // 初始化主控板/投图板版本快照，默认两个读取步骤都保持 NotRun。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitFirmwareVersionSnapshot(
+        MeyerDeviceFirmwareVersionSnapshot* versions)
+    {
+        return InitializeStructure(versions);
     }
 
     // 初始化曝光参数结构。

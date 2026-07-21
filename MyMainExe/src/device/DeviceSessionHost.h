@@ -6,6 +6,12 @@
 //   1. 本类只持有一个 MeyerDeviceCmdHandle，避免设置、校准、扫描各开一套 USB。
 //   2. DeviceCmd/DeviceTransport 使用绝对路径动态加载，MainExe 不链接其 import lib。
 //   3. 对外缓存并复制 DeviceCmd 公共 POD 快照，不复制内部 C++ 对象或 USB 句柄。
+//   4. ConfigCenter 决定创建/练习是否允许生产兼容身份；宿主把最终 bool 转为
+//      RequireProgrammedDeviceNumber/AllowProductionCompatibilityIdentity 策略。
+//   5. 设备编号、型号、主控板/投图板版本只在一次预检中读取，结果缓存到
+//      m_lastPreflight；Settings、颜色校准和工作台读取副本，不重复发送命令。
+//   6. DeviceCmd 调用可能等待 USB，PrepareDeviceSession 在工作线程中执行；
+//      GUI 线程只运行局部事件循环维持绘制，按钮调用点负责防止用户重入。
 // =============================================================================
 #pragma once
 

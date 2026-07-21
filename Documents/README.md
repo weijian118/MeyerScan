@@ -12,6 +12,7 @@
 | `MeyerScan重构-AI协作记录.md` | 会影响后续开发的关键决策索引 |
 | `GitHub提交与网络故障排查规范.md` | GitHub 认证、VPN 判断、提交顺序、网络排查和本地备份验收规范 |
 | `PowerShell开发与自动化脚本规范.md` | PowerShell 5.1、编码、路径、退出码、构建锁和备份安全 |
+| `MeyerScan开发问题与答案.md` | 设备链路、设备信息保存、版本读取、生产模式、UI 资源和 smoke-main 的常见问题答案 |
 
 模块具体实现和逐次修改分别以公共头文件、源码、模块 README/CHANGELOG 和 Git 历史为准，不在全局文档重复。
 

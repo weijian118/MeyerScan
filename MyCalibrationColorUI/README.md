@@ -2,7 +2,7 @@
 
 `MyCalibrationColorUI` 输出 `MeyerScan_CalibrationColorUI.dll`，用于承载颜色校准界面、流程编排和颜色校正参数生成入口。
 
-当前版本为 `0.6.0`，公共虚接口 ABI 为 5，设备上下文 schema 为 4。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；快照包含协议 Profile、产品身份以及 D9/C7/CE 的完整检测记录。颜色校准 UI 不自行解析回包、加载 DeviceCmd/DeviceTransport 或创建第二个 USB 会话。
+当前版本为 `0.7.0`，公共虚接口 ABI 为 6，设备上下文 schema 为 5。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；快照包含协议 Profile、产品身份、D9/C7/CE 检测记录及主控板/投图板版本。颜色校准 UI 不自行解析回包、加载 DeviceCmd/DeviceTransport 或创建第二个 USB 会话。
 
 ## 当前定位
 

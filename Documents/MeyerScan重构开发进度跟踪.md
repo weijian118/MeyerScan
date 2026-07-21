@@ -6,15 +6,15 @@
 
 ## 1. 最新验证基线
 
-验证日期：2026-07-20。
+验证日期：2026-07-21。
 
 | 检查 | 结果 |
 |---|---|
 | CMake Release 全量构建 | 通过；最终采用非并行构建，避免多个工程争用同一输出文件 |
-| 根 CTest | 2026-07-20 按“仅创建要求正式编号”的最终口径全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke |
-| MainExe smoke | `--smoke`、`--smoke-main`、`--smoke-external-order` 已通过 |
+| 根 CTest | 2026-07-21 按“仅创建要求正式编号”的最终口径重新执行全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke |
+| MainExe smoke | `MeyerScan.exe --smoke-main` 重新执行并以退出码 0 通过；根 CTest 中的 `--smoke`、`--smoke-external-order` 同样通过 |
 | VS2015 根方案 | 最近一轮 Release x64 通过；仅保留既有外部登录头文件编码/声明警告 |
-| 版本清单 | `versionList_20260720_225724_479.json`：27 项，0 缺失，0 文件/代码版本不一致，0 `codeVersionError`；MainExe `0.5.1`、DeviceCmd `0.6.1`、SettingsUI/CalibrationColorUI `0.6.0` 均匹配 |
+| 版本清单 | 已生成 `MyMainExe/bin/Release/logs/versionList/versionList_20260721_091346_667.json`；包含 MainExe `0.6.0`、DeviceCmd `0.7.0`、SettingsUI/CalibrationColorUI `0.7.0`、ConfigCenter `0.2.0`，文件版本与代码版本均匹配 |
 | 设备实机预检 | 2026-07-20 确认 Cypress、USB3 和 D4/D9 设备编号 `6200002002566`；CD 后 CE 仍超时。新流程记录 `FirmwareTooOld + CompatibilityInferred` 并使用 `62000020` effective 值继续，但 P1/P2/P3 尚未实机精确确定 |
 | 注释安全 | 0 错误、0 警告 |
 | 文档备份脚本 | PowerShell 5.1 AST、BOM 和两次隔离幂等执行通过 |
@@ -34,13 +34,13 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 | 模块 | 版本 | 当前成熟度 |
 |---|---:|---|
-| MainExe | 0.5.1 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；仅创建要求真实编号，练习/颜色校准/后续三维校准允许生产兼容身份，并转发完整 `deviceIdentity`；真实生产设备准入和完整校准业务待实机联调 |
+| MainExe | 0.6.0 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；工作台生产模式策略由 ConfigCenter 控制，转发主控板/投图板版本和完整 `deviceIdentity`；真实生产设备准入和完整校准业务待实机联调 |
 | Logger | 1.1.1 | 基础能力可用；已提供 API 版本导出 |
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.1 | 转换链路可用；已提供 API 版本导出 |
 | DeviceTransport | 1.2.0 | 默认自动遍历 CyAPI 设备，严格区分 USB2/USB3；32 项无硬件 smoke 通过，实机枚举和 USB3 判断已确认；长时间采集和拔插恢复待联调 |
-| DeviceCmd | 0.6.1 | 48 组 A 类命令可用；D9/C7/CE 详细诊断、reported/effective 检测记录、产品目录、8 个精确型号、生产模式/兼容/冲突预检和状态 14 合同已通；完整 CE 实机链路、MyScan5/6 区分、Wireless 连接和 Flash 写入待联调 |
-| ConfigCenter | 0.1.1 | 读取骨架可用；迁移、通知、加密待完成 |
+| DeviceCmd | 0.7.0 | 50 个 A 类命令码可用；D9/C7/CE 详细诊断、主控板/投图板版本、reported/effective 检测记录、产品目录、8 个精确型号、生产模式/兼容/冲突预检和状态 15 合同已通；完整 CE 实机链路、MyScan5/6 区分、Wireless 连接和 Flash 写入待联调 |
+| ConfigCenter | 0.2.0 | 读取骨架可用；新增练习/创建生产模式独立策略；迁移、通知、加密待完成 |
 | Permission | 0.1.1 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.1 | 本地/云端 JSON 快照骨架可用；由 MainExe 统一读取并注入 UI |
 | CaseOrderService | 0.2.2 | 标准嵌套建单保存/查询、患者/订单轻量列表和最小 schema 可用；完整 CRUD、事务和迁移待完成 |
@@ -49,12 +49,12 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | UIResources | 0.1.4 | 统一资源 DLL 可用；已收录颜色校准 QSS、预览图和关闭按钮状态资源 |
 | HomeUI | 0.3.3 | 页面和入口动作可用；只接收应用目录，不再带数据库语义 |
 | CaseUI | 0.3.3 | 宿主快照列表和动作上报可用；真实 CRUD/Workflow 未闭环 |
-| SettingsUI | 0.6.0 | 颜色校准工作台/连接/USB3/D9/C7/CE/产品身份预检、一次设备信息提示、完整 POD 注入和可拖动模态遮罩可用；生产设备未写正式编号不拦截；配置保存/刷新未闭环 |
+| SettingsUI | 0.7.0 | 颜色校准工作台/连接/USB3/D9/C7/CE/产品身份/主控板和投图板版本预检、一次设备信息提示、完整 POD 注入和可拖动模态遮罩可用；生产设备未写正式编号不拦截；配置保存/刷新未闭环 |
 | OrderCreateUI | 0.5.5 | 建单 UI、牙位/桥、完整上下文导出和公共清空确认弹窗可用；字段校验仍需完善 |
 | OrderScanWorkspaceShell | 0.1.4 | 创建/练习容器和步骤切换可用 |
 | ExternalLaunchAdapter | 0.1.1 | CMD JSON 第三方建单归一化链路可用 |
 | Calibration3DUI | 0.1.1 | UI/流程骨架；设备与计算未接入 |
-| CalibrationColorUI | 0.6.0 | 只接受已验证 USB3、产品身份和完整检测 POD；保存 reported/effective 值及生产/兼容来源，参考弹窗、拖动、资源和设置遮罩可用；设备取图与计算未接入 |
+| CalibrationColorUI | 0.7.0 | 只接受已验证 USB3、产品身份、主控板/投图板版本和完整检测 POD；保存 reported/effective 值及生产/兼容来源，参考弹窗、拖动、资源和设置遮罩可用；设备取图与计算未接入 |
 | ScanWorkflowUI | 0.2.4 | QVTK 页面、稳定 code 流程按钮和资源释放骨架可用 |
 | DataProcessUI | 0.2.4 | QVTK 页面、稳定 code 处理入口和资源释放骨架可用 |
 | SendUI | 0.1.3 | 页面和动作上报可用；导出/上传未实现 |

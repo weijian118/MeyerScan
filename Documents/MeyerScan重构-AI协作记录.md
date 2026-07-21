@@ -19,6 +19,12 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-21：设备版本快照和工作台生产模式配置
+
+- 问题：颜色校准在完成连接、设备编号和型号判断后还必须读取下位机版本；mOS MyScan 有主控板和投图板，其他系列只有主控板，不能把投图板异常误判为所有机型故障。
+- 结论：DeviceCmd 在型号确认后读取 `0x14/0x15` 主控板版本，只有 MyScan Profile 读取 `0x12/0x13` 投图板版本；版本和读取状态进入固定 POD、DeviceSessionHost 快照、SettingsUI/CalibrationColorUI 上下文、工作台 JSON 和日志。
+- 影响：DeviceCmd ABI/schema 升级为 5；SettingsUI ABI/schema 为 7/5；CalibrationColorUI ABI/schema 为 6/5。生产工作台准入由 ConfigCenter 的 `device.practiceAllowProductionMode`、`device.orderCreateAllowProductionMode` 独立控制，默认 true/false。
+
 ### 2026-07-20：只有创建订单扫描要求正式设备编号
 
 - 问题：新设备在生产调试阶段直到最后打包才写入设备编号，型号代码也可能尚未写入；若完全拒绝未写号设备，生产练习和校准流程无法运行，但正式订单扫描需要真实设备编号进行约束。
@@ -218,4 +224,4 @@ git -C F:\MeyerScan log -- <module>/CHANGELOG.md
 
 ---
 
-> **文档版本**：v3.1（2026-07-15，补充 UI 注入、服务读模型、扫描规则和 ABI 门禁决策）
+> **文档版本**：v3.2（2026-07-21，补充下位机版本快照和生产模式配置决策）

@@ -12,7 +12,15 @@ class IUIComponents;
 class QPushButton;
 
 // CalibrationColorUIImpl 是颜色校准 UI 的骨架实现。
-// 当前先提供可嵌入界面和日志链路，后续再替换为真实颜色采集、计算和结果确认流程。
+//
+// 数据流和边界:
+//   1. MainExe 的 DeviceSessionHost 先完成连接、USB3、编号、型号和下位机版本预检。
+//   2. SettingsUI 将结果转换为 CalibrationColorDeviceContext，并在 CreateWidget 前
+//      调用 SetDeviceContext；本类立即按值复制，不保存调用方栈内存地址。
+//   3. 颜色校准使用 effective 身份执行业务，同时保留 reported 值和来源供日志诊断；
+//      主控板/投图板版本也只读上下文，不再次加载 DeviceCmd 或创建 USB 会话。
+//   4. 未来取图和校准计算从按钮动作进入宿主编排，不能把 Transport、协议解析、
+//      产品目录或数据库持久化逻辑写进本 UI 类。
 class CalibrationColorUIImpl : public ICalibrationColorUI {
     Q_DECLARE_TR_FUNCTIONS(CalibrationColorUI)
 

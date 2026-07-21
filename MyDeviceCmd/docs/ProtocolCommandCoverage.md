@@ -1,7 +1,7 @@
 # 设备协议命令覆盖表
 
-本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf` 及旧有线软件实例。`MyDeviceCmd 0.6.1`
-已经为协议表中的 48 个命令码提供语义接口或对应的响应解析路径。
+本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf` 及旧有线软件实例。`MyDeviceCmd 0.7.0`
+已经为协议表中的 50 个命令码提供语义接口或对应的响应解析路径。
 
 状态含义：
 
@@ -21,6 +21,7 @@
 | `0x0E` 开关灯 | 无 | `MeyerDeviceCmd_SetLight` | 已实现、模拟通过、待实机 |
 | `0x0C` 强制开灯 | 无 | `MeyerDeviceCmd_SetForceLight` | 已实现、模拟通过、待实机 |
 | `0x14` 读取主板版本 | `0x15` | `MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、待实机 |
+| `0x12` 读取投图板版本（仅 mOS MyScan） | `0x13` | `MeyerDeviceCmd_RefreshBasicState`；`MeyerDeviceCmd_PrepareColorCalibration` | 已实现、模拟通过、待实机 |
 | `0x1A` 读取电池状态 | `0x1C` | `MeyerDeviceCmd_RefreshBasicState` | 已实现、模拟通过、待实机 |
 
 ## 相机与采集参数
@@ -62,7 +63,8 @@ DeviceCmd 只负责协议读写。
 | `0xCD` 读取设备信息 | `0xCE` | `MeyerDeviceCmd_ReadDeviceInfo`；`MeyerDeviceCmd_PrepareColorCalibration` | 已实现、校准预检模拟通过、待实机 |
 | `0xC9` 固化设备信息 | `0xCB` | `MeyerDeviceCmd_StoreDeviceInfo` | 已实现、模拟通过、待实机 |
 
-颜色校准型号检测固定顺序为 D4/D9、必要时 C2/C7、CD/CE。详细解析会区分
+颜色校准型号检测固定顺序为 D4/D9、必要时 C2/C7、CD/CE、身份确认后的 0x14/0x15，
+mOS MyScan 再执行 0x12/0x13。详细解析会区分
 无回包、普通坏包、求和校验失败、`0xFFFF` 未初始化和业务值非法；兼容默认值
 只写入 `MeyerDeviceDetectionRecord.effective*`，真实 `reported*` 字段保持原样。
 

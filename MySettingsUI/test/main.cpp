@@ -149,6 +149,14 @@ int OnCalibrationPreflight(void* context,
     std::strcpy(deviceContext->detection.reportedModelCodeUtf8, "62000053");
     std::strcpy(deviceContext->detection.effectiveModelCodeUtf8, "62000053");
     std::strcpy(deviceContext->detection.detailUtf8, "Exact simulated device identity");
+    // MyScan 5 预检必须返回主控板版本，并明确说明投图板不适用。
+    deviceContext->firmwareVersions.structSize = sizeof(deviceContext->firmwareVersions);
+    deviceContext->firmwareVersions.schemaVersion =
+        MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
+    deviceContext->firmwareVersions.mainBoardStatus = SettingsFirmwareVersionValid;
+    deviceContext->firmwareVersions.projectionBoardStatus =
+        SettingsFirmwareVersionNotRequired;
+    std::strcpy(deviceContext->firmwareVersions.mainBoardVersionUtf8, "1.2.1001");
     std::strcpy(deviceContext->detailUtf8, "Simulated calibration preflight passed");
     return deviceContext->status;
 }
@@ -170,6 +178,8 @@ QString ExpectedPreflightMessage(int status) {
         return "The device number does not match the device model.";
     case SettingsCalibrationPreflightDeviceResponseAbnormal:
         return "The device response is abnormal.";
+    case SettingsCalibrationPreflightFirmwareVersionReadFailed:
+        return "Unable to read the device firmware version.";
     case SettingsCalibrationPreflightDeviceNumberInvalid:
         return "The device number is invalid.";
     case SettingsCalibrationPreflightDeviceModelCodeInvalid:

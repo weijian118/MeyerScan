@@ -65,7 +65,7 @@
 
 ### 设置持久化策略
 
-- **骨架期（当前 v0.6.0）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
+- **骨架期（当前 v0.7.0）**：路径使用 `QStandardPaths::DocumentsLocation` 派生安全默认值，云端地址保持空白提示；正式配置由 MainExe/设置服务读取 ConfigCenter 后通过版本化上下文注入，不显示开发机 `D:/` 路径，也不由 UI 直接读取配置文件；
   修改后暂不持久化，仅停留在 UI 控件层面。
 - **正式阶段（规划）**：设置项的读写统一走 `ConfigCenter.dll` 的 `runtime_config.json`，由 ConfigCenter 负责配置的版本校验、迁移回滚和变更通知。设置模块不直接访问文件系统或数据库。
 - **路径字段备注**：订单存储路径和打包路径在正式阶段应从 ConfigCenter 读取用户/客户配置，

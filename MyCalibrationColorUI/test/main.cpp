@@ -102,6 +102,15 @@ int main(int argc, char* argv[]) {
     std::strcpy(deviceContext.detection.reportedModelCodeUtf8, "62000053");
     std::strcpy(deviceContext.detection.effectiveModelCodeUtf8, "62000053");
     std::strcpy(deviceContext.detection.detailUtf8, "Exact simulated device identity");
+    // MyScan 5 只有主控板：主控板版本有效，投图板状态明确为 NotRequired。
+    deviceContext.firmwareVersions.structSize = sizeof(deviceContext.firmwareVersions);
+    deviceContext.firmwareVersions.schemaVersion =
+        MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
+    deviceContext.firmwareVersions.mainBoardStatus =
+        CalibrationColorFirmwareVersionValid;
+    deviceContext.firmwareVersions.projectionBoardStatus =
+        CalibrationColorFirmwareVersionNotRequired;
+    std::strcpy(deviceContext.firmwareVersions.mainBoardVersionUtf8, "1.2.1001");
     if (!Check(calibration->SetDeviceContext(&deviceContext),
                "CalibrationColorUI 接受已验证设备快照")) {
         calibration->Shutdown();
@@ -125,6 +134,8 @@ int main(int argc, char* argv[]) {
     // 根控件属性应使用 effective 值，后续颜色算法无需理解生产模式兼容规则。
     if (!Check(widget->property("deviceId").toString() == "6200005301203" &&
                widget->property("modelCode").toString() == "62000053" &&
+               widget->property("mainBoardFirmwareVersion").toString() == "1.2.1001" &&
+               widget->property("projectionBoardFirmwareVersion").toString().isEmpty() &&
                widget->property("deviceDetectionStatus").toInt() ==
                    CalibrationColorDeviceDetectionExact,
                "颜色校准根控件记录完整设备检测结果")) {

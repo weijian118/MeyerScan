@@ -7,8 +7,8 @@
 namespace ModuleInfo
 {
     static const char* const Name = "MeyerScan_DeviceCmd";
-    static const char* const Version = "MeyerScan_DeviceCmd v0.6.1 (2026-07-20)";
-    static const char* const ApiVersion = "2.1.0";
+    static const char* const Version = "MeyerScan_DeviceCmd v0.7.0 (2026-07-21)";
+    static const char* const ApiVersion = "2.2.0";
     // 与 include/DeviceCmd.h 的 MEYER_DEVICE_CMD_API_VERSION 保持一致。
-    static const int ApiVersionNumber = 4;
+    static const int ApiVersionNumber = 5;
 }

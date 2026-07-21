@@ -54,7 +54,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.6.0 (2026-07-20)";
+const char* Version = "MeyerScan_SettingsUI v0.7.0 (2026-07-21)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -1090,6 +1090,15 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
             informationLines << tr("Device model: %1").arg(
                 QString::fromUtf8(deviceContext.productNameUtf8));
             informationLines << tr("Device model code: %1").arg(effectiveModelCode);
+            informationLines << tr("Main board firmware: %1").arg(
+                QString::fromUtf8(
+                    deviceContext.firmwareVersions.mainBoardVersionUtf8));
+            const QString projectionBoardVersion = QString::fromUtf8(
+                deviceContext.firmwareVersions.projectionBoardVersionUtf8);
+            if (!projectionBoardVersion.isEmpty()) {
+                informationLines << tr("Projection board firmware: %1").arg(
+                    projectionBoardVersion);
+            }
             if (deviceContext.detection.isProductionMode != 0) {
                 informationLines << tr("Production mode: Yes");
             }
@@ -1122,10 +1131,14 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
                              informationLines.join("\n"));
             WriteLog(LogLevel::Info,
                      "DeviceInformationDisplayed",
-                     QString("number=%1 modelCode=%2 product=%3 production=%4 compatibility=%5")
+                     QString("number=%1 modelCode=%2 product=%3 mainBoardVersion=%4 "
+                             "projectionBoardVersion=%5 production=%6 compatibility=%7")
                          .arg(effectiveNumber)
                          .arg(effectiveModelCode)
                          .arg(QString::fromUtf8(deviceContext.productNameUtf8))
+                         .arg(QString::fromUtf8(
+                             deviceContext.firmwareVersions.mainBoardVersionUtf8))
+                         .arg(projectionBoardVersion)
                          .arg(deviceContext.detection.isProductionMode)
                          .arg(deviceContext.detection.usedCompatibilityDefaults));
 
@@ -1243,6 +1256,24 @@ void SettingsUIImpl::ShowColorCalibrationDialog(
     std::strncpy(colorContext.detection.detailUtf8,
                  deviceContext.detection.detailUtf8,
                  sizeof(colorContext.detection.detailUtf8) - 1U);
+    // 版本快照按字段复制，不让颜色校准模块重新建立 DeviceCmd 连接或重复发送命令。
+    colorContext.firmwareVersions.structSize =
+        sizeof(colorContext.firmwareVersions);
+    colorContext.firmwareVersions.schemaVersion =
+        MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
+    colorContext.firmwareVersions.mainBoardStatus =
+        deviceContext.firmwareVersions.mainBoardStatus;
+    colorContext.firmwareVersions.projectionBoardStatus =
+        deviceContext.firmwareVersions.projectionBoardStatus;
+    std::strncpy(colorContext.firmwareVersions.mainBoardVersionUtf8,
+                 deviceContext.firmwareVersions.mainBoardVersionUtf8,
+                 sizeof(colorContext.firmwareVersions.mainBoardVersionUtf8) - 1U);
+    std::strncpy(colorContext.firmwareVersions.projectionBoardVersionUtf8,
+                 deviceContext.firmwareVersions.projectionBoardVersionUtf8,
+                 sizeof(colorContext.firmwareVersions.projectionBoardVersionUtf8) - 1U);
+    std::strncpy(colorContext.firmwareVersions.detailUtf8,
+                 deviceContext.firmwareVersions.detailUtf8,
+                 sizeof(colorContext.firmwareVersions.detailUtf8) - 1U);
     if (!m_calibrationColor->SetDeviceContext(&colorContext)) {
         WriteLog(LogLevel::Warning,
                  "ShowColorCalibrationDialog",
@@ -1426,12 +1457,26 @@ int SettingsUIImpl::RunCalibrationPreflight(
          deviceContext->detection.schemaVersion !=
              MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION ||
          deviceContext->detection.effectiveDeviceNumberUtf8[0] == '\0' ||
-         deviceContext->detection.effectiveModelCodeUtf8[0] == '\0')) {
+         deviceContext->detection.effectiveModelCodeUtf8[0] == '\0' ||
+         deviceContext->firmwareVersions.structSize !=
+             sizeof(SettingsFirmwareVersionContext) ||
+         deviceContext->firmwareVersions.schemaVersion !=
+             MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION ||
+         deviceContext->firmwareVersions.mainBoardStatus !=
+             SettingsFirmwareVersionValid ||
+         deviceContext->firmwareVersions.mainBoardVersionUtf8[0] == '\0' ||
+         (deviceContext->firmwareVersions.projectionBoardStatus !=
+              SettingsFirmwareVersionValid &&
+          deviceContext->firmwareVersions.projectionBoardStatus !=
+              SettingsFirmwareVersionNotRequired) ||
+         (deviceContext->firmwareVersions.projectionBoardStatus ==
+              SettingsFirmwareVersionValid &&
+          deviceContext->firmwareVersions.projectionBoardVersionUtf8[0] == '\0'))) {
         // Ready 必须携带完整有效身份。旧 MainExe 或损坏 POD 不能继续弹出一个
         // 空设备信息窗口，更不能把空值注入颜色校准算法入口。
         deviceContext->status = SettingsCalibrationPreflightInternalError;
         std::strncpy(deviceContext->detailUtf8,
-                     "Calibration preflight returned an invalid detection context",
+                     "Calibration preflight returned an invalid identity or firmware context",
                      sizeof(deviceContext->detailUtf8) - 1U);
         return deviceContext->status;
     }
@@ -1472,6 +1517,9 @@ void SettingsUIImpl::ShowCalibrationPreflightMessage(int status) {
         break;
     case SettingsCalibrationPreflightDeviceModelCodeInvalid:
         message = tr("The device model code is invalid.");
+        break;
+    case SettingsCalibrationPreflightFirmwareVersionReadFailed:
+        message = tr("Unable to read the device firmware version.");
         break;
     default:
         message = tr("Unable to prepare the device for calibration.");

@@ -1,6 +1,18 @@
 ﻿// =============================================================================
 // 文件: DeviceCommandService.h
 // 作用: 声明设备命令、状态缓存和采集编排的内部门面。
+//
+// 整体设计:
+//   - 公共 C ABI 在 DeviceCmdApi.cpp 把 MeyerDeviceCmdHandle 还原为内部上下文，
+//     并通过每句柄 mutex 串行所有调用；DeviceCommandService 不暴露给其它 DLL。
+//   - ExecuteCommand 是所有 A 类命令的唯一交换入口，统一做能力检查、组帧、发送、
+//     接收、校验和响应码核对。ReadMachineCode 等语义函数只解释 payload。
+//   - PrepareColorCalibration 是只读预检编排，不执行写 Flash、校准计算或 UI 操作；
+//     失败时复制已取得的证据后关闭会话，Ready 时由 DeviceSessionHost 继续持有。
+//   - reported 字段只保存设备真实回包，effective 字段才允许保存兼容默认值；
+//     两者及来源必须一起传递，禁止用默认值覆盖真实字段。
+//   - m_state 是当前句柄内存快照，validFields 区分“真实值为 0”和“尚未读取”；
+//     调用方只能通过 GetStateSnapshot 获得副本，不能持有成员地址。
 // =============================================================================
 #pragma once
 
@@ -50,7 +62,8 @@ namespace meyer
             // 使用最近一次打开参数重新连接设备。
             std::int32_t Reconnect();
 
-            // 为颜色校准建立空闲会话，依次检查连接/USB、机器码和设备型号。
+            // 为颜色校准建立空闲会话，依次检查连接/USB、机器码、设备型号和
+            // 必需的下位机版本；成功后保留唯一会话供颜色校准继续使用。
             std::int32_t PrepareColorCalibration(const MeyerDeviceCmdOpenParams& params,
                                                  MeyerDeviceCalibrationPreflight& preflight);
 
@@ -140,6 +153,20 @@ namespace meyer
                                         CommandExchangeDiagnostics* diagnostics = nullptr);
             // 读取主板版本响应并更新状态快照。
             std::int32_t RefreshFirmwareVersion();
+            // 按已识别的机型读取主控板版本；mOS MyScan 还读取投图板版本。
+            std::int32_t RefreshFirmwareVersions();
+            // 读取 mOS MyScan 独有的 0x12/0x13 投图板版本响应。
+            std::int32_t RefreshProjectionBoardFirmwareVersion();
+            // 解析四字节版本 payload，并写入状态快照和对应有效位。
+            std::int32_t ReadFirmwareVersionPayload(std::uint8_t requestCode,
+                                                    std::uint8_t responseCode,
+                                                    char* destination,
+                                                    std::size_t destinationCapacity,
+                                                    std::uint64_t stateField,
+                                                    const char* operation);
+            // 将状态快照中的版本值和读取状态复制到预检 POD，供宿主/UI继续传递。
+            void FillFirmwareVersionSnapshot(MeyerDeviceFirmwareVersionSnapshot& snapshot,
+                                              std::int32_t lastResult) const;
             // 读取电池响应并更新状态快照。
             std::int32_t RefreshBattery();
             // 读取设备授权信息并更新状态快照。

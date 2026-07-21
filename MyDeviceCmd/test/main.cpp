@@ -177,6 +177,11 @@ namespace
         test.Expect((state.validFields & MeyerDeviceStateField_MachineCode) != 0U &&
                     std::string(state.deviceIdUtf8) == "6200005301203",
                     "device number is decoded from protocol digit bytes");
+        test.Expect((state.validFields & MeyerDeviceStateField_FirmwareVersion) != 0U &&
+                    std::string(state.firmwareVersionUtf8) == "1.2.1001" &&
+                    (state.validFields & MeyerDeviceStateField_ProjectionBoardFirmwareVersion) == 0U &&
+                    std::string(state.projectionBoardFirmwareVersionUtf8).empty(),
+                    "non-MyScan device keeps main-board version and skips projection-board command");
         test.Expect(state.model == MeyerDeviceModel_MyScan6Wireless &&
                     state.modelSource == MeyerDeviceModelSource_HostHint,
                     "model value is explicitly marked as a host hint");
@@ -637,9 +642,60 @@ namespace
                     std::strcmp(preflight.detectionRecord.reportedModelCodeUtf8,
                                 preflight.detectionRecord.effectiveModelCodeUtf8) == 0,
                     "exact detection keeps reported and effective identity values identical");
+        test.Expect(preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
+                    preflight.firmwareVersions.projectionBoardStatus == MeyerDeviceFirmwareVersion_NotRequired &&
+                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.2.1001" &&
+                    std::string(preflight.firmwareVersions.projectionBoardVersionUtf8).empty(),
+                    "MyScan5 preflight records main-board version and marks projection board not required");
         test.Expect(MeyerDeviceCmd_IsOpen(handle) == 1,
                     "successful color calibration preflight keeps one device session open");
         MeyerDeviceCmd_Close(handle);
+
+        // mOS MyScan 使用另一组协议 Profile，必须在识别完成后追加 0x12/0x13。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_None,
+            "6200002002566",
+            MeyerDeviceModel_MyScan3,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
+                    preflight.firmwareVersions.projectionBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
+                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.2.1001" &&
+                    std::string(preflight.firmwareVersions.projectionBoardVersionUtf8) == "2.3.300",
+                    "mOS MyScan preflight reads and records both board firmware versions");
+        MeyerDeviceCmd_Close(handle);
+
+        // 主控板版本对所有系列都是必需项；超时必须保留身份结果并阻止进入校准。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_MainBoardVersionReadFailure,
+            "6200005301203",
+            MeyerDeviceModel_MyScan5,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed &&
+                    preflight.firmwareVersions.mainBoardStatus ==
+                        MeyerDeviceFirmwareVersion_ResponseMissing,
+                    "main-board firmware timeout blocks calibration with a recorded version status");
+
+        // mOS MyScan 的主控板成功但投图板失败时，要保留主控板版本并准确标记失败板卡。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure,
+            "6200002002566",
+            MeyerDeviceModel_MyScan3,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed &&
+                    preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
+                    preflight.firmwareVersions.projectionBoardStatus ==
+                        MeyerDeviceFirmwareVersion_ResponseMissing,
+                    "mOS MyScan projection-board timeout preserves the valid main-board version");
     }
 
     // 运行无硬件模拟全链路。

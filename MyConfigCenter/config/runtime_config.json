@@ -2,6 +2,10 @@
     "database": {
         "type": "sqlite"
     },
+    "device": {
+        "practiceAllowProductionMode": true,
+        "orderCreateAllowProductionMode": false
+    },
     "feature": {
         "home": {
             "settingsVisible": true

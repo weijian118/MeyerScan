@@ -9,9 +9,9 @@
 #  define MEYERSCAN_SETTINGSUI_API __declspec(dllimport)
 #endif
 
-// SettingsUI 公共虚接口版本；颜色校准上下文增加完整设备检测记录后升级为 6。
-static const int MEYER_SETTINGS_UI_API_VERSION = 6;
-static const std::uint32_t MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION = 4U;
+// SettingsUI 公共虚接口版本；颜色校准上下文增加下位机版本快照后升级为 7。
+static const int MEYER_SETTINGS_UI_API_VERSION = 7;
+static const std::uint32_t MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION = 5U;
 static const std::uint32_t MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION = 1U;
 
 // 校准入口设备预检状态。数值与 DeviceCmd 的预检状态保持一致，但 SettingsUI
@@ -36,6 +36,8 @@ enum SettingsCalibrationPreflightStatus {
     SettingsCalibrationPreflightDeviceNumberInvalid = 12,
     // CE 校验通过但 8 位型号代码格式或 62 前缀不合法。
     SettingsCalibrationPreflightDeviceModelCodeInvalid = 13,
+    // 设备身份已识别，但颜色校准所需的主控板/投图板版本读取失败。
+    SettingsCalibrationPreflightFirmwareVersionReadFailed = 15,
 };
 
 // CE 型号代码读取状态与 DeviceCmd 公共枚举数值保持一致。SettingsUI 只用它
@@ -49,6 +51,32 @@ enum SettingsDeviceModelCodeReadStatus {
     SettingsDeviceModelCodeReadUninitialized = 5,
     SettingsDeviceModelCodeReadValueInvalid = 6,
 };
+
+// 下位机版本步骤状态与 DeviceCmd 数值保持一致，UI 仅据此判断副本是否完整。
+enum SettingsFirmwareVersionStatus {
+    SettingsFirmwareVersionNotRun = 0,
+    SettingsFirmwareVersionValid = 1,
+    SettingsFirmwareVersionNotRequired = 2,
+    SettingsFirmwareVersionResponseMissing = 3,
+    SettingsFirmwareVersionFrameInvalid = 4,
+    SettingsFirmwareVersionPayloadInvalid = 5,
+};
+
+// MainExe 传入的下位机版本副本。主控板对所有已支持系列必需；投图板只对
+// mOS MyScan 必需，其它系列明确记录 NotRequired，禁止 UI 猜测命令是否存在。
+struct SettingsFirmwareVersionContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t mainBoardStatus;
+    std::int32_t projectionBoardStatus;
+    char mainBoardVersionUtf8[32];
+    char projectionBoardVersionUtf8[32];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(SettingsFirmwareVersionContext) == 368U,
+              "SettingsFirmwareVersionContext ABI size changed");
 
 // DeviceCmd 型号检测记录在 SettingsUI 边界上的只读副本。该结构分别保留
 // 设备上报值和兼容有效值，UI 不允许把 effective 字段反写到设备。
@@ -102,11 +130,13 @@ struct SettingsCalibrationDeviceContext {
     char productNameUtf8[96];
     // 完整步骤记录放在结构末尾，老字段次序保持稳定；API/schema 已同步升级。
     SettingsDeviceDetectionContext detection;
+    // 设备身份和型号确认后读取的下位机版本快照，不能通过再次访问 USB 获取。
+    SettingsFirmwareVersionContext firmwareVersions;
 };
 
 // MainExe 和 SettingsUI 必须使用同一 API/schema；结构变化时编译期尺寸断言会拦截。
-static_assert(sizeof(SettingsCalibrationDeviceContext) == 960U,
-               "SettingsCalibrationDeviceContext ABI size changed");
+static_assert(sizeof(SettingsCalibrationDeviceContext) == 1328U,
+              "SettingsCalibrationDeviceContext ABI size changed");
 
 // 同步回调必须在返回前完成预检并写满 context；返回值使用
 // SettingsCalibrationPreflightStatus。同步调用保证弹窗不会在检查完成前闪现。

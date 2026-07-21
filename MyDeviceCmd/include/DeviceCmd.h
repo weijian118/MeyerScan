@@ -1,12 +1,23 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.6.1
+// 版本: 0.7.0
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
 //   查询、状态快照读取、灯光控制、采集启停和完整帧读取，不直接接触 CyAPI、
 //   MyDeviceTransport 内部对象或具体机型的命令字节。
+//
+// 设备识别与版本读取流程:
+//   1. DeviceTransport 只完成 Cypress 枚举、USB2/USB3 判断和原始字节收发。
+//   2. DeviceCmd 发送 D4/D9 读取真实设备编号；只有 D9 校验失败表示生产未写号。
+//   3. 生产状态使用 C2/C7 探测系列候选，随后所有设备都读取 CD/CE 型号代码。
+//   4. DeviceProductCatalog 综合编号前缀、完整型号代码和命令证据，输出产品系列、
+//      具体产品和协议 Profile；UI 不得复制这套映射。
+//   5. 型号确认后读取 0x14/0x15 主控板版本；只有 mOS MyScan 再读取
+//      0x12/0x13 投图板版本。其它系列不发送投图板命令。
+//   6. 完整结果写入 MeyerDeviceCalibrationPreflight，MainExe 只复制 POD 快照，
+//      Settings/Calibration/Scan 不持有 DeviceCmd 句柄或再次查询同一信息。
 //
 // ABI 约束:
 //   1. 公共结构只使用固定宽度整数、固定数组和调用方管理的缓冲区。
@@ -26,10 +37,10 @@
 #endif
 
 // 当前公共结构版本。新增字段时只能在 reserved 前追加，不能改变已有字段含义。
-static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 4U;
+static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 5U;
 
 // MainExe 动态加载 DLL 前校验的整数 ABI 版本。
-static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 4;
+static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 5;
 
 // 协议当前最大命令数据为 416 字节；保留 1024 字节可覆盖后续常规扩展，
 // 同时避免把不受控的大块内存放入公共结构。
@@ -88,6 +99,9 @@ enum MeyerDeviceCommandCode : std::uint8_t
     MeyerDeviceCommand_UploadMachineCode = 0xD9,
     MeyerDeviceCommand_SetLight = 0x0E,
     MeyerDeviceCommand_ForceLight = 0x0C,
+    // mOS MyScan 的独立投图板版本读取命令。
+    MeyerDeviceCommand_ReadProjectionBoardVersion = 0x12,
+    MeyerDeviceCommand_UploadProjectionBoardVersion = 0x13,
     MeyerDeviceCommand_ReadMainBoardVersion = 0x14,
     MeyerDeviceCommand_UploadMainBoardVersion = 0x15,
     MeyerDeviceCommand_ReadBattery = 0x1A,
@@ -317,7 +331,8 @@ enum MeyerDeviceCapability : std::uint64_t
     MeyerDeviceCapability_Temperature = 1ULL << 8,
     MeyerDeviceCapability_Exposure = 1ULL << 9,
     MeyerDeviceCapability_CalibrationData = 1ULL << 10,
-    MeyerDeviceCapability_FirmwareUpdate = 1ULL << 11
+    MeyerDeviceCapability_FirmwareUpdate = 1ULL << 11,
+    MeyerDeviceCapability_ProjectionBoardFirmwareVersion = 1ULL << 12
 };
 
 // 状态有效位区分“值为 0”和“尚未成功读取”，避免 UI 把未知状态显示成真实状态。
@@ -333,7 +348,8 @@ enum MeyerDeviceStateField : std::uint64_t
     MeyerDeviceStateField_LightRequested = 1ULL << 7,
     MeyerDeviceStateField_Capture = 1ULL << 8,
     MeyerDeviceStateField_FrameTelemetry = 1ULL << 9,
-    MeyerDeviceStateField_ModelCode = 1ULL << 10
+    MeyerDeviceStateField_ModelCode = 1ULL << 10,
+    MeyerDeviceStateField_ProjectionBoardFirmwareVersion = 1ULL << 11
 };
 
 // 颜色校准入口预检的业务状态。函数调用本身返回 DeviceCmdResult，调用成功后
@@ -358,7 +374,9 @@ enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
     MeyerDeviceCalibrationPreflight_DeviceModelCodeInvalid = 13,
     // 设备已识别为生产状态但尚未写入真实编号。该状态由创建工作流宿主设置；
     // 练习、颜色校准和三维校准可以继续使用带来源的 effective 兼容身份。
-    MeyerDeviceCalibrationPreflight_ProductionDeviceNumberRequired = 14
+    MeyerDeviceCalibrationPreflight_ProductionDeviceNumberRequired = 14,
+    // 设备身份已经识别，但颜色校准所需的版本命令读取失败。
+    MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed = 15
 };
 
 // 模拟后端专用标志，只允许测试程序使用。正式 DeviceTransport 后端忽略这些值，
@@ -380,7 +398,10 @@ enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
     // 以下三个标志生成“已经收到、但不是校验错误”的坏包，用于验证回包异常分支。
     MeyerDeviceCmdSimulatedFlag_DeviceNumberFrameInvalid = 1U << 11,
     MeyerDeviceCmdSimulatedFlag_ModelCodeFrameInvalid = 1U << 12,
-    MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid = 1U << 13
+    MeyerDeviceCmdSimulatedFlag_Camera1ProbeFrameInvalid = 1U << 13,
+    // 版本读取失败标志用于验证主控板和投图板的独立错误记录。
+    MeyerDeviceCmdSimulatedFlag_MainBoardVersionReadFailure = 1U << 14,
+    MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure = 1U << 15
 };
 
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，
@@ -520,6 +541,8 @@ struct MeyerDeviceStateSnapshot
     char modelNameUtf8[32];
     char deviceIdUtf8[32];
     char firmwareVersionUtf8[32];
+    // mOS MyScan 的独立投图板版本；其它机型没有该硬件时保持为空。
+    char projectionBoardFirmwareVersionUtf8[32];
     char expirationCodeHex[64];
     // 旧软件把 0xCE payload 前 8 字节逐字节转十进制后拼成机型标识。
     // 该文本保留原始含义；model 字段只在标识能可靠映射时才写具体枚举。
@@ -539,10 +562,37 @@ struct MeyerDeviceCmdMachineCode
 };
 
 // 公共 ABI 尺寸必须稳定。新增字段应优先消耗 reserved，并同步升级 schema/整数 ABI。
-static_assert(sizeof(MeyerDeviceStateSnapshot) == 304U,
+static_assert(sizeof(MeyerDeviceStateSnapshot) == 336U,
               "MeyerDeviceStateSnapshot ABI size changed");
 static_assert(sizeof(MeyerDeviceCmdMachineCode) == 88U,
               "MeyerDeviceCmdMachineCode ABI size changed");
+
+// 下位机版本读取结果。版本号按协议的三个字段规范化为
+// "主版本.次版本.修订号"；读取失败时保留状态和诊断文本，不能把空字符串当作版本。
+enum MeyerDeviceFirmwareVersionStatus : std::int32_t
+{
+    MeyerDeviceFirmwareVersion_NotRun = 0,
+    MeyerDeviceFirmwareVersion_Valid = 1,
+    MeyerDeviceFirmwareVersion_NotRequired = 2,
+    MeyerDeviceFirmwareVersion_ResponseMissing = 3,
+    MeyerDeviceFirmwareVersion_FrameInvalid = 4,
+    MeyerDeviceFirmwareVersion_PayloadInvalid = 5
+};
+
+struct MeyerDeviceFirmwareVersionSnapshot
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t mainBoardStatus;
+    std::int32_t projectionBoardStatus;
+    char mainBoardVersionUtf8[32];
+    char projectionBoardVersionUtf8[32];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceFirmwareVersionSnapshot) == 368U,
+              "MeyerDeviceFirmwareVersionSnapshot ABI size changed");
 
 // 一帧图像的元数据。像素内容由 GetFrame 写入调用方缓冲区。
 struct MeyerDeviceCmdFrameInfo
@@ -709,11 +759,12 @@ struct MeyerDeviceCalibrationPreflight
     MeyerDeviceCmdDeviceInfo deviceInfo;
     MeyerDeviceProductIdentity productIdentity;
     MeyerDeviceDetectionRecord detectionRecord;
+    MeyerDeviceFirmwareVersionSnapshot firmwareVersions;
     char detailUtf8[256];
     std::uint32_t reserved[8];
 };
 
-static_assert(sizeof(MeyerDeviceCalibrationPreflight) == 1832U,
+static_assert(sizeof(MeyerDeviceCalibrationPreflight) == 2232U,
               "MeyerDeviceCalibrationPreflight ABI size changed");
 
 // 0xDB/0xDC/0xDE 使用的曝光参数。前 16 个字段对应设置命令，读取响应额外
@@ -798,6 +849,9 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitMachineCode(MeyerDeviceCmdMachineCode* machineCode);
     // 初始化颜色校准设备预检结果。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCalibrationPreflight(MeyerDeviceCalibrationPreflight* preflight);
+    // 初始化主控板/投图板版本结果结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitFirmwareVersionSnapshot(
+        MeyerDeviceFirmwareVersionSnapshot* versions);
     // 初始化曝光参数结构。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitExposureParameters(MeyerDeviceCmdExposureParameters* parameters);
     // 读取指定协议/硬件 Profile 的协议族和能力目录。
@@ -830,7 +884,8 @@ extern "C"
         const MeyerDeviceCmdOpenParams* params,
         MeyerDeviceCalibrationPreflight* preflight);
 
-    // 串行读取机器码、主板版本、电池和设备期限原始信息；采集中返回 Busy。
+    // 串行读取机器码、主控板版本、必要时投图板版本、电池和设备期限原始信息；
+    // 采集中返回 Busy。版本结果从 MeyerDeviceStateSnapshot 的对应字段读取。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_RefreshBasicState(MeyerDeviceCmdHandle handle);
     // 非阻塞复制最近状态快照，不执行 USB I/O。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_GetStateSnapshot(MeyerDeviceCmdHandle handle, MeyerDeviceStateSnapshot* snapshot);

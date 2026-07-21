@@ -1,5 +1,12 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-21 - 0.7.0
+
+- SettingsUI API 升级为 7、校准上下文 schema 升级为 5，新增主控板/投图板版本快照并逐字段转发给 CalibrationColorUI。
+- 颜色校准入口设备信息弹窗显示主控板版本；`mOS MyScan` 额外显示投图板版本，其他系列不显示不存在的板卡。
+- Ready 上下文门禁新增版本结构、主控板有效状态及投图板 `Valid/NotRequired` 检查，避免旧宿主或空版本继续进入校准。
+- 新增版本读取失败提示，测试宿主补充版本快照；代码/CMake/Windows 文件版本升级为 0.7.0。
+
 ## 2026-07-20 - 0.6.0
 
 - SettingsUI API 升级为 6、校准设备上下文 schema 升级为 4，并完整转发 DeviceCmd 检测记录。

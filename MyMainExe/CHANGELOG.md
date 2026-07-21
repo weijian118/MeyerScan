@@ -1,5 +1,12 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-21（v0.6.0，下位机版本与生产模式配置）
+
+- DeviceSessionHost 适配 DeviceCmd ABI/schema 5，缓存并记录主控板/投图板版本；MainExe 将版本快照继续复制给 SettingsUI 和颜色校准模块。
+- 工作台 `deviceIdentity` JSON 增加两块板版本、读取状态和 `productionModeAllowed`，Scan/Process/Send 无需重新查询设备。
+- 创建/练习的生产模式准入不再硬编码，分别读取 `device.orderCreateAllowProductionMode` 和 `device.practiceAllowProductionMode`，缺失时仍采用“创建禁止、练习允许”的安全默认值。
+- 颜色校准和工作台日志增加版本号，版本读取失败显示稳定错误提示；代码/CMake/Windows 文件版本升级为 0.6.0。
+
 ## 2026-07-20（v0.5.1，创建/练习设备身份准入）
 
 - DeviceSessionHost 增加场景级身份准入策略：只有创建订单扫描流程要求真实设备编号；练习、颜色校准和后续三维校准允许使用明确标记来源的生产兼容身份。

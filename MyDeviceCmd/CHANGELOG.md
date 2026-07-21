@@ -1,5 +1,12 @@
 # MyDeviceCmd 变更记录
 
+## 2026-07-21 - 0.7.0
+
+- 根据旧有线软件实例新增 `0x12/0x13` 投图板版本命令，复用四字节“主版本/次版本/大端修订号”解析规则；`0x14/0x15` 明确命名为主控板版本。
+- 颜色校准预检在设备身份识别后读取下位机版本：所有系列读取主控板，只有 `mOS MyScan` 读取投图板，其它系列标记 `NotRequired` 且不发送投图板命令。
+- `MeyerDeviceStateSnapshot`、`MeyerDeviceCalibrationPreflight` 增加版本值、有效位和版本读取状态，失败返回稳定状态 15；主控板/投图板失败可分别诊断。
+- 模拟后端和 `DeviceCmdTest --smoke` 覆盖 MyScan5 单板、mOS MyScan 双板及两块板超时分支；公共 schema/整数 ABI 升级为 5，语义 API 升级为 2.2.0。
+
 ## 2026-07-20 - 0.6.1
 
 - 公共预检状态追加 `ProductionDeviceNumberRequired=14`，供工作流宿主表达“已识别生产设备但正式流程要求真实编号”的准入结果。

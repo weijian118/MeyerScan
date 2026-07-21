@@ -49,6 +49,12 @@ namespace meyer
                 MeyerDeviceCapability_CalibrationData |
                 MeyerDeviceCapability_FirmwareUpdate;
 
+            // 旧 mOS MyScan 设备额外拥有投图板；MyScan 5/5H/6 没有该硬件，
+            // 即使固件中保留同名命令，也不能把它登记为可用能力。
+            static const std::uint64_t myScanCapabilities =
+                commonCapabilities |
+                MeyerDeviceCapability_ProjectionBoardFirmwareVersion;
+
             // transportDecoderType 沿用 DeviceTransport ABI：6=Skys1000，7=Three。
             // 它只选择 B 类图像头解析方式，不作为产品型号对外展示。
             static const DeviceModelProfile profiles[] =
@@ -73,7 +79,7 @@ namespace meyer
                   MeyerDeviceProtocolFamily_LegacySimilar,
                   false,
                   7,
-                  commonCapabilities,
+                  myScanCapabilities,
                   "MyScan 3",
                   "Legacy similar protocol (pending verification)",
                   StopSequence::LightOffThenStop,

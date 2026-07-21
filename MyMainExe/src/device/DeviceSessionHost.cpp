@@ -242,14 +242,18 @@ std::int32_t DeviceSessionHost::PrepareDeviceSession(
                  ? LogLevel::Info
                  : LogLevel::Warning,
              operationName,
-             QString("status=%1 detection=%2 profile=%3 usb2=%4 reportedNumber=%5 "
-                     "effectiveNumber=%6 reportedModelCode=%7 effectiveModelCode=%8 "
-                     "product=%9 identityStatus=%10 production=%11 compatibility=%12 "
-                     "detail=%13")
+             QString("status=%1 detection=%2 profile=%3 usb2=%4 mainBoardVersion=%5 "
+                     "projectionBoardVersion=%6 reportedNumber=%7 effectiveNumber=%8 "
+                     "reportedModelCode=%9 effectiveModelCode=%10 product=%11 "
+                     "identityStatus=%12 production=%13 compatibility=%14 detail=%15")
                   .arg(preflight->status)
                   .arg(preflight->detectionRecord.detectionStatus)
                   .arg(preflight->state.model)
                   .arg(preflight->state.isUsb2)
+                  .arg(QString::fromUtf8(
+                      preflight->firmwareVersions.mainBoardVersionUtf8))
+                  .arg(QString::fromUtf8(
+                      preflight->firmwareVersions.projectionBoardVersionUtf8))
                   .arg(QString::fromUtf8(
                       preflight->detectionRecord.reportedDeviceNumberUtf8))
                   .arg(QString::fromUtf8(

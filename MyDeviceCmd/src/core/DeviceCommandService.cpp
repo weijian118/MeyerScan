@@ -323,6 +323,8 @@ namespace
             return MeyerDeviceCapability_MachineCode;
         case meyer::devicecmd::protocol::ReadMainBoardVersion:
             return MeyerDeviceCapability_FirmwareVersion;
+        case meyer::devicecmd::protocol::ReadProjectionBoardVersion:
+            return MeyerDeviceCapability_ProjectionBoardFirmwareVersion;
         case meyer::devicecmd::protocol::ReadBattery:
             return MeyerDeviceCapability_Battery;
         case meyer::devicecmd::protocol::ReadCameraParameters:
@@ -907,6 +909,24 @@ namespace meyer
                 return MeyerDeviceCmdResult_Ok;
             }
 
+            // 设备身份确定后再读取下位机版本。主控板版本是所有已支持系列的
+            // 必需信息；只有 mOS MyScan 还必须读取独立投图板版本。其它系列
+            // 不发送 0x12，避免把“没有投图板”误判为设备故障。
+            const std::int32_t firmwareResult = RefreshFirmwareVersions();
+            FillFirmwareVersionSnapshot(preflight.firmwareVersions, firmwareResult);
+            if (firmwareResult != MeyerDeviceCmdResult_Ok)
+            {
+                preflight.commandResult = firmwareResult;
+                preflight.status = MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed;
+                preflight.state = m_state;
+                preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                SetPreflightDetail(
+                    preflight,
+                    std::string("Firmware version read failed: ") + m_lastError);
+                Close();
+                return MeyerDeviceCmdResult_Ok;
+            }
+
             preflight.status = MeyerDeviceCalibrationPreflight_Ready;
             preflight.state = m_state;
             SetPreflightDetail(
@@ -946,7 +966,9 @@ namespace meyer
                 firstFailureMessage = m_lastError;
             }
 
-            const std::int32_t firmwareResult = RefreshFirmwareVersion();
+            // 版本读取必须在当前 profile 已确定后执行；mOS MyScan 会自动追加
+            // 投图板 0x12/0x13，其他系列只读取主控板 0x14/0x15。
+            const std::int32_t firmwareResult = RefreshFirmwareVersions();
             if (firstFailure == MeyerDeviceCmdResult_Ok && firmwareResult != MeyerDeviceCmdResult_Ok)
             {
                 firstFailure = firmwareResult;
@@ -1757,7 +1779,7 @@ namespace meyer
                 return MeyerDeviceCmdResult_Ok;
             }
 
-            // 旧软件在两条设备身份命令发送后分别等待 100/200 ms，再提交 Bulk IN。
+            // 旧软件在设备身份和版本请求发送后先等待固定时间，再提交 Bulk IN。
             // 只对真实 DeviceTransport 保留该时序；模拟后端无需人为拖慢自动化测试。
             if (m_lastOpenParams.backendType == MeyerDeviceCmdBackend_DeviceTransport)
             {
@@ -1768,6 +1790,12 @@ namespace meyer
                 else if (commandCode == protocol::ReadDeviceInfo)
                 {
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+                else if (commandCode == protocol::ReadMainBoardVersion ||
+                         commandCode == protocol::ReadProjectionBoardVersion)
+                {
+                    // 用户提供的旧软件实例在 0x14/0x12 后均等待 50 ms 再读回包。
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 }
             }
 
@@ -2119,37 +2147,126 @@ namespace meyer
             return MeyerDeviceCmdResult_Ok;
         }
 
-        std::int32_t DeviceCommandService::RefreshFirmwareVersion()
+        // 读取一个四字节版本回包。协议前两个字节是主/次版本，后两个字节
+        // 组成大端修订号；主控板和投图板共用此解析规则，但使用不同命令码。
+        std::int32_t DeviceCommandService::ReadFirmwareVersionPayload(
+            std::uint8_t requestCode,
+            std::uint8_t responseCode,
+            char* destination,
+            std::size_t destinationCapacity,
+            std::uint64_t stateField,
+            const char* operation)
         {
-            protocol::CommandFrame response;
-            const std::int32_t result = ExecuteCommand(protocol::ReadMainBoardVersion,
-                                                       nullptr,
-                                                       0U,
-                                                       protocol::UploadMainBoardVersion,
-                                                       &response,
-                                                       0U);
+            std::vector<std::uint8_t> payload;
+            const std::int32_t result = ReadFixedPayload(
+                requestCode,
+                responseCode,
+                4U,
+                payload,
+                operation);
             if (result != MeyerDeviceCmdResult_Ok)
             {
                 return result;
             }
-            if (response.payload.size() != 4U)
-            {
-                return SetError(MeyerDeviceCmdResult_ProtocolError,
-                                "Firmware response must contain exactly four bytes");
-            }
 
             const std::uint16_t revision =
-                static_cast<std::uint16_t>((static_cast<std::uint16_t>(response.payload[2]) << 8U) |
-                                           response.payload[3]);
+                static_cast<std::uint16_t>((static_cast<std::uint16_t>(payload[2]) << 8U) |
+                                           payload[3]);
             char version[32] = {};
             std::sprintf(version,
                          "%u.%u.%u",
-                         static_cast<unsigned int>(response.payload[0]),
-                         static_cast<unsigned int>(response.payload[1]),
+                         static_cast<unsigned int>(payload[0]),
+                         static_cast<unsigned int>(payload[1]),
                          static_cast<unsigned int>(revision));
-            CopyText(m_state.firmwareVersionUtf8, std::string(version));
-            m_state.validFields |= MeyerDeviceStateField_FirmwareVersion;
+            if (destination == nullptr || destinationCapacity == 0U)
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            std::memset(destination, 0, destinationCapacity);
+            std::strncpy(destination, version, destinationCapacity - 1U);
+            m_state.validFields |= stateField;
             return MeyerDeviceCmdResult_Ok;
+        }
+
+        std::int32_t DeviceCommandService::RefreshFirmwareVersion()
+        {
+            return ReadFirmwareVersionPayload(
+                protocol::ReadMainBoardVersion,
+                protocol::UploadMainBoardVersion,
+                m_state.firmwareVersionUtf8,
+                sizeof(m_state.firmwareVersionUtf8),
+                MeyerDeviceStateField_FirmwareVersion,
+                "ReadMainBoardFirmwareVersion");
+        }
+
+        std::int32_t DeviceCommandService::RefreshProjectionBoardFirmwareVersion()
+        {
+            return ReadFirmwareVersionPayload(
+                protocol::ReadProjectionBoardVersion,
+                protocol::UploadProjectionBoardVersion,
+                m_state.projectionBoardFirmwareVersionUtf8,
+                sizeof(m_state.projectionBoardFirmwareVersionUtf8),
+                MeyerDeviceStateField_ProjectionBoardFirmwareVersion,
+                "ReadProjectionBoardFirmwareVersion");
+        }
+
+        // 版本读取必须在型号识别之后执行。只有 mOS MyScan 使用投图板命令；
+        // 其它系列即使固件保留 0x12，也不能把异常回包当成必需信息。
+        std::int32_t DeviceCommandService::RefreshFirmwareVersions()
+        {
+            const std::int32_t mainResult = RefreshFirmwareVersion();
+            if (mainResult != MeyerDeviceCmdResult_Ok)
+            {
+                return mainResult;
+            }
+
+            if (m_profile != nullptr &&
+                (m_profile->capabilities &
+                 MeyerDeviceCapability_ProjectionBoardFirmwareVersion) != 0U)
+            {
+                return RefreshProjectionBoardFirmwareVersion();
+            }
+
+            // 切换到没有投图板的系列时清掉旧值和旧有效位，防止页面显示上一次设备。
+            std::memset(m_state.projectionBoardFirmwareVersionUtf8,
+                        0,
+                        sizeof(m_state.projectionBoardFirmwareVersionUtf8));
+            m_state.validFields &=
+                ~static_cast<std::uint64_t>(MeyerDeviceStateField_ProjectionBoardFirmwareVersion);
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 把设备层状态整理成可跨 DLL 复制的版本快照。有效位决定“值是否可靠”，
+        // lastResult 只用于在失败时给出稳定的响应/帧异常分类。
+        void DeviceCommandService::FillFirmwareVersionSnapshot(
+            MeyerDeviceFirmwareVersionSnapshot& snapshot,
+            std::int32_t lastResult) const
+        {
+            std::memset(&snapshot, 0, sizeof(snapshot));
+            snapshot.structSize = sizeof(snapshot);
+            snapshot.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            snapshot.mainBoardStatus =
+                (m_state.validFields & MeyerDeviceStateField_FirmwareVersion) != 0U
+                ? MeyerDeviceFirmwareVersion_Valid
+                : (lastResult == MeyerDeviceCmdResult_Timeout
+                   ? MeyerDeviceFirmwareVersion_ResponseMissing
+                   : MeyerDeviceFirmwareVersion_FrameInvalid);
+            snapshot.projectionBoardStatus =
+                (m_profile != nullptr &&
+                 (m_profile->capabilities &
+                  MeyerDeviceCapability_ProjectionBoardFirmwareVersion) != 0U)
+                ? (((m_state.validFields &
+                     MeyerDeviceStateField_ProjectionBoardFirmwareVersion) != 0U)
+                   ? MeyerDeviceFirmwareVersion_Valid
+                   : (lastResult == MeyerDeviceCmdResult_Timeout
+                      ? MeyerDeviceFirmwareVersion_ResponseMissing
+                      : MeyerDeviceFirmwareVersion_FrameInvalid))
+                : MeyerDeviceFirmwareVersion_NotRequired;
+            CopyText(snapshot.mainBoardVersionUtf8,
+                     std::string(m_state.firmwareVersionUtf8));
+            CopyText(snapshot.projectionBoardVersionUtf8,
+                     std::string(m_state.projectionBoardFirmwareVersionUtf8));
+            CopyText(snapshot.detailUtf8, m_lastError);
         }
 
         std::int32_t DeviceCommandService::RefreshBattery()

@@ -12,9 +12,13 @@
 ## 当前字段
 
 - `database.type`：数据库类型。当前支持 `mysql` 和 `sqlite`，MainExe 读取后调用 Database 切换类型。
+- `device.practiceAllowProductionMode`：练习工作台是否允许未写正式设备编号的生产调试设备使用带来源标记的兼容身份；默认 `true`。
+- `device.orderCreateAllowProductionMode`：创建订单工作台是否允许生产调试设备；默认 `false`，正式创建默认必须取得设备真实上报编号。
 - `feature.home.settingsVisible`：首页设置入口的产品默认显隐。
 - `feature.case.backHomeVisible`：案例管理返回首页按钮的产品默认显隐。
 
 ## 固定流程不进入配置
 
 等待页和单实例是 MainExe 固定流程，不允许用配置关闭，因此不写 `showWaitPage`、`singleInstance`。如果旧配置残留 `startup` 段，ConfigCenter 初始化时会迁移清理。
+
+颜色校准和三维校准是否允许生产兼容身份不是上述两个工作台开关控制的内容：两类校准当前都允许生产设备，但仍必须通过连接、USB3、型号、证据冲突和固件版本检查。

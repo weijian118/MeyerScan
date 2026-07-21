@@ -13,7 +13,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ConfigCenter";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_ConfigCenter v0.1.1 (2026-07-15)";
+const char* Version = "MeyerScan_ConfigCenter v0.2.0 (2026-07-21)";
 }
 }
 
@@ -190,6 +190,12 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
     // insert 会覆盖同名字段；这里是新对象，所以效果等同于写入一项。
     database.insert("type", "sqlite");
 
+    // 生产调试设备没有正式编号。练习默认允许带来源标记的兼容身份，创建订单
+    // 默认禁止；两个开关独立，客户包可调整，但不能改变颜色/三维校准策略。
+    QJsonObject device;
+    device.insert("practiceAllowProductionMode", true);
+    device.insert("orderCreateAllowProductionMode", false);
+
     // feature 只表达产品/客户默认显示策略，不表达授权。
     // 授权结果由 Permission 的 permission_rules.json 再过滤。
     QJsonObject feature;
@@ -201,6 +207,7 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
     feature.insert("case", caseUi);
 
     root.insert("database", database);
+    root.insert("device", device);
     root.insert("feature", feature);
 
     // 写入失败不抛异常；Init 随后打开文件失败会返回 false，让 MainExe 记录启动问题。

@@ -42,7 +42,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.5.1 (2026-07-20)";
+const char* Version = "MeyerScan_MainExe v0.6.0 (2026-07-21)";
 }
 
 // 从患者/订单读模型行中取稳定 ID。
@@ -996,14 +996,39 @@ int MainWindow::HandleCalibrationPreflight(
                  preflight.detectionRecord.detailUtf8,
                  sizeof(deviceContext->detection.detailUtf8) - 1U);
 
+    // 版本信息与身份信息一起复制，保证颜色校准模块只消费一次预检结果；
+    // 不把主控板/投图板版本重新查询分散到 SettingsUI 或 CalibrationColorUI。
+    deviceContext->firmwareVersions.structSize =
+        sizeof(deviceContext->firmwareVersions);
+    deviceContext->firmwareVersions.schemaVersion =
+        MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
+    deviceContext->firmwareVersions.mainBoardStatus =
+        preflight.firmwareVersions.mainBoardStatus;
+    deviceContext->firmwareVersions.projectionBoardStatus =
+        preflight.firmwareVersions.projectionBoardStatus;
+    std::strncpy(deviceContext->firmwareVersions.mainBoardVersionUtf8,
+                 preflight.firmwareVersions.mainBoardVersionUtf8,
+                 sizeof(deviceContext->firmwareVersions.mainBoardVersionUtf8) - 1U);
+    std::strncpy(deviceContext->firmwareVersions.projectionBoardVersionUtf8,
+                 preflight.firmwareVersions.projectionBoardVersionUtf8,
+                 sizeof(deviceContext->firmwareVersions.projectionBoardVersionUtf8) - 1U);
+    std::strncpy(deviceContext->firmwareVersions.detailUtf8,
+                 preflight.firmwareVersions.detailUtf8,
+                 sizeof(deviceContext->firmwareVersions.detailUtf8) - 1U);
+
     WriteUserAction("ColorCalibrationPreflight",
-                    QString("status=%1 detection=%2 profile=%3 usb2=%4 reportedNumber=%5 "
-                            "effectiveNumber=%6 reportedModelCode=%7 effectiveModelCode=%8 "
-                            "product=%9 identityStatus=%10 production=%11 compatibility=%12")
+                    QString("status=%1 detection=%2 profile=%3 usb2=%4 mainBoardVersion=%5 "
+                            "projectionBoardVersion=%6 reportedNumber=%7 "
+                            "effectiveNumber=%8 reportedModelCode=%9 effectiveModelCode=%10 "
+                            "product=%11 identityStatus=%12 production=%13 compatibility=%14")
                         .arg(deviceContext->status)
                         .arg(deviceContext->detection.detectionStatus)
                         .arg(deviceContext->deviceModel)
                         .arg(deviceContext->isUsb2)
+                        .arg(QString::fromUtf8(
+                            deviceContext->firmwareVersions.mainBoardVersionUtf8))
+                        .arg(QString::fromUtf8(
+                            deviceContext->firmwareVersions.projectionBoardVersionUtf8))
                         .arg(QString::fromUtf8(
                             deviceContext->detection.reportedDeviceNumberUtf8))
                         .arg(QString::fromUtf8(
@@ -3058,7 +3083,8 @@ QString MainWindow::BuildDefaultWorkspaceContextJson(const QString& mode) const 
 }
 
 // 准备当前工作台使用的唯一设备会话。
-// 创建模式使用严格身份策略；练习模式允许 DeviceCmd 已明确标记来源的生产默认身份。
+// 创建/练习是否允许生产兼容身份分别由 ConfigCenter 控制；缺失配置时使用
+// “练习允许、创建禁止”的安全默认值。颜色/三维校准不读取这两个工作台开关。
 bool MainWindow::PrepareWorkspaceDeviceSession() {
     if (m_skipWorkspaceDevicePreflightForSmoke) {
         // 自动化 smoke 只检查页面切换，不伪造 reported/effective 设备值。
@@ -3103,8 +3129,21 @@ bool MainWindow::PrepareWorkspaceDeviceSession() {
     m_workspaceDeviceSessionReady = false;
 
     MeyerDeviceCalibrationPreflight preflight = {};
-    const bool allowProductionIdentity =
-        m_currentWorkspaceMode == WorkspaceModePractice;
+    const bool practiceMode = m_currentWorkspaceMode == WorkspaceModePractice;
+    const char* productionModeConfigKey = practiceMode
+        ? "device.practiceAllowProductionMode"
+        : "device.orderCreateAllowProductionMode";
+    const bool productionModeDefault = practiceMode;
+    const bool allowProductionIdentity = m_config
+        ? m_config->GetBool(productionModeConfigKey, productionModeDefault)
+        : productionModeDefault;
+    WriteUserAction(
+        "WorkspaceProductionModePolicy",
+        QString("mode=%1 configKey=%2 allow=%3 default=%4")
+            .arg(practiceMode ? "practice" : "orderCreate")
+            .arg(QString::fromLatin1(productionModeConfigKey))
+            .arg(allowProductionIdentity)
+            .arg(productionModeDefault));
     const std::int32_t result = m_deviceSessionHost->PrepareWorkspaceSession(
         allowProductionIdentity, &preflight);
 
@@ -3116,13 +3155,17 @@ bool MainWindow::PrepareWorkspaceDeviceSession() {
     WriteUserAction(
         "WorkspaceDevicePreflight",
         QString("mode=%1 result=%2 status=%3 production=%4 compatibility=%5 "
-                "reportedNumber=%6 effectiveNumber=%7 reportedModelCode=%8 "
-                "effectiveModelCode=%9")
-            .arg(allowProductionIdentity ? "practice" : "orderCreate")
+                "mainBoardVersion=%6 projectionBoardVersion=%7 reportedNumber=%8 "
+                "effectiveNumber=%9 reportedModelCode=%10 effectiveModelCode=%11")
+            .arg(practiceMode ? "practice" : "orderCreate")
             .arg(result)
             .arg(preflight.status)
             .arg(preflight.detectionRecord.isProductionMode)
             .arg(preflight.detectionRecord.usedCompatibilityDefaults)
+            .arg(QString::fromUtf8(
+                preflight.firmwareVersions.mainBoardVersionUtf8))
+            .arg(QString::fromUtf8(
+                preflight.firmwareVersions.projectionBoardVersionUtf8))
             .arg(QString::fromUtf8(
                 preflight.detectionRecord.reportedDeviceNumberUtf8))
             .arg(QString::fromUtf8(
@@ -3170,6 +3213,14 @@ void MainWindow::SetWorkspaceDeviceIdentity(
                     m_currentWorkspaceMode == WorkspaceModePractice
                         ? "practice"
                         : "orderCreate");
+    const bool practiceMode = m_currentWorkspaceMode == WorkspaceModePractice;
+    const char* productionModeConfigKey = practiceMode
+        ? "device.practiceAllowProductionMode"
+        : "device.orderCreateAllowProductionMode";
+    identity.insert("productionModeAllowed",
+                    m_config
+                        ? m_config->GetBool(productionModeConfigKey, practiceMode)
+                        : practiceMode);
     identity.insert("preflightStatus", preflight.status);
     identity.insert("commandResult", preflight.commandResult);
     identity.insert("connectionState", preflight.state.connectionState);
@@ -3178,6 +3229,16 @@ void MainWindow::SetWorkspaceDeviceIdentity(
     identity.insert("model", preflight.state.model);
     identity.insert("modelSource", preflight.state.modelSource);
     identity.insert("modelName", QString::fromUtf8(preflight.state.modelNameUtf8));
+    identity.insert("mainBoardFirmwareVersion",
+                    QString::fromUtf8(
+                        preflight.firmwareVersions.mainBoardVersionUtf8));
+    identity.insert("projectionBoardFirmwareVersion",
+                    QString::fromUtf8(
+                        preflight.firmwareVersions.projectionBoardVersionUtf8));
+    identity.insert("mainBoardFirmwareStatus",
+                    preflight.firmwareVersions.mainBoardStatus);
+    identity.insert("projectionBoardFirmwareStatus",
+                    preflight.firmwareVersions.projectionBoardStatus);
     identity.insert("productFamily", preflight.productIdentity.productFamily);
     identity.insert("productModel", preflight.productIdentity.productModel);
     identity.insert("productIdentificationStatus",
@@ -3270,6 +3331,9 @@ void MainWindow::ShowWorkspaceDevicePreflightMessage(int status) {
         break;
     case MeyerDeviceCalibrationPreflight_DeviceResponseAbnormal:
         message = tr("The device response is abnormal.");
+        break;
+    case MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed:
+        message = tr("Unable to read the device firmware version.");
         break;
     default:
         message = tr("Unable to prepare the device for scanning.");

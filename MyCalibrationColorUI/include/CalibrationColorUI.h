@@ -9,9 +9,9 @@
 #  define MEYERSCAN_CALIBRATIONCOLORUI_API __declspec(dllimport)
 #endif
 
-// 颜色校准 UI 公共虚接口版本。设备快照增加完整检测记录后升级为 5。
-static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 5;
-static const std::uint32_t MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION = 4U;
+// 颜色校准 UI 公共虚接口版本。设备快照增加下位机版本记录后升级为 6。
+static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 6;
+static const std::uint32_t MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION = 5U;
 static const std::uint32_t MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION = 1U;
 
 // 颜色校准可接受的检测结果。数值与 DeviceCmd 保持一致，失败和冲突状态不会
@@ -48,6 +48,31 @@ struct CalibrationColorDeviceDetectionContext {
 static_assert(sizeof(CalibrationColorDeviceDetectionContext) == 424U,
               "CalibrationColorDeviceDetectionContext ABI size changed");
 
+enum CalibrationColorFirmwareVersionStatus {
+    CalibrationColorFirmwareVersionNotRun = 0,
+    CalibrationColorFirmwareVersionValid = 1,
+    CalibrationColorFirmwareVersionNotRequired = 2,
+    CalibrationColorFirmwareVersionResponseMissing = 3,
+    CalibrationColorFirmwareVersionFrameInvalid = 4,
+    CalibrationColorFirmwareVersionPayloadInvalid = 5,
+};
+
+// MainExe/SettingsUI 传入的主控板/投图板版本副本。投图板版本只有 mOS MyScan
+// 必需，其他系列通过 NotRequired 状态明确记录，而不是再次发送 0x12。
+struct CalibrationColorFirmwareVersionContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t mainBoardStatus;
+    std::int32_t projectionBoardStatus;
+    char mainBoardVersionUtf8[32];
+    char projectionBoardVersionUtf8[32];
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(CalibrationColorFirmwareVersionContext) == 368U,
+              "CalibrationColorFirmwareVersionContext ABI size changed");
+
 // MainExe/SettingsUI 传入的只读设备快照。它不包含 DeviceCmd 句柄，因而可以
 // 安全复制并在多个 UI 模块间传递；后续新增字段只能追加在 reserved 之前。
 struct CalibrationColorDeviceContext {
@@ -73,10 +98,12 @@ struct CalibrationColorDeviceContext {
     char productNameUtf8[96];
     // 颜色校准只保存和记录该检测副本，不重新解析 D9/C7/CE 原始回包。
     CalibrationColorDeviceDetectionContext detection;
+    // 下位机版本由宿主预检后注入，颜色校准模块只读取副本。
+    CalibrationColorFirmwareVersionContext firmwareVersions;
 };
 
 // 固定尺寸用于拦截独立升级时的新旧 DLL 合同错位。
-static_assert(sizeof(CalibrationColorDeviceContext) == 696U,
+static_assert(sizeof(CalibrationColorDeviceContext) == 1064U,
                "CalibrationColorDeviceContext ABI size changed");
 
 // ICalibrationColorUI 是颜色校准 UI 模块的公共接口。

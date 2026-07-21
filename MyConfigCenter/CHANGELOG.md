@@ -1,5 +1,11 @@
 ﻿# MeyerScan ConfigCenter 变更记录
 
+## 2026-07-21 - 0.2.0
+
+- 新增 `device.practiceAllowProductionMode`，默认允许练习工作台使用生产调试设备的带来源兼容身份。
+- 新增 `device.orderCreateAllowProductionMode`，默认禁止正式创建工作台使用未写设备编号的生产设备。
+- 默认配置生成、JSON 字段说明和 ConfigCenterTest 同步覆盖两个独立策略；代码/CMake/Windows 文件版本升级为 0.2.0。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.1.1`；新增动态 C++ 接口 ABI 版本导出，MainExe 版本不匹配时拒绝调用。

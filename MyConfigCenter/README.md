@@ -15,12 +15,16 @@
 - `feature.home.settingsVisible`
 - `feature.case.backHomeVisible`
 - `database.type`
+- `device.practiceAllowProductionMode`
+- `device.orderCreateAllowProductionMode`
 
 字段含义：
 
 - `database.type`：产品/客户默认数据库类型，当前支持 `mysql` / `sqlite`；当前默认值为 `sqlite`，MainExe 读取后调用 Database 切换类型。
 - `feature.home.settingsVisible`：首页“设置”入口的产品默认显隐，最终还要与 Permission 的 `home.settings.visible` 合并。
 - `feature.case.backHomeVisible`：案例管理“返回首页”按钮的产品默认显隐，最终还要与 Permission 的 `case.backHome.visible` 合并。
+- `device.practiceAllowProductionMode`：练习工作台是否允许生产调试设备使用带来源标记的兼容身份，默认 `true`。
+- `device.orderCreateAllowProductionMode`：创建订单工作台是否允许生产调试设备，默认 `false`；关闭时必须取得设备真实编号。
 
 `runtime_config.json` 与 `permission_rules.json` 的关系：
 

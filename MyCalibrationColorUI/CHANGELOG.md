@@ -1,5 +1,12 @@
 ﻿# MeyerScan CalibrationColorUI 变更记录
 
+## 2026-07-21 - 0.7.0 下位机版本快照
+
+- 公共接口 ABI 升级为 6、设备上下文 schema 升级为 5，新增主控板/投图板版本值和读取状态副本。
+- `SetDeviceContext` 强制校验主控板版本有效；投图板只接受 `Valid` 或 `NotRequired`，有效状态下版本字符串不能为空。
+- 根控件增加 `mainBoardFirmwareVersion` 和 `projectionBoardFirmwareVersion` 只读属性，日志记录完整设备身份及两块板版本。
+- 测试宿主使用 MyScan5 单主控板场景验证版本上下文；代码/CMake/Windows 文件版本升级为 0.7.0。
+
 ## 2026-07-20 - 0.6.0 完整设备检测记录
 
 - 公共接口 ABI 升级为 5、设备上下文 schema 升级为 4，新增完整检测记录副本。

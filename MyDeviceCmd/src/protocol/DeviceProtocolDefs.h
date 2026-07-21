@@ -34,6 +34,9 @@ namespace meyer
                 SetLight = 0x0EU,
                 ReadMainBoardVersion = 0x14U,
                 UploadMainBoardVersion = 0x15U,
+                // mOS MyScan 独立投图板版本读取请求和回包。
+                ReadProjectionBoardVersion = 0x12U,
+                UploadProjectionBoardVersion = 0x13U,
                 ReadBattery = 0x1AU,
                 UploadBattery = 0x1CU,
                 MachineCodeStoreReply = 0x1DU,

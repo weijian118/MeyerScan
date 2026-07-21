@@ -55,20 +55,29 @@ int main(int argc, char* argv[]) {
     if (!Check(config->GetBool("feature.home.settingsVisible", false), "默认首页设置入口可见")) {
         return 3;
     }
+    // 生产模式准入是两个独立产品策略：练习默认放行，正式创建默认拒绝。
+    if (!Check(config->GetBool("device.practiceAllowProductionMode", false),
+               "练习模块默认允许生产模式设备")) {
+        return 4;
+    }
+    if (!Check(!config->GetBool("device.orderCreateAllowProductionMode", true),
+               "创建模块默认禁止生产模式设备")) {
+        return 5;
+    }
     // 缺失整数应返回调用方默认值，避免 UI 模块因为配置漏项崩溃。
     if (!Check(config->GetInt("missing.int", 42) == 42, "缺失整数配置返回调用方默认值")) {
-        return 4;
+        return 6;
     }
 
     // DLL 接口使用调用方传入 buffer，避免 std::string 跨 DLL 边界造成运行库不一致问题。
     char buffer[64] = {0};
     if (!Check(config->GetString("database.type", "fallback", buffer, sizeof(buffer)),
                "database.type 默认字符串可读取")) {
-        return 5;
+        return 7;
     }
     // 当前重构主链路默认走 SQLite；这里固定断言，避免默认配置以后又漂回旧 MySQL 口径。
     if (!Check(std::strcmp(buffer, "sqlite") == 0, "database.type 默认值为 sqlite")) {
-        return 6;
+        return 8;
     }
 
     // Shutdown 清理内部缓存状态，为后续同进程扩展测试预留干净环境。
