@@ -53,6 +53,109 @@ namespace
         std::cout << "       error: " << &message[0] << "\n";
     }
 
+    // 把 D4/D9 设备编号步骤的稳定整数状态转换为现场可读文本。
+    // 返回文本同时说明“未收到回包、帧异常、求和校验触发生产模式”等差异。
+    const char* DeviceNumberStatusText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceNumberRead_NotRun:
+            return "NotRun (0xD4/0xD9 was not executed)";
+        case MeyerDeviceNumberRead_Valid:
+            return "Valid (0xD9 received, parsed and checksum passed)";
+        case MeyerDeviceNumberRead_ResponseMissing:
+            return "ResponseMissing (0xD9 was not captured)";
+        case MeyerDeviceNumberRead_FrameInvalid:
+            return "FrameInvalid (0xD9 was captured but frame parsing failed)";
+        case MeyerDeviceNumberRead_ChecksumIndicatesUnprogrammed:
+            return "ChecksumIndicatesUnprogrammed (0xD9 checksum did not pass; production device)";
+        case MeyerDeviceNumberRead_ValueInvalid:
+            return "ValueInvalid (0xD9 frame passed but device number content is invalid)";
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 把 CD/CE 型号代码步骤状态转换为现场可读文本。
+    const char* ModelCodeStatusText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceModelCodeRead_NotRun:
+            return "NotRun (0xCD/0xCE was not executed)";
+        case MeyerDeviceModelCodeRead_Valid:
+            return "Valid (0xCE received, parsed and checksum passed)";
+        case MeyerDeviceModelCodeRead_FirmwareTooOld:
+            return "FirmwareTooOld (0xCE was not captured)";
+        case MeyerDeviceModelCodeRead_FrameInvalid:
+            return "FrameInvalid (0xCE was captured but frame parsing failed)";
+        case MeyerDeviceModelCodeRead_ChecksumInvalid:
+            return "ChecksumInvalid (0xCE checksum did not pass)";
+        case MeyerDeviceModelCodeRead_Uninitialized:
+            return "Uninitialized (0xCE reports an uninitialized model code)";
+        case MeyerDeviceModelCodeRead_ValueInvalid:
+            return "ValueInvalid (0xCE frame passed but model code content is invalid)";
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 把生产设备 C2/C7 系列探测状态转换为现场可读文本。
+    const char* SeriesProbeStatusText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceSeriesProbe_NotRun:
+            return "NotRun";
+        case MeyerDeviceSeriesProbe_NotRequired:
+            return "NotRequired (a valid device number was already reported)";
+        case MeyerDeviceSeriesProbe_MyScan:
+            return "MyScan candidate (0xC7 was not captured)";
+        case MeyerDeviceSeriesProbe_MyScan5Or6:
+            return "MyScan 5/6 candidate (0xC7 was captured)";
+        case MeyerDeviceSeriesProbe_ResponseAbnormal:
+            return "ResponseAbnormal (0xC7 was captured but could not be parsed normally)";
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 把主控板/投图板版本步骤状态转换为现场可读文本。
+    const char* FirmwareVersionStatusText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceFirmwareVersion_NotRun:
+            return "NotRun";
+        case MeyerDeviceFirmwareVersion_Valid:
+            return "Valid (response received and version payload parsed)";
+        case MeyerDeviceFirmwareVersion_NotRequired:
+            return "NotRequired (this product family has no projection board)";
+        case MeyerDeviceFirmwareVersion_ResponseMissing:
+            return "ResponseMissing (version response was not captured)";
+        case MeyerDeviceFirmwareVersion_FrameInvalid:
+            return "FrameInvalid (version response could not be parsed)";
+        case MeyerDeviceFirmwareVersion_PayloadInvalid:
+            return "PayloadInvalid (version payload content is invalid)";
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 把 reported/effective 字段的来源转换为现场可读文本。
+    const char* IdentityValueSourceText(std::int32_t source)
+    {
+        switch (source)
+        {
+        case MeyerDeviceIdentityValueSource_DeviceReported:
+            return "DeviceReported";
+        case MeyerDeviceIdentityValueSource_CompatibilityDefault:
+            return "CompatibilityDefault";
+        default:
+            return "Unknown";
+        }
+    }
+
     // 验证协议帧能从 DeviceCmd 端到达模拟设备并获得期望响应。
     void TestRawCommand(MeyerDeviceCmdHandle handle, TestContext& test)
     {
@@ -787,7 +890,8 @@ namespace
 
     // 使用真实 DeviceTransport 执行颜色校准入口的只读预检。
     // 与 --probe-real 只验证 DLL/ABI 不同，本模式会先发送 0xD4/接收 0xD9，
-    // 再发送 0xCD/接收 0xCE，验证连接、USB、机器码和型号解析完整链路。
+    // 再发送 0xCD/接收 0xCE，并按识别出的机型读取主控板/投图板版本，验证
+    // 连接、USB、设备编号、型号、产品身份和下位机版本的完整只读链路。
     // 本函数不会调用任何 Store/Set/Flash 接口，因此不会修改设备参数。
     int RunRealCalibrationPreflight(const char* transportPath)
     {
@@ -827,7 +931,8 @@ namespace
             usbDescription = preflight.state.isUsb2 != 0 ? "2.x" : "3.x";
         }
 
-        // 按字段逐项输出，现场调试时可以区分“API 调用失败”和“业务门禁未通过”。
+        // 按字段逐项输出，现场调试时可以区分 API、连接、命令回包、解析、
+        // reported/effective 身份、生产模式和版本读取的不同失败层次。
         std::cout << "Calibration preflight API result: " << apiResult << "\n"
                   << "Calibration preflight status: " << preflight.status << "\n"
                   << "Command result: " << preflight.commandResult << "\n"
@@ -838,7 +943,51 @@ namespace
                   << "Model name: " << preflight.state.modelNameUtf8 << "\n"
                   << "Machine code: " << preflight.state.deviceIdUtf8 << "\n"
                   << "Model code: " << preflight.deviceInfo.modelCodeUtf8 << "\n"
-                  << "Detail: " << preflight.detailUtf8 << "\n";
+                  << "Detection status: " << preflight.detectionRecord.detectionStatus << "\n"
+                  << "Production mode: " << preflight.detectionRecord.isProductionMode << "\n"
+                  << "Compatibility defaults used: "
+                  << preflight.detectionRecord.usedCompatibilityDefaults << "\n"
+                  << "D4/D9 device number status: "
+                  << preflight.detectionRecord.deviceNumberStatus << " - "
+                  << DeviceNumberStatusText(preflight.detectionRecord.deviceNumberStatus) << "\n"
+                  << "Reported device number: "
+                  << preflight.detectionRecord.reportedDeviceNumberUtf8 << "\n"
+                  << "Effective device number: "
+                  << preflight.detectionRecord.effectiveDeviceNumberUtf8 << "\n"
+                  << "Device number source: "
+                  << IdentityValueSourceText(preflight.detectionRecord.deviceNumberSource) << "\n"
+                  << "C2/C7 series probe status: "
+                  << preflight.detectionRecord.seriesProbeStatus << " - "
+                  << SeriesProbeStatusText(preflight.detectionRecord.seriesProbeStatus) << "\n"
+                  << "CD/CE model code status: "
+                  << preflight.detectionRecord.modelCodeStatus << " - "
+                  << ModelCodeStatusText(preflight.detectionRecord.modelCodeStatus) << "\n"
+                  << "Reported model code: "
+                  << preflight.detectionRecord.reportedModelCodeUtf8 << "\n"
+                  << "Effective model code: "
+                  << preflight.detectionRecord.effectiveModelCodeUtf8 << "\n"
+                  << "Model code source: "
+                  << IdentityValueSourceText(preflight.detectionRecord.modelCodeSource) << "\n"
+                  << "Product family code: " << preflight.productIdentity.productFamily << "\n"
+                  << "Product family: " << preflight.productIdentity.seriesNameUtf8 << "\n"
+                  << "Product model code: " << preflight.productIdentity.productModel << "\n"
+                  << "Product model: " << preflight.productIdentity.productNameUtf8 << "\n"
+                  << "Protocol profile: " << preflight.productIdentity.protocolProfile << "\n"
+                  << "Product identification status: "
+                  << preflight.productIdentity.identificationStatus << "\n"
+                  << "0x14/0x15 main-board version status: "
+                  << preflight.firmwareVersions.mainBoardStatus << " - "
+                  << FirmwareVersionStatusText(preflight.firmwareVersions.mainBoardStatus) << "\n"
+                  << "Main-board firmware version: "
+                  << preflight.firmwareVersions.mainBoardVersionUtf8 << "\n"
+                  << "0x12/0x13 projection-board version status: "
+                  << preflight.firmwareVersions.projectionBoardStatus << " - "
+                  << FirmwareVersionStatusText(preflight.firmwareVersions.projectionBoardStatus) << "\n"
+                  << "Projection-board firmware version: "
+                  << preflight.firmwareVersions.projectionBoardVersionUtf8 << "\n"
+                  << "Detection detail: " << preflight.detectionRecord.detailUtf8 << "\n"
+                  << "Firmware detail: " << preflight.firmwareVersions.detailUtf8 << "\n"
+                  << "Preflight detail: " << preflight.detailUtf8 << "\n";
 
         if (apiResult != MeyerDeviceCmdResult_Ok)
         {

@@ -841,6 +841,10 @@ namespace meyer
                 {
                     preflight.productIdentity.identificationStatus =
                         MeyerDeviceProductIdentification_CompatibilityInferred;
+                    // 产品目录仍会根据 effective 型号代码填充一个可用型号，
+                    // 但该型号不是 CE 真实回包确认的结果，详情必须明确标记推断来源。
+                    CopyText(preflight.productIdentity.detailUtf8,
+                             "Product model inferred from a compatibility model code; 0xCE model code was unavailable");
                 }
             }
 

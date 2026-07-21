@@ -6,6 +6,7 @@
 - 颜色校准预检在设备身份识别后读取下位机版本：所有系列读取主控板，只有 `mOS MyScan` 读取投图板，其它系列标记 `NotRequired` 且不发送投图板命令。
 - `MeyerDeviceStateSnapshot`、`MeyerDeviceCalibrationPreflight` 增加版本值、有效位和版本读取状态，失败返回稳定状态 15；主控板/投图板失败可分别诊断。
 - 模拟后端和 `DeviceCmdTest --smoke` 覆盖 MyScan5 单板、mOS MyScan 双板及两块板超时分支；公共 schema/整数 ABI 升级为 5，语义 API 升级为 2.2.0。
+- `DeviceCmdTest --preflight-real` 增加设备编号、C2/C7、CD/CE、产品身份和两块下位机版本的详细状态输出；修正旧固件兼容型号仍显示“精确识别”的诊断文本。
 
 ## 2026-07-20 - 0.6.1
 
