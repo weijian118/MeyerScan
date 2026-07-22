@@ -46,7 +46,19 @@ function Remove-ExcludedBackupContent {
 
     # 先删最深层的排除目录，避免删除父目录后继续处理已经不存在的子目录。
     $excludedDirectories = Get-ChildItem -LiteralPath $resolvedRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $DirectoryNames -contains $_.Name -and $_.Name -ne ".git" } |
+        Where-Object {
+            if ($_.Name -eq ".git") {
+                return $false
+            }
+
+            foreach ($pattern in $DirectoryNames) {
+                if ($_.Name -like $pattern) {
+                    return $true
+                }
+            }
+
+            return $false
+        } |
         Sort-Object { $_.FullName.Length } -Descending
     $excludedDirectories = @($excludedDirectories)
     Write-Host "发现需要清理的历史排除目录：$($excludedDirectories.Count) 个"
@@ -105,7 +117,7 @@ if ($backup.Length -lt 8 -or $backup -match "^[A-Z]:\\$") {
 }
 
 $excludeDirs = @(
-    ".git", ".vs", "obj", "build", "build_vs2015",
+    ".git", ".vs", "obj", "build", "build_vs2015", ".cmake-build-*",
     "logs", "platforms", "sqldrivers",
     "plugins", "MySQL", "SQLite", "backup", "CMakeFiles"
 )

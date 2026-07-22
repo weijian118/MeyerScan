@@ -48,7 +48,7 @@
 
 ## 5. 当前脚本
 
-- `BackupToLocalRepository.ps1`：整体同步到 `F:\MeyerScan-Reposit`，负责第三方/现场文件过滤、历史排除内容清理和中文 Git 提交；仓库内 `Documents` 随源码直接备份，不再读取任何外部重构文档目录。
+- `BackupToLocalRepository.ps1`：整体同步到 `F:\MeyerScan-Reposit`，负责第三方/现场文件过滤、历史排除内容清理和中文 Git 提交；仓库内 `Documents` 随源码直接备份，不再读取任何外部重构文档目录。CMake 生成的 `.cmake-build-*` 目录也属于构建中间目录，必须排除，不进入本地仓库。
 - `CheckSourceCommentSafety.ps1`：检查自研源码的 UTF-8 BOM、`.rc` ASCII 约束、`//` 续行和疑似注释粘连；提交前和批量补注释后必须执行。
 - `MyUIResources/tools/GenerateResourceManifest.ps1`：扫描各模块 `Resources`，用 `XmlWriter` 生成确定性 qrc 清单；只允许 PNG/QSS/SVG/ICO/JPG/BMP/GIF/QM 等 UI 资源类型。
 
