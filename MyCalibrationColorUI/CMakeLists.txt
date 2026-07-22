@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_CalibrationColorUI VERSION 0.7.0 LANGUAGES CXX)
+project(MeyerScan_CalibrationColorUI VERSION 0.8.0 LANGUAGES CXX)
 
 
 

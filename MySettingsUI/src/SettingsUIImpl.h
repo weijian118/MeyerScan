@@ -143,6 +143,9 @@ private:
 
     // 根据预检状态显示客户可读提示；所有源文本保持英文并使用 tr()。
     void ShowCalibrationPreflightMessage(int status);
+    // 预检成功后按大小扫描头状态显示三种缺失提示；全部已校准时保持静默。
+    void ShowScanHeadColorCalibrationMessage(
+        const SettingsScanHeadColorCalibrationContext& context);
 
     // 显示单按钮公共提示；UIComponents 不可用时降级为 Qt 标准 QMessageBox。
     void ShowNoticeDialog(int level, const QString& title, const QString& message);

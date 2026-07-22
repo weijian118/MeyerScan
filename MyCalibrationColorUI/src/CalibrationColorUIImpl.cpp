@@ -24,7 +24,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_CalibrationColorUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_CalibrationColorUI v0.7.0 (2026-07-21)";
+const char* Version = "MeyerScan_CalibrationColorUI v0.8.0 (2026-07-22)";
 }
 
 // CalibrationPreviewWidget 保持预览区域为正方形，并按比例绘制色卡采集图片。
@@ -214,7 +214,33 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
              CalibrationColorFirmwareVersionNotRequired) ||
         (context->firmwareVersions.projectionBoardStatus ==
              CalibrationColorFirmwareVersionValid &&
-         context->firmwareVersions.projectionBoardVersionUtf8[0] == '\0')) {
+         context->firmwareVersions.projectionBoardVersionUtf8[0] == '\0') ||
+        context->scanHeadColorCalibration.structSize !=
+            sizeof(CalibrationColorScanHeadContext) ||
+        context->scanHeadColorCalibration.schemaVersion !=
+            MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION ||
+        (context->scanHeadColorCalibration.policy !=
+             CalibrationColorScanHeadPolicyLargeOnlyShared &&
+         context->scanHeadColorCalibration.policy !=
+             CalibrationColorScanHeadPolicyLargeAndSmall) ||
+        (context->scanHeadColorCalibration.policy ==
+             CalibrationColorScanHeadPolicyLargeAndSmall &&
+         (context->scanHeadColorCalibration.firmwareCompatibility !=
+              CalibrationColorFirmwareCompatibilitySupported ||
+          (context->scanHeadColorCalibration.largeHeadStatus !=
+               CalibrationColorScanHeadCalibrated &&
+           context->scanHeadColorCalibration.largeHeadStatus !=
+               CalibrationColorScanHeadNotCalibrated) ||
+          (context->scanHeadColorCalibration.smallHeadStatus !=
+               CalibrationColorScanHeadCalibrated &&
+           context->scanHeadColorCalibration.smallHeadStatus !=
+               CalibrationColorScanHeadNotCalibrated))) ||
+        (context->scanHeadColorCalibration.policy ==
+             CalibrationColorScanHeadPolicyLargeOnlyShared &&
+         (context->scanHeadColorCalibration.firmwareCompatibility !=
+              CalibrationColorFirmwareCompatibilityNotRequired ||
+          context->scanHeadColorCalibration.smallHeadStatus !=
+              CalibrationColorScanHeadNotRequired))) {
         m_hasDeviceContext = false;
         std::memset(&m_deviceContext, 0, sizeof(m_deviceContext));
         WriteLog(LogLevel::Warning,
@@ -232,7 +258,8 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
                       "mainBoardVersion=%4 projectionBoardVersion=%5 "
                       "reportedNumber=%6 effectiveNumber=%7 reportedModelCode=%8 "
                       "effectiveModelCode=%9 product=%10 identityStatus=%11 production=%12 "
-                      "compatibility=%13 detail=%14")
+                      "compatibility=%13 scanHeadPolicy=%14 largeHeadStatus=%15 "
+                      "smallHeadStatus=%16 detail=%17")
                   .arg(m_deviceContext.detection.detectionStatus)
                   .arg(m_deviceContext.deviceModel)
                   .arg(QString::fromUtf8(m_deviceContext.modelNameUtf8))
@@ -252,6 +279,9 @@ bool CalibrationColorUIImpl::SetDeviceContext(const CalibrationColorDeviceContex
                   .arg(m_deviceContext.productIdentificationStatus)
                   .arg(m_deviceContext.detection.isProductionMode)
                   .arg(m_deviceContext.detection.usedCompatibilityDefaults)
+                  .arg(m_deviceContext.scanHeadColorCalibration.policy)
+                  .arg(m_deviceContext.scanHeadColorCalibration.largeHeadStatus)
+                  .arg(m_deviceContext.scanHeadColorCalibration.smallHeadStatus)
                   .arg(QString::fromUtf8(m_deviceContext.detection.detailUtf8)));
     return true;
 }
@@ -284,6 +314,12 @@ QWidget* CalibrationColorUIImpl::CreateWidget(QWidget* parent) {
         m_deviceContext.firmwareVersions.mainBoardVersionUtf8));
     root->setProperty("projectionBoardFirmwareVersion", QString::fromUtf8(
         m_deviceContext.firmwareVersions.projectionBoardVersionUtf8));
+    root->setProperty("scanHeadColorCalibrationPolicy",
+                      m_deviceContext.scanHeadColorCalibration.policy);
+    root->setProperty("largeScanHeadColorCalibrationStatus",
+                      m_deviceContext.scanHeadColorCalibration.largeHeadStatus);
+    root->setProperty("smallScanHeadColorCalibrationStatus",
+                      m_deviceContext.scanHeadColorCalibration.smallHeadStatus);
     root->setProperty("deviceDetectionStatus", m_deviceContext.detection.detectionStatus);
     root->setProperty("deviceProductionMode", m_deviceContext.detection.isProductionMode);
     root->setProperty("deviceUsesCompatibilityDefaults",

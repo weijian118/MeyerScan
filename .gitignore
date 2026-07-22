@@ -43,6 +43,7 @@ MyCaseManager/*.db
 .vs/
 
 # ---- CMake ------------------------------------------------------------------
+.cmake-build-*/
 **/CMakeCache.txt
 **/CMakeFiles/
 **/cmake_install.cmake

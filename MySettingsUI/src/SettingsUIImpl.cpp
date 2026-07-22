@@ -54,7 +54,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_SettingsUI";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_SettingsUI v0.7.0 (2026-07-21)";
+const char* Version = "MeyerScan_SettingsUI v0.8.0 (2026-07-22)";
 }
 
 // 设置主页面内部页索引。只在 SettingsUI 内部使用，不暴露给 MainExe。
@@ -1142,6 +1142,11 @@ QWidget* SettingsUIImpl::CreateCalibrationCard(QWidget* parent,
                          .arg(deviceContext.detection.isProductionMode)
                          .arg(deviceContext.detection.usedCompatibilityDefaults));
 
+            // MyScan 5/6 在设备信息确认后再提示未校准的扫描头；两头都已校准
+            // 时函数不创建弹窗。旧 MyScan 使用共享参数策略，也不会显示双头提示。
+            ShowScanHeadColorCalibrationMessage(
+                deviceContext.scanHeadColorCalibration);
+
             // 打开和关闭使用两个动作，MainExe 才能在弹窗整个生命周期内保留唯一设备会话。
             NotifyAction(actionId, title);
             ShowEmbeddedCalibration(actionId, &deviceContext);
@@ -1274,6 +1279,26 @@ void SettingsUIImpl::ShowColorCalibrationDialog(
     std::strncpy(colorContext.firmwareVersions.detailUtf8,
                  deviceContext.firmwareVersions.detailUtf8,
                  sizeof(colorContext.firmwareVersions.detailUtf8) - 1U);
+    // 大小扫描头状态逐字段复制，避免不同 DLL 之间依赖相同内存布局。
+    colorContext.scanHeadColorCalibration.structSize =
+        sizeof(colorContext.scanHeadColorCalibration);
+    colorContext.scanHeadColorCalibration.schemaVersion =
+        MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
+    colorContext.scanHeadColorCalibration.policy =
+        deviceContext.scanHeadColorCalibration.policy;
+    colorContext.scanHeadColorCalibration.firmwareCompatibility =
+        deviceContext.scanHeadColorCalibration.firmwareCompatibility;
+    colorContext.scanHeadColorCalibration.largeHeadStatus =
+        deviceContext.scanHeadColorCalibration.largeHeadStatus;
+    colorContext.scanHeadColorCalibration.smallHeadStatus =
+        deviceContext.scanHeadColorCalibration.smallHeadStatus;
+    colorContext.scanHeadColorCalibration.largeHeadCommandResult =
+        deviceContext.scanHeadColorCalibration.largeHeadCommandResult;
+    colorContext.scanHeadColorCalibration.smallHeadCommandResult =
+        deviceContext.scanHeadColorCalibration.smallHeadCommandResult;
+    std::strncpy(colorContext.scanHeadColorCalibration.detailUtf8,
+                 deviceContext.scanHeadColorCalibration.detailUtf8,
+                 sizeof(colorContext.scanHeadColorCalibration.detailUtf8) - 1U);
     if (!m_calibrationColor->SetDeviceContext(&colorContext)) {
         WriteLog(LogLevel::Warning,
                  "ShowColorCalibrationDialog",
@@ -1471,7 +1496,33 @@ int SettingsUIImpl::RunCalibrationPreflight(
               SettingsFirmwareVersionNotRequired) ||
          (deviceContext->firmwareVersions.projectionBoardStatus ==
               SettingsFirmwareVersionValid &&
-          deviceContext->firmwareVersions.projectionBoardVersionUtf8[0] == '\0'))) {
+          deviceContext->firmwareVersions.projectionBoardVersionUtf8[0] == '\0') ||
+         deviceContext->scanHeadColorCalibration.structSize !=
+             sizeof(SettingsScanHeadColorCalibrationContext) ||
+         deviceContext->scanHeadColorCalibration.schemaVersion !=
+             MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION ||
+         (deviceContext->scanHeadColorCalibration.policy !=
+              SettingsScanHeadColorCalibrationPolicyLargeOnlyShared &&
+          deviceContext->scanHeadColorCalibration.policy !=
+              SettingsScanHeadColorCalibrationPolicyLargeAndSmall) ||
+         (deviceContext->scanHeadColorCalibration.policy ==
+              SettingsScanHeadColorCalibrationPolicyLargeAndSmall &&
+          (deviceContext->scanHeadColorCalibration.firmwareCompatibility !=
+               SettingsColorCalibrationFirmwareSupported ||
+           (deviceContext->scanHeadColorCalibration.largeHeadStatus !=
+                SettingsScanHeadColorCalibrationCalibrated &&
+            deviceContext->scanHeadColorCalibration.largeHeadStatus !=
+                SettingsScanHeadColorCalibrationNotCalibrated) ||
+           (deviceContext->scanHeadColorCalibration.smallHeadStatus !=
+                SettingsScanHeadColorCalibrationCalibrated &&
+            deviceContext->scanHeadColorCalibration.smallHeadStatus !=
+                SettingsScanHeadColorCalibrationNotCalibrated))) ||
+         (deviceContext->scanHeadColorCalibration.policy ==
+              SettingsScanHeadColorCalibrationPolicyLargeOnlyShared &&
+          (deviceContext->scanHeadColorCalibration.firmwareCompatibility !=
+               SettingsColorCalibrationFirmwareNotRequired ||
+           deviceContext->scanHeadColorCalibration.smallHeadStatus !=
+               SettingsScanHeadColorCalibrationNotRequired)))) {
         // Ready 必须携带完整有效身份。旧 MainExe 或损坏 POD 不能继续弹出一个
         // 空设备信息窗口，更不能把空值注入颜色校准算法入口。
         deviceContext->status = SettingsCalibrationPreflightInternalError;
@@ -1521,6 +1572,12 @@ void SettingsUIImpl::ShowCalibrationPreflightMessage(int status) {
     case SettingsCalibrationPreflightFirmwareVersionReadFailed:
         message = tr("Unable to read the device firmware version.");
         break;
+    case SettingsCalibrationPreflightColorCalibrationFirmwareUnsupported:
+        message = tr("Please update the device firmware before color calibration.");
+        break;
+    case SettingsCalibrationPreflightScanHeadColorCalibrationReadFailed:
+        message = tr("Unable to read the scan head color calibration status.");
+        break;
     default:
         message = tr("Unable to prepare the device for calibration.");
         break;
@@ -1531,6 +1588,40 @@ void SettingsUIImpl::ShowCalibrationPreflightMessage(int status) {
         : MeyerNoticeDialogError;
     ShowNoticeDialog(level,
                      level == MeyerNoticeDialogError ? tr("Error") : tr("Notice"),
+                     message);
+}
+
+// 根据 DeviceCmd 已归一化的双扫描头状态显示提示。该函数不解释校验和，
+// 也不把 NotChecked/通信失败降级为“未校准”；这些异常已在预检阶段被拦截。
+void SettingsUIImpl::ShowScanHeadColorCalibrationMessage(
+    const SettingsScanHeadColorCalibrationContext& context) {
+    if (context.policy != SettingsScanHeadColorCalibrationPolicyLargeAndSmall) {
+        return;
+    }
+
+    const bool largeMissing =
+        context.largeHeadStatus == SettingsScanHeadColorCalibrationNotCalibrated;
+    const bool smallMissing =
+        context.smallHeadStatus == SettingsScanHeadColorCalibrationNotCalibrated;
+    if (!largeMissing && !smallMissing) {
+        return;
+    }
+
+    QString message;
+    if (largeMissing && smallMissing) {
+        message = tr("Large and small scan heads are not color calibrated.");
+    } else if (largeMissing) {
+        message = tr("Large scan head is not color calibrated.");
+    } else {
+        message = tr("Small scan head is not color calibrated.");
+    }
+    WriteLog(LogLevel::Warning,
+             "ScanHeadColorCalibrationMissing",
+             QString("largeStatus=%1 smallStatus=%2")
+                 .arg(context.largeHeadStatus)
+                 .arg(context.smallHeadStatus));
+    ShowNoticeDialog(MeyerNoticeDialogInformation,
+                     tr("Notice"),
                      message);
 }
 

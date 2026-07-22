@@ -10,8 +10,8 @@
 #endif
 
 // SettingsUI 公共虚接口版本；颜色校准上下文增加下位机版本快照后升级为 7。
-static const int MEYER_SETTINGS_UI_API_VERSION = 7;
-static const std::uint32_t MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION = 5U;
+static const int MEYER_SETTINGS_UI_API_VERSION = 8;
+static const std::uint32_t MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION = 6U;
 static const std::uint32_t MEYER_SETTINGS_DEVICE_DETECTION_SCHEMA_VERSION = 1U;
 
 // 校准入口设备预检状态。数值与 DeviceCmd 的预检状态保持一致，但 SettingsUI
@@ -38,6 +38,8 @@ enum SettingsCalibrationPreflightStatus {
     SettingsCalibrationPreflightDeviceModelCodeInvalid = 13,
     // 设备身份已识别，但颜色校准所需的主控板/投图板版本读取失败。
     SettingsCalibrationPreflightFirmwareVersionReadFailed = 15,
+    SettingsCalibrationPreflightColorCalibrationFirmwareUnsupported = 16,
+    SettingsCalibrationPreflightScanHeadColorCalibrationReadFailed = 17,
 };
 
 // CE 型号代码读取状态与 DeviceCmd 公共枚举数值保持一致。SettingsUI 只用它
@@ -77,6 +79,49 @@ struct SettingsFirmwareVersionContext {
 
 static_assert(sizeof(SettingsFirmwareVersionContext) == 368U,
               "SettingsFirmwareVersionContext ABI size changed");
+
+// 扫描头颜色校准策略、状态和固件兼容枚举的数值与 DeviceCmd 保持一致。
+// SettingsUI 只根据这些整数选择提示，不发送 A3/B9 或解析回包。
+enum SettingsScanHeadColorCalibrationPolicy {
+    SettingsScanHeadColorCalibrationPolicyNotRun = 0,
+    SettingsScanHeadColorCalibrationPolicyLargeOnlyShared = 1,
+    SettingsScanHeadColorCalibrationPolicyLargeAndSmall = 2,
+};
+
+enum SettingsScanHeadColorCalibrationStatus {
+    SettingsScanHeadColorCalibrationNotChecked = 0,
+    SettingsScanHeadColorCalibrationCalibrated = 1,
+    SettingsScanHeadColorCalibrationNotCalibrated = 2,
+    SettingsScanHeadColorCalibrationNotRequired = 3,
+    SettingsScanHeadColorCalibrationResponseMissing = 4,
+    SettingsScanHeadColorCalibrationFrameInvalid = 5,
+    SettingsScanHeadColorCalibrationPayloadInvalid = 6,
+};
+
+enum SettingsColorCalibrationFirmwareCompatibility {
+    SettingsColorCalibrationFirmwareNotChecked = 0,
+    SettingsColorCalibrationFirmwareSupported = 1,
+    SettingsColorCalibrationFirmwareUnsupported = 2,
+    SettingsColorCalibrationFirmwareParseFailed = 3,
+    SettingsColorCalibrationFirmwareNotRequired = 4,
+};
+
+// DeviceCmd 扫描头颜色状态在 SettingsUI 边界上的只读副本。
+struct SettingsScanHeadColorCalibrationContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t policy;
+    std::int32_t firmwareCompatibility;
+    std::int32_t largeHeadStatus;
+    std::int32_t smallHeadStatus;
+    std::int32_t largeHeadCommandResult;
+    std::int32_t smallHeadCommandResult;
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(SettingsScanHeadColorCalibrationContext) == 320U,
+              "SettingsScanHeadColorCalibrationContext ABI size changed");
 
 // DeviceCmd 型号检测记录在 SettingsUI 边界上的只读副本。该结构分别保留
 // 设备上报值和兼容有效值，UI 不允许把 effective 字段反写到设备。
@@ -132,10 +177,12 @@ struct SettingsCalibrationDeviceContext {
     SettingsDeviceDetectionContext detection;
     // 设备身份和型号确认后读取的下位机版本快照，不能通过再次访问 USB 获取。
     SettingsFirmwareVersionContext firmwareVersions;
+    // MyScan 5/6 大小扫描头颜色参数状态；MyScan 记录共享策略且小头 NotRequired。
+    SettingsScanHeadColorCalibrationContext scanHeadColorCalibration;
 };
 
 // MainExe 和 SettingsUI 必须使用同一 API/schema；结构变化时编译期尺寸断言会拦截。
-static_assert(sizeof(SettingsCalibrationDeviceContext) == 1328U,
+static_assert(sizeof(SettingsCalibrationDeviceContext) == 1648U,
               "SettingsCalibrationDeviceContext ABI size changed");
 
 // 同步回调必须在返回前完成预检并写满 context；返回值使用

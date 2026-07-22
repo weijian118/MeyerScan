@@ -2,7 +2,7 @@
 
 `MyCalibrationColorUI` 输出 `MeyerScan_CalibrationColorUI.dll`，用于承载颜色校准界面、流程编排和颜色校正参数生成入口。
 
-当前版本为 `0.7.0`，公共虚接口 ABI 为 6，设备上下文 schema 为 5。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；快照包含协议 Profile、产品身份、D9/C7/CE 检测记录及主控板/投图板版本。颜色校准 UI 不自行解析回包、加载 DeviceCmd/DeviceTransport 或创建第二个 USB 会话。
+当前版本为 `0.8.0`，公共虚接口 ABI 为 7，设备上下文 schema 为 6。SettingsUI 必须在 `CreateWidget` 前调用 `SetDeviceContext` 注入已经通过 MainExe/DeviceCmd 校验的 USB3 设备快照；快照包含协议 Profile、产品身份、D9/C7/CE 检测记录、主控板/投图板版本，以及大小扫描头颜色校准策略和状态。颜色校准 UI 不自行解析回包、加载 DeviceCmd/DeviceTransport 或创建第二个 USB 会话。
 
 ## 当前定位
 
@@ -13,6 +13,7 @@
 - 后续 Calibrate 点击只向宿主提交颜色校准动作，并调用本模块拥有的颜色算法适配层；DeviceCmd/DeviceTransport 句柄仍由进程级设备会话宿主持有，不下沉到 UI。
 - 可见 UI 文案必须使用 `tr("English source text")`，源码不写中文 UI source text。
 - 日志目录由 MainExe 或测试宿主基于安装目录传入，禁止使用当前工作目录推导运行资源。
+- `mOS MyScan` 使用 `LargeOnlyShared` 策略，只校准大扫描头并让小扫描头共用参数；`mOS MyScan 5/6` 使用 `LargeAndSmall` 策略，后续实际校准流程必须分别完成两种扫描头。
 
 ## 界面约束
 

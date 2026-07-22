@@ -400,7 +400,11 @@ namespace meyer
                 }
                 responseCode = protocol::UploadMainBoardVersion;
                 payload.push_back(1U);
-                payload.push_back(2U);
+                payload.push_back(
+                    (m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_UnsupportedColorCalibrationFirmware) != 0U
+                        ? 2U
+                        : 3U);
                 payload.push_back(0x03U);
                 payload.push_back(0xE9U);
                 break;
@@ -466,7 +470,23 @@ namespace meyer
                 payload.push_back(0xFFU);
                 break;
             case protocol::ReadColorMatrix:
+                if ((m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_LargeHeadColorReadFailure) != 0U)
+                {
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
                 responseCode = protocol::UploadColorMatrix;
+                payload = m_colorMatrix;
+                break;
+            case protocol::ReadSmallScanHeadColorMatrix:
+                if ((m_simulatedFlags &
+                     MeyerDeviceCmdSimulatedFlag_SmallHeadColorReadFailure) != 0U)
+                {
+                    m_pendingResponse.clear();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+                responseCode = protocol::UploadSmallScanHeadColorMatrix;
                 payload = m_colorMatrix;
                 break;
             case protocol::StoreColorMatrix:
@@ -556,7 +576,16 @@ namespace meyer
                 requestCode == protocol::ReadDeviceInfo &&
                 (m_simulatedFlags &
                  MeyerDeviceCmdSimulatedFlag_ModelCodeChecksumFailure) != 0U;
-            if ((corruptMachineChecksum || corruptModelChecksum) &&
+            const bool corruptLargeHeadColorChecksum =
+                requestCode == protocol::ReadColorMatrix &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_LargeHeadColorChecksumFailure) != 0U;
+            const bool corruptSmallHeadColorChecksum =
+                requestCode == protocol::ReadSmallScanHeadColorMatrix &&
+                (m_simulatedFlags &
+                 MeyerDeviceCmdSimulatedFlag_SmallHeadColorChecksumFailure) != 0U;
+            if ((corruptMachineChecksum || corruptModelChecksum ||
+                 corruptLargeHeadColorChecksum || corruptSmallHeadColorChecksum) &&
                 !m_pendingResponse.empty())
             {
                 m_pendingResponse[m_pendingResponse.size() - 1U] ^= 0x01U;

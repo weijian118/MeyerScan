@@ -10,8 +10,8 @@
 #endif
 
 // 颜色校准 UI 公共虚接口版本。设备快照增加下位机版本记录后升级为 6。
-static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 6;
-static const std::uint32_t MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION = 5U;
+static const int MEYER_CALIBRATION_COLOR_UI_API_VERSION = 7;
+static const std::uint32_t MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION = 6U;
 static const std::uint32_t MEYER_CALIBRATION_COLOR_DETECTION_SCHEMA_VERSION = 1U;
 
 // 颜色校准可接受的检测结果。数值与 DeviceCmd 保持一致，失败和冲突状态不会
@@ -73,6 +73,49 @@ struct CalibrationColorFirmwareVersionContext {
 static_assert(sizeof(CalibrationColorFirmwareVersionContext) == 368U,
               "CalibrationColorFirmwareVersionContext ABI size changed");
 
+// 扫描头颜色参数快照使用与 DeviceCmd/SettingsUI 相同的稳定整数语义。
+enum CalibrationColorScanHeadPolicy {
+    CalibrationColorScanHeadPolicyNotRun = 0,
+    CalibrationColorScanHeadPolicyLargeOnlyShared = 1,
+    CalibrationColorScanHeadPolicyLargeAndSmall = 2,
+};
+
+enum CalibrationColorScanHeadStatus {
+    CalibrationColorScanHeadNotChecked = 0,
+    CalibrationColorScanHeadCalibrated = 1,
+    CalibrationColorScanHeadNotCalibrated = 2,
+    CalibrationColorScanHeadNotRequired = 3,
+    CalibrationColorScanHeadResponseMissing = 4,
+    CalibrationColorScanHeadFrameInvalid = 5,
+    CalibrationColorScanHeadPayloadInvalid = 6,
+};
+
+enum CalibrationColorFirmwareCompatibility {
+    CalibrationColorFirmwareCompatibilityNotChecked = 0,
+    CalibrationColorFirmwareCompatibilitySupported = 1,
+    CalibrationColorFirmwareCompatibilityUnsupported = 2,
+    CalibrationColorFirmwareCompatibilityParseFailed = 3,
+    CalibrationColorFirmwareCompatibilityNotRequired = 4,
+};
+
+// 颜色校准模块只保存该副本，后续真正执行校准时据 policy 决定只校准大头，
+// 还是分别执行大、小扫描头流程，不需要再次查询参数存在性。
+struct CalibrationColorScanHeadContext {
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t policy;
+    std::int32_t firmwareCompatibility;
+    std::int32_t largeHeadStatus;
+    std::int32_t smallHeadStatus;
+    std::int32_t largeHeadCommandResult;
+    std::int32_t smallHeadCommandResult;
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(CalibrationColorScanHeadContext) == 320U,
+              "CalibrationColorScanHeadContext ABI size changed");
+
 // MainExe/SettingsUI 传入的只读设备快照。它不包含 DeviceCmd 句柄，因而可以
 // 安全复制并在多个 UI 模块间传递；后续新增字段只能追加在 reserved 之前。
 struct CalibrationColorDeviceContext {
@@ -100,10 +143,12 @@ struct CalibrationColorDeviceContext {
     CalibrationColorDeviceDetectionContext detection;
     // 下位机版本由宿主预检后注入，颜色校准模块只读取副本。
     CalibrationColorFirmwareVersionContext firmwareVersions;
+    // 大、小扫描头颜色校准策略和当前状态由 DeviceCmd 预检后注入。
+    CalibrationColorScanHeadContext scanHeadColorCalibration;
 };
 
 // 固定尺寸用于拦截独立升级时的新旧 DLL 合同错位。
-static_assert(sizeof(CalibrationColorDeviceContext) == 1064U,
+static_assert(sizeof(CalibrationColorDeviceContext) == 1384U,
                "CalibrationColorDeviceContext ABI size changed");
 
 // ICalibrationColorUI 是颜色校准 UI 模块的公共接口。

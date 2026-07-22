@@ -36,6 +36,8 @@ namespace meyer
                 MeyerDeviceCapability_Light |
                 MeyerDeviceCapability_ForceLight |
                 MeyerDeviceCapability_Capture |
+                // A3/A4 与 B9/BA 用于进入颜色校准前读取参数是否已写入。
+                MeyerDeviceCapability_CalibrationData |
                 // 用户提供的旧软件实例确认 0xCD/0xCE 也用于有线机型的
                 // 设备信息读取，因此该能力属于当前多机型公共探测链路。
                 MeyerDeviceCapability_DeviceSecurityInfo;

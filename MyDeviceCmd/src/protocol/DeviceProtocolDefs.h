@@ -47,6 +47,9 @@ namespace meyer
                 CameraParametersStoreReply = 0xA9U,
                 ReadColorMatrix = 0xA3U,
                 UploadColorMatrix = 0xA4U,
+                // MyScan 5/6 小扫描头颜色参数读取命令。
+                ReadSmallScanHeadColorMatrix = 0xB9U,
+                UploadSmallScanHeadColorMatrix = 0xBAU,
                 StoreColorMatrix = 0xA7U,
                 ColorMatrixStoreReply = 0xAEU,
                 SetCameraWindowPosition = 0xA5U,

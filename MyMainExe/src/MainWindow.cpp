@@ -42,7 +42,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.6.0 (2026-07-21)";
+const char* Version = "MeyerScan_MainExe v0.7.0 (2026-07-22)";
 }
 
 // 从患者/订单读模型行中取稳定 ID。
@@ -109,6 +109,8 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_Logger.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Database.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DatabaseQtAdapter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DeviceTransport.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DeviceCmd.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_ConfigCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Permission.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_UIComponents.dll", "GetMeyerModuleVersion"},
@@ -1016,11 +1018,34 @@ int MainWindow::HandleCalibrationPreflight(
                  preflight.firmwareVersions.detailUtf8,
                  sizeof(deviceContext->firmwareVersions.detailUtf8) - 1U);
 
+    // 扫描头颜色参数状态与版本快照一样逐字段复制。MainExe 不根据 A4/BA
+    // 校验和自行推断“未校准”，只转发 DeviceCmd 已归一化的结果。
+    deviceContext->scanHeadColorCalibration.structSize =
+        sizeof(deviceContext->scanHeadColorCalibration);
+    deviceContext->scanHeadColorCalibration.schemaVersion =
+        MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
+    deviceContext->scanHeadColorCalibration.policy =
+        preflight.scanHeadColorCalibration.policy;
+    deviceContext->scanHeadColorCalibration.firmwareCompatibility =
+        preflight.scanHeadColorCalibration.firmwareCompatibility;
+    deviceContext->scanHeadColorCalibration.largeHeadStatus =
+        preflight.scanHeadColorCalibration.largeHeadStatus;
+    deviceContext->scanHeadColorCalibration.smallHeadStatus =
+        preflight.scanHeadColorCalibration.smallHeadStatus;
+    deviceContext->scanHeadColorCalibration.largeHeadCommandResult =
+        preflight.scanHeadColorCalibration.largeHeadCommandResult;
+    deviceContext->scanHeadColorCalibration.smallHeadCommandResult =
+        preflight.scanHeadColorCalibration.smallHeadCommandResult;
+    std::strncpy(deviceContext->scanHeadColorCalibration.detailUtf8,
+                 preflight.scanHeadColorCalibration.detailUtf8,
+                 sizeof(deviceContext->scanHeadColorCalibration.detailUtf8) - 1U);
+
     WriteUserAction("ColorCalibrationPreflight",
                     QString("status=%1 detection=%2 profile=%3 usb2=%4 mainBoardVersion=%5 "
                             "projectionBoardVersion=%6 reportedNumber=%7 "
                             "effectiveNumber=%8 reportedModelCode=%9 effectiveModelCode=%10 "
-                            "product=%11 identityStatus=%12 production=%13 compatibility=%14")
+                            "product=%11 identityStatus=%12 production=%13 compatibility=%14 "
+                            "scanHeadPolicy=%15 largeHeadStatus=%16 smallHeadStatus=%17")
                         .arg(deviceContext->status)
                         .arg(deviceContext->detection.detectionStatus)
                         .arg(deviceContext->deviceModel)
@@ -1040,7 +1065,10 @@ int MainWindow::HandleCalibrationPreflight(
                         .arg(QString::fromUtf8(deviceContext->productNameUtf8))
                         .arg(deviceContext->productIdentificationStatus)
                         .arg(deviceContext->detection.isProductionMode)
-                        .arg(deviceContext->detection.usedCompatibilityDefaults));
+                        .arg(deviceContext->detection.usedCompatibilityDefaults)
+                        .arg(deviceContext->scanHeadColorCalibration.policy)
+                        .arg(deviceContext->scanHeadColorCalibration.largeHeadStatus)
+                        .arg(deviceContext->scanHeadColorCalibration.smallHeadStatus));
     return deviceContext->status;
 }
 

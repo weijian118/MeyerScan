@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <sstream>
 #include <vector>
 
 namespace
@@ -360,7 +361,14 @@ namespace meyer
             m_module = ::LoadLibraryW(libraryPath.c_str());
             if (m_module == nullptr)
             {
-                m_lastError = "Failed to load MeyerScan_DeviceTransport.dll from the explicit path";
+                // LoadLibraryW 失败时立即读取 GetLastError；后续任何字符串转换或
+                // 日志调用都可能覆盖线程错误码。错误码能区分缺少依赖、位数不匹配、
+                // 文件损坏和路径错误，避免上层误报成“设备未连接”。
+                const DWORD win32Error = ::GetLastError();
+                std::ostringstream error;
+                error << "Failed to load MeyerScan_DeviceTransport.dll from the explicit path"
+                      << "; Win32 error=" << static_cast<unsigned long>(win32Error);
+                m_lastError = error.str();
                 return MeyerDeviceCmdResult_TransportLoadFailed;
             }
 

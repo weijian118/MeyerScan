@@ -51,6 +51,8 @@ m_deviceContext.firmwareVersions.projectionBoardVersionUtf8;
 
 `reportedDeviceNumberUtf8` 是设备真实回包值；`effectiveDeviceNumberUtf8` 是当前流程允许使用的值，生产未写号时可能是兼容默认值。两者必须结合 `deviceNumberSource`、`isProductionMode` 和 `usedCompatibilityDefaults` 解释。
 
+MyScan 5/5H/6 还要读取 `scanHeadColorCalibration`：`policy=LargeAndSmall` 表示大、小扫描头分别校准，`largeHeadStatus` 和 `smallHeadStatus` 分别表示已校准、未校准或读取失败；MyScan 使用 `LargeOnlyShared`，小扫描头状态为 `NotRequired`。A4/BA 收到期望响应但求和失败记录为 `NotCalibrated`，不能和超时/坏帧混淆。颜色校准 UI 从 `CalibrationColorDeviceContext.scanHeadColorCalibration` 获取这些信息，不重新访问设备。
+
 ## 4. 设备信息保存在哪里
 
 1. 设备本身保存编号、型号、期限和授权原始数据。

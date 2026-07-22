@@ -148,6 +148,63 @@ namespace
         }
     }
 
+    // 把颜色校准策略输出为现场可读文本，确认 MyScan 是否跳过 B9/BA。
+    const char* ScanHeadColorPolicyText(std::int32_t policy)
+    {
+        switch (policy)
+        {
+        case MeyerDeviceScanHeadColorCalibrationPolicy_LargeOnlyShared:
+            return "LargeOnlyShared";
+        case MeyerDeviceScanHeadColorCalibrationPolicy_LargeAndSmall:
+            return "LargeAndSmall";
+        default:
+            return "NotRun";
+        }
+    }
+
+    // 把单个扫描头的状态输出为现场可读文本。校验和失败明确显示为
+    // NotCalibrated，而不与超时/坏帧的读取失败混淆。
+    const char* ScanHeadColorStatusText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceScanHeadColorCalibration_NotChecked:
+            return "NotChecked";
+        case MeyerDeviceScanHeadColorCalibration_Calibrated:
+            return "Calibrated (checksum passed)";
+        case MeyerDeviceScanHeadColorCalibration_NotCalibrated:
+            return "NotCalibrated (checksum failed)";
+        case MeyerDeviceScanHeadColorCalibration_NotRequired:
+            return "NotRequired (shared parameters or no second head)";
+        case MeyerDeviceScanHeadColorCalibration_ResponseMissing:
+            return "ResponseMissing";
+        case MeyerDeviceScanHeadColorCalibration_FrameInvalid:
+            return "FrameInvalid";
+        case MeyerDeviceScanHeadColorCalibration_PayloadInvalid:
+            return "PayloadInvalid";
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 输出版本门禁的归一化结果，便于现场确认到底是版本不支持还是读取失败。
+    const char* ScanHeadFirmwareCompatibilityText(std::int32_t status)
+    {
+        switch (status)
+        {
+        case MeyerDeviceColorCalibrationFirmware_Supported:
+            return "Supported";
+        case MeyerDeviceColorCalibrationFirmware_Unsupported:
+            return "Unsupported";
+        case MeyerDeviceColorCalibrationFirmware_ParseFailed:
+            return "ParseFailed";
+        case MeyerDeviceColorCalibrationFirmware_NotRequired:
+            return "NotRequired";
+        default:
+            return "NotChecked";
+        }
+    }
+
     // 把 reported/effective 字段的来源转换为现场可读文本。
     const char* IdentityValueSourceText(std::int32_t source)
     {
@@ -287,7 +344,7 @@ namespace
                     std::string(state.deviceIdUtf8) == "6200005301203",
                     "device number is decoded from protocol digit bytes");
         test.Expect((state.validFields & MeyerDeviceStateField_FirmwareVersion) != 0U &&
-                    std::string(state.firmwareVersionUtf8) == "1.2.1001" &&
+                    std::string(state.firmwareVersionUtf8) == "1.3.1001" &&
                     (state.validFields & MeyerDeviceStateField_ProjectionBoardFirmwareVersion) == 0U &&
                     std::string(state.projectionBoardFirmwareVersionUtf8).empty(),
                     "non-MyScan device keeps main-board version and skips projection-board command");
@@ -778,9 +835,18 @@ namespace
                     "exact detection keeps reported and effective identity values identical");
         test.Expect(preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
                     preflight.firmwareVersions.projectionBoardStatus == MeyerDeviceFirmwareVersion_NotRequired &&
-                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.2.1001" &&
+                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.3.1001" &&
                     std::string(preflight.firmwareVersions.projectionBoardVersionUtf8).empty(),
                     "MyScan5 preflight records main-board version and marks projection board not required");
+        test.Expect(preflight.scanHeadColorCalibration.policy ==
+                        MeyerDeviceScanHeadColorCalibrationPolicy_LargeAndSmall &&
+                    preflight.scanHeadColorCalibration.firmwareCompatibility ==
+                        MeyerDeviceColorCalibrationFirmware_Supported &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_Calibrated &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_Calibrated,
+                    "MyScan5 preflight records both calibrated scan heads");
         test.Expect(MeyerDeviceCmd_IsOpen(handle) == 1,
                     "successful color calibration preflight keeps one device session open");
         MeyerDeviceCmd_Close(handle);
@@ -797,10 +863,100 @@ namespace
                     preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
                     preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
                     preflight.firmwareVersions.projectionBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
-                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.2.1001" &&
+                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.3.1001" &&
                     std::string(preflight.firmwareVersions.projectionBoardVersionUtf8) == "2.3.300",
                     "mOS MyScan preflight reads and records both board firmware versions");
+        test.Expect(preflight.scanHeadColorCalibration.policy ==
+                        MeyerDeviceScanHeadColorCalibrationPolicy_LargeOnlyShared &&
+                    preflight.scanHeadColorCalibration.firmwareCompatibility ==
+                        MeyerDeviceColorCalibrationFirmware_NotRequired &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotChecked &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotRequired,
+                    "mOS MyScan records one shared large-head calibration policy without B9");
         MeyerDeviceCmd_Close(handle);
+
+        // MyScan 5/6 的 1.1.x 和 1.2.x 主控板不支持小扫描头颜色校准。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_UnsupportedColorCalibrationFirmware,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ColorCalibrationFirmwareUnsupported &&
+                    preflight.scanHeadColorCalibration.firmwareCompatibility ==
+                        MeyerDeviceColorCalibrationFirmware_Unsupported &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotChecked &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotChecked,
+                    "MyScan5 firmware 1.2 blocks color calibration before scan-head queries");
+
+        // A4/BA 求和失败分别表示对应扫描头未写入颜色参数，预检仍然 Ready。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_SmallHeadColorChecksumFailure,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_Calibrated &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotCalibrated,
+                    "BA checksum failure means only the small scan head is uncalibrated");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_LargeHeadColorChecksumFailure,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotCalibrated &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_Calibrated,
+                    "A4 checksum failure means only the large scan head is uncalibrated");
+
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_LargeHeadColorChecksumFailure |
+                MeyerDeviceCmdSimulatedFlag_SmallHeadColorChecksumFailure,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.scanHeadColorCalibration.largeHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotCalibrated &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_NotCalibrated,
+                    "A4 and BA checksum failures record both scan heads as uncalibrated");
+
+        // 没有 BA 回包属于通信失败，不能伪装成“小扫描头未校准”继续进入 UI。
+        result = RunSimulatedPreflight(
+            handle,
+            params,
+            MeyerDeviceCmdSimulatedFlag_SmallHeadColorReadFailure,
+            "6200005301203",
+            MeyerDeviceModel_Unknown,
+            preflight);
+        test.Expect(result == MeyerDeviceCmdResult_Ok &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ScanHeadColorCalibrationReadFailed &&
+                    preflight.scanHeadColorCalibration.smallHeadStatus ==
+                        MeyerDeviceScanHeadColorCalibration_ResponseMissing,
+                    "missing BA response blocks calibration instead of reporting uncalibrated");
 
         // 主控板版本对所有系列都是必需项；超时必须保留身份结果并阻止进入校准。
         result = RunSimulatedPreflight(
@@ -840,11 +996,11 @@ namespace
         // 三种版本各有不同用途：字符串 API 描述语义能力，整数 API 保护公共
         // POD/函数表兼容性，模块版本用于运行时版本清单。测试同时锁住三者，
         // 可及时发现只修改 Version.rc 或只修改代码常量造成的版本来源不一致。
-        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.3.6") == 0,
+        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.4.0") == 0,
                     "semantic API version matches the current command behavior");
         test.Expect(GetMeyerModuleApiVersion() == MEYER_DEVICE_CMD_API_VERSION,
                     "integer ABI version matches the public header contract");
-        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.7.7") != nullptr,
+        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.8.0") != nullptr,
                     "module code version matches the current release");
 
         MeyerDeviceCmdHandle handle = MeyerDeviceCmd_Create();
@@ -1036,6 +1192,24 @@ namespace
                   << FirmwareVersionStatusText(preflight.firmwareVersions.projectionBoardStatus) << "\n"
                   << "Projection-board firmware version: "
                   << preflight.firmwareVersions.projectionBoardVersionUtf8 << "\n"
+                  << "Scan-head color calibration policy: "
+                  << ScanHeadColorPolicyText(
+                         preflight.scanHeadColorCalibration.policy) << "\n"
+                  << "Scan-head firmware compatibility: "
+                  << ScanHeadFirmwareCompatibilityText(
+                         preflight.scanHeadColorCalibration.firmwareCompatibility) << "\n"
+                  << "Large scan-head color status: "
+                  << ScanHeadColorStatusText(
+                         preflight.scanHeadColorCalibration.largeHeadStatus)
+                  << " (commandResult="
+                  << preflight.scanHeadColorCalibration.largeHeadCommandResult << ")\n"
+                  << "Small scan-head color status: "
+                  << ScanHeadColorStatusText(
+                         preflight.scanHeadColorCalibration.smallHeadStatus)
+                  << " (commandResult="
+                  << preflight.scanHeadColorCalibration.smallHeadCommandResult << ")\n"
+                  << "Scan-head color detail: "
+                  << preflight.scanHeadColorCalibration.detailUtf8 << "\n"
                   << "Detection detail: " << preflight.detectionRecord.detailUtf8 << "\n"
                   << "Firmware detail: " << preflight.firmwareVersions.detailUtf8 << "\n"
                   << "Preflight detail: " << preflight.detailUtf8 << "\n";

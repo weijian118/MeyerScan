@@ -467,6 +467,7 @@ namespace
             return MeyerDeviceCapability_CameraParameters;
         case meyer::devicecmd::protocol::ReadColorMatrix:
         case meyer::devicecmd::protocol::StoreColorMatrix:
+        case meyer::devicecmd::protocol::ReadSmallScanHeadColorMatrix:
         case meyer::devicecmd::protocol::ReadCamera1Calibration:
         case meyer::devicecmd::protocol::StoreCamera1Calibration:
         case meyer::devicecmd::protocol::ReadCamera2Calibration:
@@ -1094,6 +1095,61 @@ namespace meyer
                     std::string("Firmware version read failed: ") + m_lastError);
                 Close();
                 return MeyerDeviceCmdResult_Ok;
+            }
+
+            // MyScan 5/6 的主控板低于 1.3 不支持小扫描头颜色校准，版本不满足
+            // 时必须在发送 A3/B9 前拦截，避免把不支持的命令当成未校准。
+            if (preflight.productIdentity.productFamily ==
+                    MeyerDeviceProductFamily_MyScan5 ||
+                preflight.productIdentity.productFamily ==
+                    MeyerDeviceProductFamily_MyScan6)
+            {
+                const std::int32_t compatibilityResult =
+                    CheckColorCalibrationFirmwareCompatibility(
+                        preflight.scanHeadColorCalibration);
+                if (compatibilityResult != MeyerDeviceCmdResult_Ok)
+                {
+                    preflight.commandResult = compatibilityResult;
+                    preflight.status =
+                        MeyerDeviceCalibrationPreflight_ColorCalibrationFirmwareUnsupported;
+                    preflight.state = m_state;
+                    preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                    SetPreflightDetail(preflight,
+                                       preflight.scanHeadColorCalibration.detailUtf8);
+                    Close();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+
+                const std::int32_t scanHeadResult =
+                    ReadScanHeadColorCalibrationSnapshot(
+                        preflight.scanHeadColorCalibration);
+                if (scanHeadResult != MeyerDeviceCmdResult_Ok)
+                {
+                    preflight.commandResult = scanHeadResult;
+                    preflight.status =
+                        MeyerDeviceCalibrationPreflight_ScanHeadColorCalibrationReadFailed;
+                    preflight.state = m_state;
+                    preflight.detectionRecord.detectionStatus = MeyerDeviceDetection_Failed;
+                    SetPreflightDetail(preflight,
+                                       preflight.scanHeadColorCalibration.detailUtf8);
+                    Close();
+                    return MeyerDeviceCmdResult_Ok;
+                }
+            }
+            else
+            {
+                // 旧 mOS MyScan 使用大扫描头参数覆盖小扫描头，进入校准前不需要
+                // 发送 B9；保留策略和 NotRequired 状态供后续 UI/算法读取。
+                preflight.scanHeadColorCalibration.policy =
+                    MeyerDeviceScanHeadColorCalibrationPolicy_LargeOnlyShared;
+                preflight.scanHeadColorCalibration.firmwareCompatibility =
+                    MeyerDeviceColorCalibrationFirmware_NotRequired;
+                preflight.scanHeadColorCalibration.largeHeadStatus =
+                    MeyerDeviceScanHeadColorCalibration_NotChecked;
+                preflight.scanHeadColorCalibration.smallHeadStatus =
+                    MeyerDeviceScanHeadColorCalibration_NotRequired;
+                CopyText(preflight.scanHeadColorCalibration.detailUtf8,
+                         "mOS MyScan shares large-head color parameters with the small head");
             }
 
             preflight.status = MeyerDeviceCalibrationPreflight_Ready;
@@ -2587,6 +2643,156 @@ namespace meyer
             CopyText(snapshot.projectionBoardVersionUtf8,
                      std::string(m_state.projectionBoardFirmwareVersionUtf8));
             CopyText(snapshot.detailUtf8, m_lastError);
+        }
+
+        // 解析版本文本并执行截图中规定的版本门禁：1.1.x/1.2.x 以及更低版本
+        // 不支持双扫描头颜色校准；无法解析时按失败处理，避免误放行未知固件。
+        std::int32_t DeviceCommandService::CheckColorCalibrationFirmwareCompatibility(
+            MeyerDeviceScanHeadColorCalibrationSnapshot& snapshot) const
+        {
+            snapshot.structSize = sizeof(snapshot);
+            snapshot.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            snapshot.policy = MeyerDeviceScanHeadColorCalibrationPolicy_LargeAndSmall;
+            snapshot.firmwareCompatibility =
+                MeyerDeviceColorCalibrationFirmware_ParseFailed;
+            snapshot.largeHeadStatus = MeyerDeviceScanHeadColorCalibration_NotChecked;
+            snapshot.smallHeadStatus = MeyerDeviceScanHeadColorCalibration_NotChecked;
+            snapshot.largeHeadCommandResult = MeyerDeviceCmdResult_NotReady;
+            snapshot.smallHeadCommandResult = MeyerDeviceCmdResult_NotReady;
+
+            unsigned int major = 0U;
+            unsigned int minor = 0U;
+            unsigned int revision = 0U;
+            const int parsed = std::sscanf(m_state.firmwareVersionUtf8,
+                                           "%u.%u.%u",
+                                           &major,
+                                           &minor,
+                                           &revision);
+            if (parsed != 3 || major > 255U || minor > 255U || revision > 65535U)
+            {
+                CopyText(snapshot.detailUtf8,
+                         "Main-board firmware version cannot be parsed for dual-head color calibration");
+                return MeyerDeviceCmdResult_ProtocolError;
+            }
+
+            // 1.3.0 及以上、以及未来主版本大于 1 的版本允许双扫描头校准。
+            if (major < 1U || (major == 1U && minor < 3U))
+            {
+                snapshot.firmwareCompatibility =
+                    MeyerDeviceColorCalibrationFirmware_Unsupported;
+                CopyText(snapshot.detailUtf8,
+                         "Main-board firmware 1.1/1.2 does not support small-head color calibration");
+                return MeyerDeviceCmdResult_UnsupportedModel;
+            }
+
+            snapshot.firmwareCompatibility = MeyerDeviceColorCalibrationFirmware_Supported;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 对一条扫描头读取命令进行统一的“校准存在性”判断。协议层只有在
+        // 响应码正确且校验和正确时才返回 CommandFrame；校验和失败则按参考
+        // 旧软件语义记录为未校准，而不是把它误当作通信故障。
+        std::int32_t DeviceCommandService::ReadOneScanHeadColorCalibration(
+            std::uint8_t requestCode,
+            std::uint8_t responseCode,
+            std::int32_t& status,
+            std::int32_t& commandResult)
+        {
+            protocol::CommandFrame response;
+            CommandExchangeDiagnostics diagnostics;
+            const std::int32_t result = ExecuteCommand(requestCode,
+                                                       nullptr,
+                                                       0U,
+                                                       responseCode,
+                                                       &response,
+                                                       0U,
+                                                       &diagnostics);
+            commandResult = result;
+            ReportCommandExchangeTiming(requestCode, responseCode, diagnostics);
+
+            if (result == MeyerDeviceCmdResult_Ok)
+            {
+                if (response.payload.size() != MEYER_DEVICE_CMD_COLOR_MATRIX_BYTES)
+                {
+                    status = MeyerDeviceScanHeadColorCalibration_PayloadInvalid;
+                    return MeyerDeviceCmdResult_ProtocolError;
+                }
+                status = MeyerDeviceScanHeadColorCalibration_Calibrated;
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            // 只有头、响应码和 0xFFFF/校验失败语义均符合当前请求时，才可把
+            // 求和失败解释成“未校准”；错误帧头或错误响应码必须继续报通信异常。
+            const bool recognizedChecksumFailure =
+                diagnostics.responseReceived &&
+                diagnostics.rawResponse.size() >= 5U &&
+                diagnostics.rawResponse[0] == protocol::kHeader0 &&
+                diagnostics.rawResponse[1] == protocol::kHeader1 &&
+                diagnostics.rawResponse[2] == responseCode &&
+                diagnostics.parseStatus == protocol::CommandParseStatus::ChecksumMismatch;
+            if (recognizedChecksumFailure)
+            {
+                status = MeyerDeviceScanHeadColorCalibration_NotCalibrated;
+                commandResult = MeyerDeviceCmdResult_Ok;
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            status = result == MeyerDeviceCmdResult_Timeout
+                ? MeyerDeviceScanHeadColorCalibration_ResponseMissing
+                : MeyerDeviceScanHeadColorCalibration_FrameInvalid;
+            return result;
+        }
+
+        // 按固定顺序读取大头 A3/A4，再读取小头 B9/BA；任何非“未校准”异常
+        // 都停止预检，避免 UI 给出不准确的校准状态提示。
+        std::int32_t DeviceCommandService::ReadScanHeadColorCalibrationSnapshot(
+            MeyerDeviceScanHeadColorCalibrationSnapshot& snapshot)
+        {
+            snapshot.largeHeadStatus = MeyerDeviceScanHeadColorCalibration_NotChecked;
+            snapshot.smallHeadStatus = MeyerDeviceScanHeadColorCalibration_NotChecked;
+            snapshot.largeHeadCommandResult = MeyerDeviceCmdResult_NotReady;
+            snapshot.smallHeadCommandResult = MeyerDeviceCmdResult_NotReady;
+
+            const std::int32_t largeResult = ReadOneScanHeadColorCalibration(
+                protocol::ReadColorMatrix,
+                protocol::UploadColorMatrix,
+                snapshot.largeHeadStatus,
+                snapshot.largeHeadCommandResult);
+            if (largeResult != MeyerDeviceCmdResult_Ok)
+            {
+                CopyText(snapshot.detailUtf8, "Large scan-head color calibration status read failed");
+                return largeResult;
+            }
+
+            const std::int32_t smallResult = ReadOneScanHeadColorCalibration(
+                protocol::ReadSmallScanHeadColorMatrix,
+                protocol::UploadSmallScanHeadColorMatrix,
+                snapshot.smallHeadStatus,
+                snapshot.smallHeadCommandResult);
+            if (smallResult != MeyerDeviceCmdResult_Ok)
+            {
+                CopyText(snapshot.detailUtf8, "Small scan-head color calibration status read failed");
+                return smallResult;
+            }
+
+            if (snapshot.largeHeadStatus == MeyerDeviceScanHeadColorCalibration_NotCalibrated &&
+                snapshot.smallHeadStatus == MeyerDeviceScanHeadColorCalibration_NotCalibrated)
+            {
+                CopyText(snapshot.detailUtf8, "Large and small scan heads are not color calibrated");
+            }
+            else if (snapshot.largeHeadStatus == MeyerDeviceScanHeadColorCalibration_NotCalibrated)
+            {
+                CopyText(snapshot.detailUtf8, "Large scan head is not color calibrated");
+            }
+            else if (snapshot.smallHeadStatus == MeyerDeviceScanHeadColorCalibration_NotCalibrated)
+            {
+                CopyText(snapshot.detailUtf8, "Small scan head is not color calibrated");
+            }
+            else
+            {
+                CopyText(snapshot.detailUtf8, "Large and small scan heads are color calibrated");
+            }
+            return MeyerDeviceCmdResult_Ok;
         }
 
         std::int32_t DeviceCommandService::RefreshBattery()

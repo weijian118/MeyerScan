@@ -19,6 +19,14 @@
 
 ## 2. 当前关键决策
 
+### 2026-07-22：MyScan 5/6 双扫描头颜色校准预检
+
+- 需求：mOS MyScan 5/6 需要分别使用大小扫描头校准；MyScan 只使用大扫描头并与小扫描头共享参数。MyScan 5/6 进入颜色校准前，主控板版本必须满足截图规则，满足后读取 A3/A4 和 B9/BA 的颜色参数状态。
+- 结论：协议解析、校验和特殊语义集中放在 DeviceCmd。新增长度固定的 `MeyerDeviceScanHeadColorCalibrationSnapshot`，包含策略、版本兼容结果、大小扫描头状态、命令结果和诊断文本；MainExe、SettingsUI、CalibrationColorUI 只逐字段复制。
+- 规则：期望响应码正确但求和失败表示对应扫描头未校准，可以继续进入并提示；超时、坏帧头、错误响应码、截断和错误 payload 长度属于读取失败，阻止进入。`1.1.x`、`1.2.x` 或无法解析的 MyScan 5/6 主控板版本阻止进入。
+- 验证：CMake VS2015 x64 构建、DeviceCmd smoke、SettingsUI smoke、CalibrationColorUI smoke/drag 和 MainExe `--smoke-main` 通过；当前实机 USB3，编号 `6200005301305`，主控板 `1.3.2141`，A3/A4 与 B9/BA 合法回包，大小扫描头均已校准，完整预检 Ready。
+- 版本：DeviceCmd `0.8.0`/语义 API `2.4.0`/schema 和整数 ABI `6`；SettingsUI `0.8.0`/ABI `8`/schema `6`；CalibrationColorUI `0.8.0`/ABI `7`/schema `6`；MainExe `0.7.0`。
+
 ### 2026-07-21：D9 生产未写号状态分类与实机验证
 
 - 问题：实机 D9 回包的 payload 长度为 `0xFFFF`，旧逻辑将其统一显示为 `FrameInvalid`，无法与旧设备用求和校验失败表示未写号的情况区分。

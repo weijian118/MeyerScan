@@ -1,5 +1,13 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-22 - 0.8.0 双扫描头颜色校准提示
+
+- SettingsUI API 升级为 8、校准上下文 schema 升级为 6，新增大小扫描头颜色校准状态副本。
+- Ready 门禁校验机型策略、固件兼容结果和大小扫描头确定状态，拒绝旧宿主或不完整 POD。
+- MyScan 5/6 按状态提示未校准的扫描头；两头已校准和 MyScan 共享策略不提示。
+- 新增固件版本不支持和扫描头状态读取失败提示；所有可见文本继续使用 `tr("English source text")`。
+- `SettingsUITest --smoke` 和预检状态提示回归通过；代码/CMake/Windows 文件版本升级为 0.8.0。
+
 ## 2026-07-21 - 0.7.0
 
 - SettingsUI API 升级为 7、校准上下文 schema 升级为 5，新增主控板/投图板版本快照并逐字段转发给 CalibrationColorUI。

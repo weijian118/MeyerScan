@@ -1,7 +1,9 @@
 # 设备协议命令覆盖表
 
-本文对应 `美亚无线口内扫描仪通讯协议-20250808.pdf` 及旧有线软件实例。`MyDeviceCmd 0.7.7`
-已经为协议表中的 50 个命令码提供语义接口或对应的响应解析路径。
+`MyDeviceCmd 0.8.0` 已为 48 个公共 A 类命令和项目扩展的 `0x12/0x13`、`0xB9/0xBA`
+共 52 个命令码提供语义接口或对应的响应解析路径。完整帧结构、命令分组、机型适用范围、
+十六进制示例和 B 类图像包定义见 `F:\MeyerScan\Documents\设备相关\口扫设备协议文档.md`；
+本文只维护代码覆盖和验证状态。
 
 状态含义：
 
@@ -43,7 +45,8 @@
 
 | 命令 | 响应 | 语义接口 | 当前状态 |
 |---|---|---|---|
-| `0xA3` 读取 416 字节颜色矩阵 | `0xA4` | `MeyerDeviceCmd_ReadColorMatrix` | 已实现、模拟通过、待实机 |
+| `0xA3` 读取大扫描头 416 字节颜色矩阵 | `0xA4` | `MeyerDeviceCmd_ReadColorMatrix`；`MeyerDeviceCmd_PrepareColorCalibration` | 已实现、模拟通过、MyScan 5 实机通过 |
+| `0xB9` 读取小扫描头颜色矩阵 | `0xBA` | `MeyerDeviceCmd_PrepareColorCalibration` | 已实现、模拟通过、MyScan 5 实机通过 |
 | `0xA7` 固化颜色矩阵 | `0xAE` | `MeyerDeviceCmd_StoreColorMatrix` | 已实现、模拟通过、待实机 |
 | `0xC2` 读取相机 1 标定 | `0xC7` | `MeyerDeviceCmd_ReadCamera1Calibration` | 已实现、模拟通过、待实机 |
 | `0xC3` 固化相机 1 标定 | `0xC5` | `MeyerDeviceCmd_StoreCamera1Calibration` | 已实现、模拟通过、待实机 |
@@ -55,6 +58,13 @@
 标定数组以调用方管理的固定 POD 缓冲区跨 DLL 边界，不传递 `std::vector`、
 Qt 容器或算法对象。标定算法和 UI 仍属于 Calibration3DUI/CalibrationColorUI，
 DeviceCmd 只负责协议读写。
+
+颜色校准入口对 `mOS MyScan 5/6` 先校验主控板版本：`1.1.x`、`1.2.x`
+不支持小扫描头颜色校准，必须升级后再进入；无法解析的版本同样保守拦截。
+版本满足后依次读取 A3/A4 和 B9/BA。收到期望响应码但求和校验失败表示对应
+扫描头参数未写入，记录为 `NotCalibrated`；无回包、错误帧头、错误响应码、
+截断或错误 payload 长度属于读取失败，不能误报为“未校准”。`mOS MyScan`
+只使用大扫描头参数，小扫描头共享该参数，不发送 B9/BA。
 
 ## 设备授权信息
 

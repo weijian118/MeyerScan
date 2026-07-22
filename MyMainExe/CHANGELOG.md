@@ -1,5 +1,11 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-22 - v0.7.0 双扫描头颜色校准状态转发
+
+- DeviceSessionHost 适配 DeviceCmd ABI/schema 6；MainExe 将扫描头策略、固件兼容结果、大小扫描头状态、命令结果和诊断文本逐字段复制给 SettingsUI。
+- MainExe 不解析 A4/BA 或判断校准状态，继续只承担设备单会话所有权和版本化 POD 转发。
+- 颜色校准预检日志增加扫描头策略及大小扫描头状态；代码/CMake/Windows 文件版本升级为 0.7.0。
+
 ## 2026-07-22 - 颜色校准与设备链路回归
 
 - 使用最新 `MeyerScan_DeviceCmd.dll` 完成真实 MyScan 3 设备预检回归；MainExe 所需的设备会话、设备身份、产品型号和主控板/投图板版本 POD 复制链路保持兼容。

@@ -156,7 +156,22 @@ int OnCalibrationPreflight(void* context,
     deviceContext->firmwareVersions.mainBoardStatus = SettingsFirmwareVersionValid;
     deviceContext->firmwareVersions.projectionBoardStatus =
         SettingsFirmwareVersionNotRequired;
-    std::strcpy(deviceContext->firmwareVersions.mainBoardVersionUtf8, "1.2.1001");
+    std::strcpy(deviceContext->firmwareVersions.mainBoardVersionUtf8, "1.3.1001");
+    // MyScan 5 测试设备的大小扫描头都已校准，因此 Ready 分支不会额外弹提示。
+    deviceContext->scanHeadColorCalibration.structSize =
+        sizeof(deviceContext->scanHeadColorCalibration);
+    deviceContext->scanHeadColorCalibration.schemaVersion =
+        MEYER_SETTINGS_CALIBRATION_CONTEXT_SCHEMA_VERSION;
+    deviceContext->scanHeadColorCalibration.policy =
+        SettingsScanHeadColorCalibrationPolicyLargeAndSmall;
+    deviceContext->scanHeadColorCalibration.firmwareCompatibility =
+        SettingsColorCalibrationFirmwareSupported;
+    deviceContext->scanHeadColorCalibration.largeHeadStatus =
+        SettingsScanHeadColorCalibrationCalibrated;
+    deviceContext->scanHeadColorCalibration.smallHeadStatus =
+        SettingsScanHeadColorCalibrationCalibrated;
+    deviceContext->scanHeadColorCalibration.largeHeadCommandResult = 0;
+    deviceContext->scanHeadColorCalibration.smallHeadCommandResult = 0;
     std::strcpy(deviceContext->detailUtf8, "Simulated calibration preflight passed");
     return deviceContext->status;
 }
@@ -180,6 +195,10 @@ QString ExpectedPreflightMessage(int status) {
         return "The device response is abnormal.";
     case SettingsCalibrationPreflightFirmwareVersionReadFailed:
         return "Unable to read the device firmware version.";
+    case SettingsCalibrationPreflightColorCalibrationFirmwareUnsupported:
+        return "Please update the device firmware before color calibration.";
+    case SettingsCalibrationPreflightScanHeadColorCalibrationReadFailed:
+        return "Unable to read the scan head color calibration status.";
     case SettingsCalibrationPreflightDeviceNumberInvalid:
         return "The device number is invalid.";
     case SettingsCalibrationPreflightDeviceModelCodeInvalid:

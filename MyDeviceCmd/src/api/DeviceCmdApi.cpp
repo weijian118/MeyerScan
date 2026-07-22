@@ -311,6 +311,22 @@ extern "C"
         MeyerDeviceCmd_InitProductIdentity(&preflight->productIdentity);
         MeyerDeviceCmd_InitDetectionRecord(&preflight->detectionRecord);
         MeyerDeviceCmd_InitFirmwareVersionSnapshot(&preflight->firmwareVersions);
+        preflight->scanHeadColorCalibration.structSize =
+            sizeof(preflight->scanHeadColorCalibration);
+        preflight->scanHeadColorCalibration.schemaVersion =
+            MEYER_DEVICE_CMD_SCHEMA_VERSION;
+        preflight->scanHeadColorCalibration.policy =
+            MeyerDeviceScanHeadColorCalibrationPolicy_NotRun;
+        preflight->scanHeadColorCalibration.firmwareCompatibility =
+            MeyerDeviceColorCalibrationFirmware_NotChecked;
+        preflight->scanHeadColorCalibration.largeHeadStatus =
+            MeyerDeviceScanHeadColorCalibration_NotChecked;
+        preflight->scanHeadColorCalibration.smallHeadStatus =
+            MeyerDeviceScanHeadColorCalibration_NotChecked;
+        preflight->scanHeadColorCalibration.largeHeadCommandResult =
+            MeyerDeviceCmdResult_NotReady;
+        preflight->scanHeadColorCalibration.smallHeadCommandResult =
+            MeyerDeviceCmdResult_NotReady;
         return MeyerDeviceCmdResult_Ok;
     }
 
@@ -435,7 +451,9 @@ extern "C"
                 !HasValidHeader(&preflight->state) ||
                 !HasValidHeader(&preflight->deviceInfo) ||
                 !HasValidHeader(&preflight->productIdentity) ||
-                !HasValidHeader(&preflight->detectionRecord))
+                !HasValidHeader(&preflight->detectionRecord) ||
+                !HasValidHeader(&preflight->firmwareVersions) ||
+                !HasValidHeader(&preflight->scanHeadColorCalibration))
             {
                 return MeyerDeviceCmdResult_InvalidArgument;
             }

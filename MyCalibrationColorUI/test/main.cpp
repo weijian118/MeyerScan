@@ -110,7 +110,22 @@ int main(int argc, char* argv[]) {
         CalibrationColorFirmwareVersionValid;
     deviceContext.firmwareVersions.projectionBoardStatus =
         CalibrationColorFirmwareVersionNotRequired;
-    std::strcpy(deviceContext.firmwareVersions.mainBoardVersionUtf8, "1.2.1001");
+    std::strcpy(deviceContext.firmwareVersions.mainBoardVersionUtf8, "1.3.1001");
+    // 独立测试模拟 MyScan 5 的双扫描头策略，两套颜色参数均已写入。
+    deviceContext.scanHeadColorCalibration.structSize =
+        sizeof(deviceContext.scanHeadColorCalibration);
+    deviceContext.scanHeadColorCalibration.schemaVersion =
+        MEYER_CALIBRATION_COLOR_CONTEXT_SCHEMA_VERSION;
+    deviceContext.scanHeadColorCalibration.policy =
+        CalibrationColorScanHeadPolicyLargeAndSmall;
+    deviceContext.scanHeadColorCalibration.firmwareCompatibility =
+        CalibrationColorFirmwareCompatibilitySupported;
+    deviceContext.scanHeadColorCalibration.largeHeadStatus =
+        CalibrationColorScanHeadCalibrated;
+    deviceContext.scanHeadColorCalibration.smallHeadStatus =
+        CalibrationColorScanHeadCalibrated;
+    deviceContext.scanHeadColorCalibration.largeHeadCommandResult = 0;
+    deviceContext.scanHeadColorCalibration.smallHeadCommandResult = 0;
     if (!Check(calibration->SetDeviceContext(&deviceContext),
                "CalibrationColorUI 接受已验证设备快照")) {
         calibration->Shutdown();
@@ -134,7 +149,13 @@ int main(int argc, char* argv[]) {
     // 根控件属性应使用 effective 值，后续颜色算法无需理解生产模式兼容规则。
     if (!Check(widget->property("deviceId").toString() == "6200005301203" &&
                widget->property("modelCode").toString() == "62000053" &&
-               widget->property("mainBoardFirmwareVersion").toString() == "1.2.1001" &&
+               widget->property("scanHeadColorCalibrationPolicy").toInt() ==
+                   CalibrationColorScanHeadPolicyLargeAndSmall &&
+               widget->property("largeScanHeadColorCalibrationStatus").toInt() ==
+                   CalibrationColorScanHeadCalibrated &&
+               widget->property("smallScanHeadColorCalibrationStatus").toInt() ==
+                   CalibrationColorScanHeadCalibrated &&
+               widget->property("mainBoardFirmwareVersion").toString() == "1.3.1001" &&
                widget->property("projectionBoardFirmwareVersion").toString().isEmpty() &&
                widget->property("deviceDetectionStatus").toInt() ==
                    CalibrationColorDeviceDetectionExact,

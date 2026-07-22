@@ -178,6 +178,20 @@ namespace meyer
             // 将状态快照中的版本值和读取状态复制到预检 POD，供宿主/UI继续传递。
             void FillFirmwareVersionSnapshot(MeyerDeviceFirmwareVersionSnapshot& snapshot,
                                               std::int32_t lastResult) const;
+            // 根据主控板版本判断 MyScan 5/6 是否支持双扫描头颜色校准。
+            // 规则和扫描头状态读取集中在 DeviceCmd，UI 不重复解析版本文本。
+            std::int32_t CheckColorCalibrationFirmwareCompatibility(
+                MeyerDeviceScanHeadColorCalibrationSnapshot& snapshot) const;
+            // 读取大扫描头 A3/A4 和小扫描头 B9/BA 的颜色参数存在性。
+            // 校验和失败返回业务成功并记录 NotCalibrated，其它异常返回失败。
+            std::int32_t ReadScanHeadColorCalibrationSnapshot(
+                MeyerDeviceScanHeadColorCalibrationSnapshot& snapshot);
+            // 执行一条扫描头颜色参数读取命令，并把协议诊断归一成公共状态。
+            std::int32_t ReadOneScanHeadColorCalibration(
+                std::uint8_t requestCode,
+                std::uint8_t responseCode,
+                std::int32_t& status,
+                std::int32_t& commandResult);
             // 读取电池响应并更新状态快照。
             std::int32_t RefreshBattery();
             // 读取设备授权信息并更新状态快照。

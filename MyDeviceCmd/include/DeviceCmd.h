@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.7.7
+// 版本: 0.8.0
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -17,7 +17,9 @@
 //      具体产品和协议 Profile；UI 不得复制这套映射。
 //   5. 型号确认后读取 0x14/0x15 主控板版本；只有 mOS MyScan 再读取
 //      0x12/0x13 投图板版本。其它系列不发送投图板命令。
-//   6. 完整结果写入 MeyerDeviceCalibrationPreflight，MainExe 只复制 POD 快照，
+//   6. MyScan 5/6 在主控板版本满足 1.3.x 后读取 A3/A4 大扫描头和 B9/BA 小扫描头
+//      状态；期望回包求和失败表示未校准，通信异常阻止进入颜色校准。
+//   7. 完整结果写入 MeyerDeviceCalibrationPreflight，MainExe 只复制 POD 快照，
 //      Settings/Calibration/Scan 不持有 DeviceCmd 句柄或再次查询同一信息。
 //
 // ABI 约束:
@@ -38,10 +40,10 @@
 #endif
 
 // 当前公共结构版本。新增字段时只能在 reserved 前追加，不能改变已有字段含义。
-static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 5U;
+static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 6U;
 
 // MainExe 动态加载 DLL 前校验的整数 ABI 版本。
-static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 5;
+static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 6;
 
 // 协议当前最大命令数据为 416 字节；保留 1024 字节可覆盖后续常规扩展，
 // 同时避免把不受控的大块内存放入公共结构。
@@ -114,6 +116,9 @@ enum MeyerDeviceCommandCode : std::uint8_t
     MeyerDeviceCommand_CameraParametersStoreReply = 0xA9,
     MeyerDeviceCommand_ReadColorMatrix = 0xA3,
     MeyerDeviceCommand_UploadColorMatrix = 0xA4,
+    // MyScan 5/6 小扫描头颜色参数读取请求和回包。
+    MeyerDeviceCommand_ReadSmallScanHeadColorMatrix = 0xB9,
+    MeyerDeviceCommand_UploadSmallScanHeadColorMatrix = 0xBA,
     MeyerDeviceCommand_StoreColorMatrix = 0xA7,
     MeyerDeviceCommand_ColorMatrixStoreReply = 0xAE,
     MeyerDeviceCommand_SetCameraWindowPosition = 0xA5,
@@ -356,6 +361,58 @@ enum MeyerDeviceStateField : std::uint64_t
     MeyerDeviceStateField_ProjectionBoardFirmwareVersion = 1ULL << 11
 };
 
+// 进入颜色校准前使用的扫描头策略。旧 mOS MyScan 的小扫描头共用大扫描头
+// 参数，因此只需要针对大扫描头执行一次校准；MyScan 5/6 必须分开记录。
+enum MeyerDeviceScanHeadColorCalibrationPolicy : std::int32_t
+{
+    MeyerDeviceScanHeadColorCalibrationPolicy_NotRun = 0,
+    MeyerDeviceScanHeadColorCalibrationPolicy_LargeOnlyShared = 1,
+    MeyerDeviceScanHeadColorCalibrationPolicy_LargeAndSmall = 2
+};
+
+// 单个扫描头颜色参数的读取状态。ChecksumInvalid 是设备明确返回期望响应但
+// 参数区求和失败，业务含义是“未校准”；其它失败状态表示通信/帧解析失败。
+enum MeyerDeviceScanHeadColorCalibrationStatus : std::int32_t
+{
+    MeyerDeviceScanHeadColorCalibration_NotChecked = 0,
+    MeyerDeviceScanHeadColorCalibration_Calibrated = 1,
+    MeyerDeviceScanHeadColorCalibration_NotCalibrated = 2,
+    MeyerDeviceScanHeadColorCalibration_NotRequired = 3,
+    MeyerDeviceScanHeadColorCalibration_ResponseMissing = 4,
+    MeyerDeviceScanHeadColorCalibration_FrameInvalid = 5,
+    MeyerDeviceScanHeadColorCalibration_PayloadInvalid = 6
+};
+
+// 主控板版本对双扫描头颜色校准的兼容结果。版本无法按 x.y.z 解析时必须
+// 使用 ParseFailed，不能把未知版本当作支持版本放行。
+enum MeyerDeviceColorCalibrationFirmwareCompatibility : std::int32_t
+{
+    MeyerDeviceColorCalibrationFirmware_NotChecked = 0,
+    MeyerDeviceColorCalibrationFirmware_Supported = 1,
+    MeyerDeviceColorCalibrationFirmware_Unsupported = 2,
+    MeyerDeviceColorCalibrationFirmware_ParseFailed = 3,
+    MeyerDeviceColorCalibrationFirmware_NotRequired = 4
+};
+
+// 双扫描头颜色校准预检快照。detailUtf8 保存最近一次失败或特殊状态的说明；
+// large/smallCommandResult 保留 DeviceCmd API 结果，便于现场区分超时和坏帧。
+struct MeyerDeviceScanHeadColorCalibrationSnapshot
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::int32_t policy;
+    std::int32_t firmwareCompatibility;
+    std::int32_t largeHeadStatus;
+    std::int32_t smallHeadStatus;
+    std::int32_t largeHeadCommandResult;
+    std::int32_t smallHeadCommandResult;
+    char detailUtf8[256];
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceScanHeadColorCalibrationSnapshot) == 320U,
+              "MeyerDeviceScanHeadColorCalibrationSnapshot ABI size changed");
+
 // 颜色校准入口预检的业务状态。函数调用本身返回 DeviceCmdResult，调用成功后
 // 再读取本枚举，区分“设备未连接”“USB2”和“型号未识别”等正常拦截原因。
 enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
@@ -380,7 +437,11 @@ enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
     // 练习、颜色校准和三维校准可以继续使用带来源的 effective 兼容身份。
     MeyerDeviceCalibrationPreflight_ProductionDeviceNumberRequired = 14,
     // 设备身份已经识别，但颜色校准所需的版本命令读取失败。
-    MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed = 15
+    MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed = 15,
+    // MyScan 5/6 主控板版本低于 1.3 或版本文本无法可靠解析。
+    MeyerDeviceCalibrationPreflight_ColorCalibrationFirmwareUnsupported = 16,
+    // A3/A4 或 B9/BA 没有收到可解释的完整回包。
+    MeyerDeviceCalibrationPreflight_ScanHeadColorCalibrationReadFailed = 17
 };
 
 // 模拟后端专用标志，只允许测试程序使用。正式 DeviceTransport 后端忽略这些值，
@@ -407,7 +468,13 @@ enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
     MeyerDeviceCmdSimulatedFlag_MainBoardVersionReadFailure = 1U << 14,
     MeyerDeviceCmdSimulatedFlag_ProjectionBoardVersionReadFailure = 1U << 15,
     // 生成长度字段为 0xFFFF 的 0xD9 回包，验证新生产模式分支。
-    MeyerDeviceCmdSimulatedFlag_DeviceNumberUninitialized = 1U << 16
+    MeyerDeviceCmdSimulatedFlag_DeviceNumberUninitialized = 1U << 16,
+    // 以下标志专门覆盖颜色校准版本门禁和大小扫描头参数状态。
+    MeyerDeviceCmdSimulatedFlag_UnsupportedColorCalibrationFirmware = 1U << 17,
+    MeyerDeviceCmdSimulatedFlag_LargeHeadColorChecksumFailure = 1U << 18,
+    MeyerDeviceCmdSimulatedFlag_SmallHeadColorChecksumFailure = 1U << 19,
+    MeyerDeviceCmdSimulatedFlag_LargeHeadColorReadFailure = 1U << 20,
+    MeyerDeviceCmdSimulatedFlag_SmallHeadColorReadFailure = 1U << 21
 };
 
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，
@@ -766,11 +833,12 @@ struct MeyerDeviceCalibrationPreflight
     MeyerDeviceProductIdentity productIdentity;
     MeyerDeviceDetectionRecord detectionRecord;
     MeyerDeviceFirmwareVersionSnapshot firmwareVersions;
+    MeyerDeviceScanHeadColorCalibrationSnapshot scanHeadColorCalibration;
     char detailUtf8[256];
     std::uint32_t reserved[8];
 };
 
-static_assert(sizeof(MeyerDeviceCalibrationPreflight) == 2232U,
+static_assert(sizeof(MeyerDeviceCalibrationPreflight) == 2552U,
               "MeyerDeviceCalibrationPreflight ABI size changed");
 
 // 0xDB/0xDC/0xDE 使用的曝光参数。前 16 个字段对应设置命令，读取响应额外
