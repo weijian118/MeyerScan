@@ -87,3 +87,31 @@ DeviceCmdTest.exe --help
 `--preflight-real` 只执行颜色校准入口所需的只读链路：枚举 Cypress 设备、判断 USB2/USB3、发送 D4/D9、生产模式下发送 C2/C7、发送 CD/CE、读取主控板/投图板版本，并逐项输出回包缺失、帧解析、求和校验、reported/effective 身份和兼容来源。它不会调用设备信息写入、参数固化或 Flash 命令；返回码 `0` 表示可以继续（可能带兼容推断），`3` 表示被未连接、USB2、D9 回包异常、编号非法、身份冲突或 Profile 未知等门禁拦截。
 
 真实预检测试还会输出 `[TIMING]`：Open、USB、D4-D9、C2-C7、CD-CE、ProductCatalog、Firmware 和 Total。每条包含步骤用途与实际毫秒数；未需要的 C2-C7 显示 `SKIPPED` 及原因。该输出由测试宿主临时开启，正式 MainExe 默认不打印。
+
+## 2026-07-23 采集命令与设备上下文合同
+
+每个命令会话和采集会话必须保存以下设备信息：
+
+```text
+deviceSeries（必须）
+deviceProfile（必须）
+deviceIdStatus（必须）
+deviceId（有则记录）
+deviceModel/modelCode（有则记录）
+reported/effective 来源
+productionMode
+firmwareVersion
+captureMode
+scanHeadType（有则记录）
+```
+
+`MyDeviceCmd` 是设备命令唯一语义入口：
+
+- 负责 `0x0A/0x0B`、曝光、灯光等命令编码和发送。
+- 负责识别设备系列、设备编号、设备型号和固件；保存真实回包值与兼容有效值的区别。
+- 负责为上层采集服务提供受控的原始 B 包接收和无回包命令调度能力。
+- 采集间隔内最多两条无回包命令；第一条 USB OUT 完成后至少等待 5 ms 再发送第二条。
+- 自动曝光是否进入由整组开灯状态决定；关灯组跳过自动曝光，但仍允许发送其他合法无回包命令。
+- 当前所有适配机型的 Capture Profile 暂统一传入 `queueDepth=64`；DeviceCmd 负责把该显式参数传给 DeviceTransport，不能依赖传输模块默认值。关灯组仍由上层采集服务正常后处理并发布结果。
+
+`MyDeviceCmd` 不解析图像像素、不执行排序、镜像、减黑图或自动曝光算法。自动曝光由独立采集会话对象调用 `MeyerScan_AutoExposure.dll` 计算，命令仍由本模块发送。详细数据流见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。

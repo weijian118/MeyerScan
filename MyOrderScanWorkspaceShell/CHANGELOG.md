@@ -1,5 +1,11 @@
 ﻿# MeyerScan OrderScanWorkspaceShell 变更记录
 
+## 2026-07-23 - 工作台设备上下文方案同步（未修改代码）
+
+- 明确工作台壳只转发设备上下文和采集会话标识，不创建设备会话、不发送设备命令。
+- Order/Scan/Process/Send 切换时保留机型系列、Profile、设备编号状态、设备编号/型号（有则记录）和 reported/effective 来源。
+- 详细方案同步到 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.1.4`；新增公共接口 ABI 版本导出，MainExe 在挂载工作台前执行版本门禁。

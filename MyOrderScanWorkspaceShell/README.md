@@ -38,3 +38,21 @@
 - CMake/VSCode：默认开启 `OrderScanWorkspaceShellTest` 测试目标，可通过 `MEYER_BUILD_ORDERSCANWORKSPACESHELLTEST` 控制。
 - 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。
 - 当前测试覆盖创建模式步骤点击、练习模式只显示 Scan/Process、返回动作回调、非法 step 防崩溃和根控件释放。
+
+## 2026-07-23 设备上下文转发
+
+工作台壳不创建设备会话，也不发送设备命令。Order/Scan/Process/Send 页面切换时，壳子只转发不可变的设备上下文和采集会话标识：
+
+```text
+deviceSeries（必须）
+deviceProfile（必须）
+deviceIdStatus（必须）
+deviceId（有则记录）
+deviceModel/modelCode（有则记录）
+productionMode
+firmwareVersion
+captureMode
+scanHeadType（有则记录）
+```
+
+创建和练习模式共用工作台时，设备上下文不能因步骤切换而重新探测或丢失 reported/effective 来源。真正的采集、单图解密、自动曝光和后处理由 `MyCaptureService` 及设备处理模块负责。详细链路见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。

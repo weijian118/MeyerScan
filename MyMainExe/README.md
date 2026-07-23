@@ -114,3 +114,26 @@ F:\MeyerScan\MyMainExe\bin\Release\MeyerScan.exe --external-order F:\MeyerScan\M
 - 后续建议新增 `LoginAdapter`，把登录 DLL 的参数构造、状态转换、头文件兼容问题收口在单独边界内。
 - 数据库配置只从运行目录 `config/db_config.json` 读取；缺失时只记录健康检查不可用，不回退到开发机绝对路径。
 - 单实例在数据库检查或登录窗口阶段只做轻量激活尝试；如果主窗口尚未显示，不强制弹窗，避免干扰启动和登录流程。
+
+## 2026-07-23 设备采集会话编排要求
+
+`DeviceSessionHost` 是进程内唯一设备会话所有者。颜色校准、三维校准、练习扫描和创建扫描只能通过宿主取得采集服务和固定 POD 快照，不能各自加载 Transport 或创建 USB 会话。
+
+准入规则必须按场景分开：颜色校准不检查标定器；三维校准后续接入标定器连接检查，但当前不检查“三维校准完成状态”。所有当前适配机型的采集 Profile 暂显式使用 `queueDepth=64`，不能依赖 DeviceTransport 的默认值。
+
+宿主传递给采集链路和各 UI 的设备上下文必须包含：
+
+```text
+deviceSeries（必须）
+deviceProfile（必须）
+deviceIdStatus（必须）
+deviceId（有则记录）
+deviceModel/modelCode（有则记录）
+reported/effective 值及来源
+productionMode
+firmwareVersion
+captureMode
+scanHeadType（有则记录）
+```
+
+MainExe 只负责编排准入和会话生命周期，不解析 B 包、不解密图像、不计算自动曝光。采集服务负责持续取包、单图解密、条件式自动曝光和命令时序；关灯组只跳过自动曝光，仍正常后处理并发布 UI。离开工作台或校准页面时必须先停止采集线程、释放后处理队列，再关闭设备会话。详细方案见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。

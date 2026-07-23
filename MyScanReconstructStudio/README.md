@@ -38,3 +38,23 @@ VS2015 通过 `..\cmake\MeyerScanScanThirdParty.props` 复制运行时 DLL。迁
 - 模块 QSS 源码仍保存在本模块 `Resources`，正式发布由 `MeyerScan_UIResources.dll` 统一注册；VS2015 PostBuild 不再复制散 QSS。
 - 人工看界面：运行 `bin\Release\ScanReconstructStudio.exe`。
 - CMake：已用 `F:\Tools\CMakePython\cmake\data\bin\cmake.exe` 和 VS2015 x64 生成器完成根聚合 `Release` 构建，`ScanReconstructStudio.exe --smoke` 返回 0。
+
+## 2026-07-23 设备采集和数据处理上下文
+
+本模块仍然是 Scan/Process 壳，不直接实现 USB、设备命令、解密或算法。DLL 形态和独立 EXE 形态都必须通过同一套采集服务和设备会话规则获取数据。
+
+独立进程或嵌入工作台传入的上下文必须记录：
+
+```text
+deviceSeries（必须）
+deviceProfile（必须）
+deviceIdStatus（必须）
+deviceId（有则记录）
+deviceModel/modelCode（有则记录）
+productionMode
+firmwareVersion
+captureMode
+scanHeadType
+```
+
+Scan 阶段消费快速链路产生的结果，Process 阶段消费异步后处理结果。跨进程只传订单/会话 ID、版本化 UTF-8 JSON 或文件路径，不传 USB 句柄、QObject、VTK 对象或图像内存所有权。详细采集方案见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。

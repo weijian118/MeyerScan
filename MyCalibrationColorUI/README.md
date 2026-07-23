@@ -45,3 +45,23 @@
 - `--capture-screenshot <png>` 会按参考面板尺寸渲染、抓图并自动退出，用于逐像素视觉比较。
 - `--show` 作为旧人工启动参数继续兼容，其行为与无参数运行一致。
 - 测试宿主只验证本模块边界和必要依赖链路，测试配置/数据写在 exe 输出目录下。
+
+## 2026-07-23 采集上下文和后续接入边界
+
+本模块不创建采集线程、不直接读取 `MyDeviceTransport`，也不直接发送设备命令。颜色校准采集由宿主提供的 `MyCaptureService` 统一编排，UI 只启动/停止采集、显示状态和消费最终处理结果。
+
+颜色校准上下文必须至少保存：
+
+```text
+deviceSeries（必须）
+deviceProfile（必须）
+deviceIdStatus（必须）
+deviceId（有则记录）
+deviceModel/modelCode（有则记录）
+productionMode
+firmwareVersion
+captureMode=CalibrationColor
+scanHeadType
+```
+
+UI 不解析原始数据头、不判断单图状态、不执行 AES、不计算自动曝光。宿主/采集服务完成整组状态汇总后，把 `groupLedOn`、拍照/按钮长按状态、扫描头汇总、曝光状态和诊断文本以固定 POD 快照注入本模块。整组关灯时 UI 不应显示“自动曝光已执行”，但仍须接收和显示正常完成的慢速后处理结果。颜色校准当前不做标定器连接检查，标定器检查只属于三维校准且后续接入。详细链路见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。
