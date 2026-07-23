@@ -1,5 +1,9 @@
 ﻿# MeyerScan Database 变更记录
 
+## 2026-07-23
+
+- 自检修正 `Database.h` 和 `DatabaseTest` 文件头中的过期版本说明，对齐当前 `v1.3.0`；不改变数据库 ABI 或运行行为。
+
 ## 2026-07-06
 
 - 修正 `Database.h` 中容易造成边界回退的旧说明：Database 只作为纯 C++ 数据库基础设施，供 DatabaseQtAdapter、领域服务、迁移工具、统计/导出等数据访问边界使用；Permission/UI 等上层模块不得绕过 Adapter 或 Service 直接执行业务 SQL。

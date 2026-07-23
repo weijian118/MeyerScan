@@ -1,5 +1,10 @@
 # MyDeviceCmd 变更记录
 
+## 2026-07-23 - VS2015 构建清单修复
+
+- 自检发现 CMake 已编译 `DeviceProductCatalog.cpp`，但手写 VS2015 项目遗漏该源文件，导致根方案链接缺少产品识别符号。
+- `MeyerScan_DeviceCmd.vcxproj` 和 `.filters` 补齐 `DeviceProductCatalog.cpp/.h`，并修正 transport 过滤器名称中的异常制表符；不改变协议逻辑、公共 ABI 或模块版本。
+
 ## 2026-07-22 - 设备协议文档完整化
 
 - 将 `Documents/设备相关/口扫设备协议文档.md` 重写为正式协议说明，按公共命令、机型专用命令和 B 类图像包分类。

@@ -20,11 +20,11 @@ BEGIN
             VALUE "CompanyName",      "Hefei Meyer Optoelectronic Technology Co., Ltd."
             VALUE "LegalCopyright", "Copyright (C) 2026 HEFEI MEYER"
             VALUE "FileDescription",  "MeyerScan Home UI Module"
-            VALUE "FileVersion",      "0.3.2"
+            VALUE "FileVersion",      "0.3.3"
             VALUE "InternalName",     "MeyerScan_HomeUI"
             VALUE "OriginalFilename", "MeyerScan_HomeUI.dll"
             VALUE "ProductName",      "MeyerScan Digital Dental Scanner"
-            VALUE "ProductVersion",   "0.3.2"
+            VALUE "ProductVersion",   "0.3.3"
         END
     END
     BLOCK "VarFileInfo"

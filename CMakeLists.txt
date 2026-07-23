@@ -34,7 +34,7 @@ add_subdirectory(MyCaseOrderService)
 add_subdirectory(MyScanSchemaService)
 add_subdirectory(MyRuntimeDataCenter)
 
-# Settings, calibration, order workflow, scan workflow, and version skeletons.
+# Settings、calibration、order workspace、scan workflow 和历史版本模块。
 add_subdirectory(MyCalibration3DUI)
 add_subdirectory(MyCalibrationColorUI)
 add_subdirectory(MyOrderCreateUI)

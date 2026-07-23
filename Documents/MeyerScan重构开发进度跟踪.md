@@ -6,19 +6,20 @@
 
 ## 1. 最新验证基线
 
-验证日期：2026-07-22。
+验证日期：2026-07-23。
 
 | 检查 | 结果 |
 |---|---|
-| CMake Release 全量构建 | 通过；最终采用非并行构建，避免多个工程争用同一输出文件 |
-| 根 CTest | 2026-07-22 全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke，并包含双扫描头颜色校准模拟分支 |
+| CMake Release 全量构建 | 2026-07-23 重新配置并串行构建通过；避免多个工程争用同一输出文件 |
+| 根 CTest | 2026-07-23 全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke，并包含双扫描头颜色校准模拟分支 |
 | MainExe smoke | `MeyerScan.exe --smoke-main` 重新执行并以退出码 0 通过；根 CTest 中的 `--smoke`、`--smoke-external-order` 同样通过 |
-| VS2015 根方案 | 最近一轮 Release x64 通过；仅保留既有外部登录头文件编码/声明警告 |
-| 版本清单 | 已生成 `MyMainExe/bin/Release/logs/versionList/versionList_20260722_090108_460.json`；包含 MainExe `0.7.0`、DeviceCmd `0.8.0`、SettingsUI/CalibrationColorUI `0.8.0`、Transport `1.2.0` 等拆分模块，文件版本与代码版本均匹配 |
+| VS2015 根方案 | 2026-07-23 Release x64 重新构建通过；修复 DeviceCmd 手写工程漏编译 ProductCatalog，当前仅保留既有外部登录头文件编码/声明警告 |
+| 版本清单 | 已生成 `bin/Release/logs/versionList/versionList_20260723_082953_601.json`；共 27 项，缺失 0、代码版本错误 0、文件/代码版本不一致 0 |
 | UIResources VS2015 | `MeyerScan_UIResources.sln` Release x64 Rebuild 通过，0 个警告、0 个错误；`UIResourcesTest.exe` 合同和资源生命周期检查通过 |
 | 设备实机预检 | 2026-07-22 使用当前 MyScan 5 设备确认 Cypress、USB3、设备编号 `6200005301305`、主控板 `1.3.2141`；A3/A4 大扫描头和 B9/BA 小扫描头均收到合法回包并判定已校准；完整预检 Ready，未写入设备 |
 | 注释安全 | 0 错误、0 警告 |
 | 文档备份脚本 | PowerShell 5.1 AST、BOM 和两次隔离幂等执行通过 |
+| 架构边界静态扫描 | 未发现 UI 内联 SQL/直接依赖 Database 或设备底层、业务源码内联 QSS、`QDir::currentPath()`、开发机绝对运行路径或 `tr("中文")` |
 
 标准快速回归：
 
@@ -82,6 +83,14 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 页面可显示或 smoke 通过只表示框架可运行，不代表右侧未闭环业务已完成。
 
+### 3.1 本轮自检发现的待处理项
+
+- `MainWindow.cpp` 约 3244 行、`DeviceCommandService.cpp` 约 2767 行、`OrderCreateUIImpl.cpp` 约 1993 行、`SettingsUIImpl.cpp` 约 1543 行、`DatabaseImpl.cpp` 约 1029 行。职责边界总体正确，但单文件人工阅读成本已偏高；建议保持 DLL/ABI 不变，按内部协作类和多个 `.cpp` 渐进拆分，具体优先级需确认后执行。
+- UI 文案基本遵守英文 `tr()`，但业务模块尚无自己的 qm，统一 LanguageManager/QTranslator 和运行时语言切换未落地。实施前需要确认首批语言、是否允许运行时切换以及登录模块语言索引映射。
+- CMake 已支持 `QT_ROOT`/`QTDIR` 和仓库内 Qt，UI 资源脚本也支持仓库移动；但普通 Qt 模块的历史 VS2015 工程仍散落 `C:\Qt\Qt5.6.3` 默认路径，MainExe 还直接引用外部登录 SDK 的 `D:\wj` 路径。应迁移到公共 props 和可配置外部 SDK 根目录。
+- 本轮完成静态 UI 检查和 smoke，没有重新执行 1366x768、1920x1080、2560x1440 三档截图，也没有干净机器安装/升级验证；这两项不能由 CTest 代替。
+- CTest 使用隔离运行目录，但其输入仍来自模块既有 `bin\Release`。安装器和发布依赖清单未落地前，仍需增加“清空输出后重建并组装全新运行目录”的发布验收，避免历史外部 DLL 掩盖漏复制。
+
 ## 4. 当前优先任务
 
 ### P0：患者订单真实闭环
@@ -142,7 +151,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 ### 跨模块修改
 
 - 根 CMake 或 `MeyerScan_AllModules.sln` 构建。
-- 26 项 CTest。
+- 27 项 CTest。
 - MainExe `--smoke` 及受影响集成 smoke。
 - 运行时 versionList：无缺失、无代码/文件版本不一致。
 - 正式配置、数据库和 manifest 测试前后哈希不变。
@@ -172,6 +181,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 | 日期 | 决策 |
 |---|---|
+| 2026-07-23 | 长期重构采用事实/假设/待确认分级；产品、协议、所有权、边界和兼容策略不明确时先询问，不自行补全 |
 | 2026-07-15 | CaseUI/SettingsUI 改为宿主快照注入；扫描规则进入 ScanSchemaService；MainExe 动态 C++ 接口增加 API 门禁并接入最小建单保存 |
 | 2026-07-14 | 重构文档只维护 `F:\MeyerScan\Documents`；移除 D 盘镜像和 `_RefactorDocs` |
 | 2026-07-14 | 四份主文档去除重复历史和旧接口草案，现行规则由任务总览/架构规范维护 |
@@ -184,4 +194,4 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 ---
 
-> **文档版本**：v3.1（2026-07-15，记录快照注入、ABI 门禁、扫描规则服务和最小建单保存）
+> **文档版本**：v3.2（2026-07-23，统一 27 项测试口径并登记沟通门禁）

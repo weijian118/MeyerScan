@@ -1,9 +1,16 @@
 ﻿param(
-    [string]$RepositoryRoot = "F:\MeyerScan",
+    [string]$RepositoryRoot = "",
     [string]$OutputPath = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# 未显式传仓库目录时，从脚本自身位置反推根目录。这样整个仓库移动后，
+# 开发者直接运行脚本也不会回到历史 F:\MeyerScan 路径。
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    $RepositoryRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $PSScriptRoot "..\.."))
+}
 
 # qrc 前缀必须与 C++ 加载器和 Version.rc 使用同一份合同定义。
 # 脚本只解析 ASCII 合同头中的字符串宏，不复制一份容易漂移的常量。

@@ -12,8 +12,23 @@
 
 get_filename_component(MEYER_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
-set(MEYER_QT_ROOT "C:/Qt/Qt5.6.3/5.6.3/msvc2015_64" CACHE PATH
-    "Qt 5.6.3 MSVC2015 x64 install root")
+# 首次配置时按“显式环境变量 -> 仓库内依赖 -> 当前开发机默认目录”选择 Qt。
+# CMake cache 一旦已有 MEYER_QT_ROOT 就保留用户选择，避免重新配置时偷偷换工具链。
+if(NOT DEFINED MEYER_QT_ROOT OR MEYER_QT_ROOT STREQUAL "")
+    if(DEFINED ENV{QT_ROOT} AND EXISTS "$ENV{QT_ROOT}/bin/moc.exe")
+        set(_meyer_qt_default_root "$ENV{QT_ROOT}")
+    elseif(DEFINED ENV{QTDIR} AND EXISTS "$ENV{QTDIR}/bin/moc.exe")
+        set(_meyer_qt_default_root "$ENV{QTDIR}")
+    elseif(EXISTS "${MEYER_ROOT_DIR}/ThirdParty/Qt5.6.3/5.6.3/msvc2015_64/bin/moc.exe")
+        set(_meyer_qt_default_root
+            "${MEYER_ROOT_DIR}/ThirdParty/Qt5.6.3/5.6.3/msvc2015_64")
+    else()
+        set(_meyer_qt_default_root "C:/Qt/Qt5.6.3/5.6.3/msvc2015_64")
+    endif()
+    # 仅在变量未定义或显式为空时 FORCE；有效的用户 cache 值不会进入本分支。
+    set(MEYER_QT_ROOT "${_meyer_qt_default_root}" CACHE PATH
+        "Qt 5.6.3 MSVC2015 x64 install root" FORCE)
+endif()
 
 set(MEYER_SQLITE_RUNTIME_DLL "${MEYER_ROOT_DIR}/ThirdParty/SQLite/win-x64/sqlite3.dll" CACHE FILEPATH
     "SQLite x64 runtime dll used by pure C++ Database module")

@@ -1,5 +1,10 @@
 # 修改记录
 
+## 2026-07-23
+
+- 资源清单脚本不再默认写死 `F:\MeyerScan`；未传 `RepositoryRoot` 时由 `$PSScriptRoot` 反推仓库根目录，保证项目整体移动后仍可直接生成资源清单。
+- 本轮未改变资源内容、资源 ABI 或 RCDATA 合同，模块版本保持 `0.2.0`。
+
 ## 2026-07-21 - 0.2.0
 
 - 新增 `Common/include/MeyerUiResourceContract.h`，统一维护 RCDATA 编号 `101`、资源 API 版本、清单版本和 qrc 路径前缀。

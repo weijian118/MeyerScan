@@ -39,6 +39,7 @@
     <ClInclude Include="include\DeviceCmd.h" />
     <ClInclude Include="src\core\DeviceCommandService.h" />
     <ClInclude Include="src\model\DeviceModelCatalog.h" />
+    <ClInclude Include="src\model\DeviceProductCatalog.h" />
     <ClInclude Include="src\protocol\DeviceCommandCodec.h" />
     <ClInclude Include="src\protocol\DeviceProtocolDefs.h" />
     <ClInclude Include="src\support\ModuleInfo.h" />
@@ -52,6 +53,7 @@
     <ClCompile Include="src\api\DeviceCmdApi.cpp" />
     <ClCompile Include="src\core\DeviceCommandService.cpp" />
     <ClCompile Include="src\model\DeviceModelCatalog.cpp" />
+    <ClCompile Include="src\model\DeviceProductCatalog.cpp" />
     <ClCompile Include="src\protocol\DeviceCommandCodec.cpp" />
     <ClCompile Include="src\support\ModuleLogger.cpp" />
     <ClCompile Include="src\transport\DeviceTransportLibrary.cpp" />

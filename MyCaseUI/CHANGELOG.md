@@ -1,5 +1,9 @@
 ﻿# MeyerScan CaseUI 变更记录
 
+## 2026-07-23
+
+- 自检修正 `Version.rc` 的 `FileVersion`/`ProductVersion` 文本，将残留的 `0.3.2` 对齐到数值资源、CMake 和代码版本 `0.3.3`；不改变接口或页面行为。
+
 ## 2026-07-15
 
 - 版本升级为 `v0.3.3`，公共接口版本升级为 2；新增 `SetDataContextJson()`，只展示 MainExe 注入的患者/订单 domain 快照。
