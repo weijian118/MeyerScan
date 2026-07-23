@@ -11,10 +11,10 @@
 | 检查 | 结果 |
 |---|---|
 | CMake Release 全量构建 | 2026-07-23 重新配置并串行构建通过；避免多个工程争用同一输出文件 |
-| 根 CTest | 2026-07-23 全量 Release 后 27/27 通过；覆盖 25 个模块测试和 2 个 MainExe 集成 smoke，并包含双扫描头颜色校准模拟分支 |
+| 根 CTest | 2026-07-23 CMake Release 后 28/28 通过；包含 25 个模块测试、2 个 MainExe 集成 smoke 和 1 个登录 SDK smoke |
 | MainExe smoke | `MeyerScan.exe --smoke-main` 重新执行并以退出码 0 通过；根 CTest 中的 `--smoke`、`--smoke-external-order` 同样通过 |
-| VS2015 根方案 | 2026-07-23 Release x64 重新构建通过；修复 DeviceCmd 手写工程漏编译 ProductCatalog，当前仅保留既有外部登录头文件编码/声明警告 |
-| 版本清单 | 已生成 `bin/Release/logs/versionList/versionList_20260723_082953_601.json`；共 27 项，缺失 0、代码版本错误 0、文件/代码版本不一致 0 |
+| VS2015 根方案 | 2026-07-23 `MSBuild 14.0` Release x64 `/t:Rebuild` 通过；所有项目 0 错误，`MeyerLoginTest.vcxproj` 已纳入手写总方案 |
+| 版本清单 | 已生成 `bin/Release/logs/versionList/versionList_20260723_102929_976.json`；共 27 个正式模块条目，缺失 0、代码版本错误 0、文件/代码版本不一致 0；测试程序不进入产品清单 |
 | UIResources VS2015 | `MeyerScan_UIResources.sln` Release x64 Rebuild 通过，0 个警告、0 个错误；`UIResourcesTest.exe` 合同和资源生命周期检查通过 |
 | 设备实机预检 | 2026-07-22 使用当前 MyScan 5 设备确认 Cypress、USB3、设备编号 `6200005301305`、主控板 `1.3.2141`；A3/A4 大扫描头和 B9/BA 小扫描头均收到合法回包并判定已校准；完整预检 Ready，未写入设备 |
 | 注释安全 | 0 错误、0 警告 |
@@ -36,13 +36,13 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 | 模块 | 版本 | 当前成熟度 |
 |---|---:|---|
-| MainExe | 0.7.0 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；转发 DeviceCmd ABI/schema 6 的版本和大小扫描头快照；真实生产设备准入和完整校准业务待继续联调 |
+| MainExe | 0.8.0 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；转发 DeviceCmd ABI 7/schema 6 的版本和大小扫描头快照；主窗口实现已按动作、导航、数据、设备、版本、模块和日志拆分 |
 | Logger | 1.1.1 | 基础能力可用；已提供 API 版本导出 |
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.1 | 转换链路可用；已提供 API 版本导出 |
 | DeviceTransport | 1.2.0 | 默认自动遍历 CyAPI 设备，严格区分 USB2/USB3；32 项无硬件 smoke 通过，实机枚举和 USB3 判断已确认；长时间采集和拔插恢复待联调 |
-| DeviceCmd | 0.8.0 | 52 个 A 类命令码可用；新增 MyScan 5/6 A3/A4、B9/BA 双扫描头状态和主控板版本门禁；默认命令超时 `200 ms`，未完成响应兜底 `20 ms`，D4/CD 接收前 `50 ms`；当前设备实机读取 USB3、设备编号 `6200005301305`、主控板 `1.3.2141`，大小扫描头均已校准，完整预检 Ready |
-| ConfigCenter | 0.2.0 | 读取骨架可用；新增练习/创建生产模式独立策略；迁移、通知、加密待完成 |
+| DeviceCmd | 0.9.0 | 52 个 A 类命令码可用；正式产品仅支持 mOS MyScan 5/6，旧 mOS MyScan 保留协议诊断但预检返回状态 18；实现已按命令、交换、采集、检测、固件和预检拆分；语义 API 2.5.0、整数 ABI 7、schema 6 |
+| ConfigCenter | 0.3.0 | 读取骨架可用；新增练习/创建生产模式独立策略及启动语言 `application.language`；迁移、通知、加密待完成 |
 | Permission | 0.1.1 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.1 | 本地/云端 JSON 快照骨架可用；由 MainExe 统一读取并注入 UI |
 | CaseOrderService | 0.2.2 | 标准嵌套建单保存/查询、患者/订单轻量列表和最小 schema 可用；完整 CRUD、事务和迁移待完成 |
@@ -51,8 +51,8 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | UIResources | 0.2.0 | 统一资源 DLL、RCDATA 101/API/清单/前缀公共合同、加载前校验和客户旧版本独立覆盖规则可用；客户专属覆盖目录与哈希清单仍待扩展 |
 | HomeUI | 0.3.3 | 页面和入口动作可用；只接收应用目录，不再带数据库语义 |
 | CaseUI | 0.3.3 | 宿主快照列表和动作上报可用；真实 CRUD/Workflow 未闭环 |
-| SettingsUI | 0.8.0 | 颜色校准工作台/连接/USB3/D9/C7/CE/产品身份/版本/大小扫描头状态预检、组合提示、完整 POD 注入和可拖动模态遮罩可用；配置保存/刷新未闭环 |
-| OrderCreateUI | 0.5.5 | 建单 UI、牙位/桥、完整上下文导出和公共清空确认弹窗可用；字段校验仍需完善 |
+| SettingsUI | 0.9.0 | 颜色校准工作台/连接/USB3/D9/C7/CE/产品身份/版本/大小扫描头状态预检、旧系列不支持提示、完整 POD 注入和可拖动模态遮罩可用；实现已按布局、数据和校准拆分；配置保存/刷新未闭环 |
+| OrderCreateUI | 0.6.0 | 建单 UI、牙位/桥、完整上下文导出和公共清空确认弹窗可用；实现已按布局、上下文、治疗方案、扫描流程和公共集成拆分；字段校验仍需完善 |
 | OrderScanWorkspaceShell | 0.1.4 | 创建/练习容器和步骤切换可用 |
 | ExternalLaunchAdapter | 0.1.1 | CMD JSON 第三方建单归一化链路可用 |
 | Calibration3DUI | 0.1.1 | UI/流程骨架；设备与计算未接入 |
@@ -78,16 +78,16 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | 扫描/处理 | DLL/EXE 壳、QVTK 占位、流程按钮、鼠标中心缩放、重资源释放；DeviceTransport + DeviceCmd 分层、无硬件最小采集链路和 MainExe 单会话 `DeviceSessionHost`；练习/创建生产身份准入和 `deviceIdentity` 转发已接通 | 独立 ScanReconstructStudio 设备宿主、生产未写号/已写号设备实机准入验证、真实硬件命令/采集联调、ScanDataIO、重建、真实模型、编辑/分析算法、异常恢复、独立进程 IPC |
 | 校准 | 两个独立 UI DLL 骨架 | 设备采集、算法、结果保存和失败恢复 |
 | 发送 | UI 展示和动作回调 | DataExport、压缩、邮件、云上传、重试和状态持久化 |
-| 资源与样式 | UIResources DLL、模块 QSS、通用控件 | LanguageManager、Common qm、完整资源签名/修复 |
+| 资源与样式 | UIResources DLL、模块 QSS、通用控件、启动语言配置 | 各业务模块 qm、完整资源签名/修复；语言变更只要求重启生效，不开发运行时切换广播 |
 | 交付 | 运行时版本清单和本地整体仓库 | MyUpdate、安装器、发布清单、哈希/签名、升级回滚 |
 
 页面可显示或 smoke 通过只表示框架可运行，不代表右侧未闭环业务已完成。
 
 ### 3.1 本轮自检发现的待处理项
 
-- `MainWindow.cpp` 约 3244 行、`DeviceCommandService.cpp` 约 2767 行、`OrderCreateUIImpl.cpp` 约 1993 行、`SettingsUIImpl.cpp` 约 1543 行、`DatabaseImpl.cpp` 约 1029 行。职责边界总体正确，但单文件人工阅读成本已偏高；建议保持 DLL/ABI 不变，按内部协作类和多个 `.cpp` 渐进拆分，具体优先级需确认后执行。
-- UI 文案基本遵守英文 `tr()`，但业务模块尚无自己的 qm，统一 LanguageManager/QTranslator 和运行时语言切换未落地。实施前需要确认首批语言、是否允许运行时切换以及登录模块语言索引映射。
-- CMake 已支持 `QT_ROOT`/`QTDIR` 和仓库内 Qt，UI 资源脚本也支持仓库移动；但普通 Qt 模块的历史 VS2015 工程仍散落 `C:\Qt\Qt5.6.3` 默认路径，MainExe 还直接引用外部登录 SDK 的 `D:\wj` 路径。应迁移到公共 props 和可配置外部 SDK 根目录。
+- 已在不改变 DLL/EXE 公共 ABI 的前提下拆分 `MainWindow`、`DeviceCommandService`、`OrderCreateUIImpl` 和 `SettingsUIImpl`；后续继续以职责变化原因而不是单纯行数决定是否拆分，避免制造只有转发代码的小类。
+- UI 文案继续使用英文 `tr()`。语言由 ConfigCenter 的 `application.language` 在启动时统一读取并映射到登录 SDK；修改后必须重启，不实现运行时 `LanguageChange` 广播。各业务模块 qm 仍需随具体翻译逐步补齐。
+- Qt/VTK/OpenCV 路径已统一由公共 props/cmake 解析；仓库内路径和环境变量优先，固定安装位置仅作本机兼容回退。登录 SDK 已完整收口到 `External/MyLoginSDK`，MainExe 和登录测试不再依赖 `D:\wj`。
 - 本轮完成静态 UI 检查和 smoke，没有重新执行 1366x768、1920x1080、2560x1440 三档截图，也没有干净机器安装/升级验证；这两项不能由 CTest 代替。
 - CTest 使用隔离运行目录，但其输入仍来自模块既有 `bin\Release`。安装器和发布依赖清单未落地前，仍需增加“清空输出后重建并组装全新运行目录”的发布验收，避免历史外部 DLL 掩盖漏复制。
 
@@ -151,7 +151,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 ### 跨模块修改
 
 - 根 CMake 或 `MeyerScan_AllModules.sln` 构建。
-- 27 项 CTest。
+- 28 项 CTest（含登录 SDK smoke）。
 - MainExe `--smoke` 及受影响集成 smoke。
 - 运行时 versionList：无缺失、无代码/文件版本不一致。
 - 正式配置、数据库和 manifest 测试前后哈希不变。
@@ -194,4 +194,4 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 ---
 
-> **文档版本**：v3.2（2026-07-23，统一 27 项测试口径并登记沟通门禁）
+> **文档版本**：v3.3（2026-07-23，收敛设备/语言范围并登记职责拆分和登录 SDK 测试）

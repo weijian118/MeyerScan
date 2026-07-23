@@ -31,7 +31,7 @@
 - Qt、Windows `Version.lib`、当前既有登录模块 `MeyerLoginWidget.lib` 仍保持现有链接方式；后续如果登录模块增加稳定适配层，再单独评估是否动态加载。
 - 当前 MainExe 通过 `MyDatabaseQtAdapter` 调用纯 C++ Database 做启动健康检查，不直接包含 `Database.h`；正式病例、订单和扫描方案必须走 Service/Workflow。
 - RuntimeDataCenter 在数据库连接后初始化，用于缓存本地诊所、技工所、医生、患者、订单、设备等只读快照；初始化失败只写 Warning，不阻断框架期主程序启动。
-- `src/device/DeviceSessionHost` 是 MainExe 进程内唯一设备会话所有者。颜色校准从首页/浏览设置进入时依次检查工作台占用、Cypress 连接、USB3、D4/D9 设备编号、生产模式 C2/C7 系列能力、CD/CE 型号代码和产品身份；宿主缓存最近一次完整预检，MainExe 只向 UI 复制固定 POD 快照，校准关闭后释放会话。
+- `src/device/DeviceSessionHost` 是 MainExe 进程内唯一设备会话所有者。颜色校准从首页/浏览设置进入时依次检查工作台占用、Cypress 连接、USB3、D4/D9 设备编号、生产模式 C2/C7 系列能力、CD/CE 型号代码、产品身份和产品支持范围；仅 mOS MyScan 5/6 可继续，宿主缓存最近一次完整预检，MainExe 只向 UI 复制固定 POD 快照，校准关闭后释放会话。
 - DeviceSessionHost 在检测完成后按工作流应用身份准入：只有创建订单扫描流程必须有真实 reported 设备编号，未写号时保持在 Order 并禁止加载 Scan/Process/Send；练习、颜色校准和后续三维校准允许生产设备使用带来源的 effective 默认编号/型号。
 - 通过准入的设备身份写入工作台 `deviceIdentity` JSON，必须同时携带 reported/effective 值、来源、生产/兼容标志和产品身份；Scan/Process/Send 不得只读取有效值后丢弃来源。
 - CaseUI/SettingsUI 不直接持有 RuntimeDataCenter。MainExe 从进程级缓存读取指定 domain，组装 `{schemaVersion, generatedAtUtc, domains}` 后在 CreateWidget 前注入。
@@ -40,12 +40,16 @@
 - 所有运行路径基于 `QCoreApplication::applicationDirPath()`，不使用 `QDir::currentPath()`，避免第三方软件拉起时工作目录错误。
 - 日志目录固定为 `MeyerScan.exe` 同级 `logs/`，版本清单写入 `logs/versionList/`。
 - ConfigCenter 当前读取 `config/runtime_config.json`；Permission 当前读取 `config/permission_rules.json`，先用于首页“设置”和浏览“返回首页”的显隐控制。
-- `runtime_config.json` 表示产品/客户默认策略，例如 `database.type`、`feature.home.settingsVisible`、`feature.case.backHomeVisible`。
+- `runtime_config.json` 表示产品/客户默认策略，例如 `application.language`、`database.type`、`feature.home.settingsVisible`、`feature.case.backHomeVisible`。语言只在启动时读取，修改后重启生效。
 - `permission_rules.json` 表示授权结果，`visible` 控制入口是否显示，`enabled` 控制动作是否可执行。
 - MainExe 合并配置和权限后下发 UI：`最终可见 = 配置默认可见 && 权限可见`。后续高价值动作仍要由 Workflow / Service / IPC 复核 `enabled`。
 - 等待页和单实例是固定启动流程，不读取 `runtime_config.json` 开关。
 - 启动等待页由 UIComponents 创建；后续更复杂的启动检查仍放 MainExe 编排，不把检查逻辑写进等待页。
-- 登录模块当前使用既有 `MeyerLoginWidget.dll`，后续可再包一层 `LoginAdapter` 降低第三方头文件编码和字段变化影响。
+- 登录模块当前使用仓库 `External/MyLoginSDK` 中的既有 `MeyerLoginWidget.dll/lib`，由公共 props/CMake 配置定位；后续可再包一层 `LoginAdapter` 降低第三方头文件编码和字段变化影响。
+
+## MainWindow 内部文件职责
+
+`MainWindow.cpp` 只保留顶层生命周期、启动、登录和 C ABI 回调；动作分发、导航/释放、数据上下文、版本清单、模块动态装载、设备准入和日志分别位于同名前缀的小翻译单元。该拆分不增加新 DLL，也不改变 MainExe 对外行为。
 - HomeUI / CaseUI 只发入口或操作 ID，不直接切换其他模块；页面切换由 MainExe 的单内容区完成，一次只挂载一个全屏页面，首页和浏览不是并列兄弟页。
 - 第三方拉起建单时，MainExe 会后台准备 HomeUI 的“Create”入口并复核 `order.create` 的 `visible/enabled`，但不会显示首页；随后直接显示 `OrderScanWorkspaceShell/OrderCreateUI`，避免客户看到首页闪现或自动点击过程。
 - `MyExternalLaunchAdapter` 只负责把第三方 JSON 转成标准建单上下文，MainExe 不解析各第三方私有字段，OrderCreateUI 也不认识第三方私有字段。

@@ -1,4 +1,7 @@
 {
+    "application": {
+        "language": "zh-CN"
+    },
     "database": {
         "type": "sqlite"
     },

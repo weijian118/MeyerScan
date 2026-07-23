@@ -2,8 +2,8 @@
 
 `MyLogin` 是连接既有 `MeyerLoginWidget.dll` 的测试宿主模块，用于先验证登录模块能够在新仓库结构下独立拉起界面。
 
-- 登录 DLL 来源：`D:\wj\My-wj\MyLogin\lib\MeyerLoginWidget.dll`
-- 登录头文件来源：`D:\wj\My-wj\MyLogin\MeyerLoginWidget.h`
+- 登录 SDK 来源：仓库 `External/MyLoginSDK`，由公共 CMake/props 统一定位。
+- 可通过 `MEYER_LOGIN_ROOT` 覆盖兼容 SDK 根目录，但目录必须包含 `include/lib/runtime`。
 - 离线许可测试文件：运行目录 `Resources/license.lic`，由 PostBuild 从既有登录模块目录复制
 - 默认登录地址：`https://myscan.meyerop.com/login`
 
@@ -18,7 +18,7 @@
 ## 运行验证
 
 ```powershell
-cd F:\MeyerScan\MyLogin\bin\Release
+cd F:\MeyerScan\MyMainExe\MyLogin\bin\Release
 .\MeyerLoginTest.exe --smoke
 ```
 

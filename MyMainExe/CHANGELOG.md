@@ -1,5 +1,13 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-23 - v0.8.0 设备范围、登录 SDK 与职责拆分
+
+- MainExe 对颜色校准和创建/练习设备准入统一处理旧 `mOS MyScan` 不支持状态，客户提示使用英文 `tr()`，不绕过 DeviceCmd 的产品目录诊断。
+- `MainWindow.cpp` 拆为启动/回调、动作、导航、数据、版本清单、模块装载、设备和日志翻译单元，保持主 EXE、公共接口和页面行为不变。
+- 外部登录 SDK 收口到仓库 `External/MyLoginSDK`；CMake 与 VS2015 通过公共 `MeyerScanExternalSdk` 配置读取头文件、导入库、DLL、qm、许可和运行依赖，不再引用 `D:\wj` 或已安装旧软件目录。
+- `application.language` 仅在进程启动时读取并映射到登录 SDK 语言索引；运行中修改语言必须重启，不实现 `LanguageChange` 广播。
+- CMake、代码版本和 Windows 文件版本同步升级为 `0.8.0`。
+
 ## 2026-07-22 - v0.7.0 双扫描头颜色校准状态转发
 
 - DeviceSessionHost 适配 DeviceCmd ABI/schema 6；MainExe 将扫描头策略、固件兼容结果、大小扫描头状态、命令结果和诊断文本逐字段复制给 SettingsUI。

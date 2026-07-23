@@ -22,6 +22,7 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\cmake\MeyerScanScanThirdParty.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -39,7 +40,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYERSCAN_SENDUI_EXPORTS;MEYER_MODULE_NAME="MeyerScan_SendUI";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyLogger\include;$(ProjectDir)..\MyUIComponents\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyLogger\include;$(ProjectDir)..\MyUIComponents\include;$(QtRoot)\include;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtWidgets;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -47,14 +48,14 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;MeyerScan_Logger.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(QtRoot)\lib;$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
+      <Command>xcopy /Y "$(QtRoot)\bin\Qt5Core.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Gui.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Widgets.dll" "$(OutDir)"
 if not exist "$(OutDir)platforms" mkdir "$(OutDir)platforms"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
+xcopy /Y "$(QtRoot)\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyUIComponents\bin\$(Configuration)\MeyerScan_UIComponents.dll" "$(OutDir)"</Command>
     </PostBuildEvent>

@@ -72,6 +72,7 @@ if(BUILD_TESTING)
     set(MEYER_CTEST_RUNTIME_DIR "${CMAKE_BINARY_DIR}/ctest_runtime/$<CONFIG>")
     set(_meyer_ctest_candidate_targets
         MeyerScan
+        MeyerLoginTest
         LoggerTest
         DatabaseTest
         DatabaseQtAdapterTest
@@ -155,6 +156,7 @@ if(BUILD_TESTING)
         --external-order "${CMAKE_SOURCE_DIR}/MyExternalLaunchAdapter/test/external_order_sample.json"
         --external-order-type "ctest_demo"
     )
+    meyer_register_aggregate_test(MeyerScan.LoginSDK MeyerLoginTest --smoke)
 
     # 基础设施、服务、资源和权限模块回归测试。
     meyer_register_aggregate_test(MeyerScan.Logger LoggerTest)

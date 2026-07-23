@@ -4,6 +4,7 @@
   <ItemGroup>
     <ClInclude Include="include\DeviceCmd.h"><Filter>include</Filter></ClInclude>
     <ClInclude Include="src\core\DeviceCommandService.h"><Filter>src\core</Filter></ClInclude>
+    <ClInclude Include="src\core\DeviceCommandServiceInternal.h"><Filter>src\core</Filter></ClInclude>
     <ClInclude Include="src\model\DeviceModelCatalog.h"><Filter>src\model</Filter></ClInclude>
     <ClInclude Include="src\model\DeviceProductCatalog.h"><Filter>src\model</Filter></ClInclude>
     <ClInclude Include="src\protocol\DeviceCommandCodec.h"><Filter>src\protocol</Filter></ClInclude>
@@ -18,6 +19,12 @@
   <ItemGroup>
     <ClCompile Include="src\api\DeviceCmdApi.cpp"><Filter>src\api</Filter></ClCompile>
     <ClCompile Include="src\core\DeviceCommandService.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServiceCapture.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServiceCommands.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServiceDetection.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServiceExchange.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServiceFirmware.cpp"><Filter>src\core</Filter></ClCompile>
+    <ClCompile Include="src\core\DeviceCommandServicePreflight.cpp"><Filter>src\core</Filter></ClCompile>
     <ClCompile Include="src\model\DeviceModelCatalog.cpp"><Filter>src\model</Filter></ClCompile>
     <ClCompile Include="src\model\DeviceProductCatalog.cpp"><Filter>src\model</Filter></ClCompile>
     <ClCompile Include="src\protocol\DeviceCommandCodec.cpp"><Filter>src\protocol</Filter></ClCompile>

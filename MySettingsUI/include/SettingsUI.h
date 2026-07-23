@@ -40,6 +40,8 @@ enum SettingsCalibrationPreflightStatus {
     SettingsCalibrationPreflightFirmwareVersionReadFailed = 15,
     SettingsCalibrationPreflightColorCalibrationFirmwareUnsupported = 16,
     SettingsCalibrationPreflightScanHeadColorCalibrationReadFailed = 17,
+    // 旧 mOS MyScan 可被设备层识别，但不属于重构软件的适配产品范围。
+    SettingsCalibrationPreflightProductFamilyUnsupported = 18,
 };
 
 // CE 型号代码读取状态与 DeviceCmd 公共枚举数值保持一致。SettingsUI 只用它

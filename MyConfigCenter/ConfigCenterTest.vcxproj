@@ -22,6 +22,7 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\cmake\MeyerScanScanThirdParty.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -39,7 +40,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYER_MODULE_NAME="ConfigCenterTest";QT_CORE_LIB;NDEBUG;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(QtRoot)\include;$(QtRoot)\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -47,10 +48,10 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Qt5Core.lib;MeyerScan_ConfigCenter.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(QtRoot)\lib;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y "$(QtRoot)\bin\Qt5Core.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="test\main.cpp" /></ItemGroup>

@@ -11,6 +11,7 @@
 
 ## 当前字段
 
+- `application.language`：启动语言代码，默认 `zh-CN`。MainExe 仅在进程启动时读取并映射登录 SDK 语言索引；修改后必须重启软件，不支持运行时切换。
 - `database.type`：数据库类型。当前支持 `mysql` 和 `sqlite`，MainExe 读取后调用 Database 切换类型。
 - `device.practiceAllowProductionMode`：练习工作台是否允许未写正式设备编号的生产调试设备使用带来源标记的兼容身份；默认 `true`。
 - `device.orderCreateAllowProductionMode`：创建订单工作台是否允许生产调试设备；默认 `false`，正式创建默认必须取得设备真实上报编号。
@@ -21,4 +22,4 @@
 
 等待页和单实例是 MainExe 固定流程，不允许用配置关闭，因此不写 `showWaitPage`、`singleInstance`。如果旧配置残留 `startup` 段，ConfigCenter 初始化时会迁移清理。
 
-颜色校准和三维校准是否允许生产兼容身份不是上述两个工作台开关控制的内容：两类校准当前都允许生产设备，但仍必须通过连接、USB3、型号、证据冲突和固件版本检查。
+颜色校准和三维校准是否允许生产兼容身份不是上述两个工作台开关控制的内容：受支持的 mOS MyScan 5/6 生产设备可以使用带来源的兼容身份，但仍必须通过连接、USB3、型号、产品系列、证据冲突和固件版本检查；旧 mOS MyScan 系列统一拦截。

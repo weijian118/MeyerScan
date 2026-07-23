@@ -1,5 +1,11 @@
 ﻿# MeyerScan SettingsUI 变更记录
 
+## 2026-07-23 - 0.9.0 旧系列提示与内部拆分
+
+- 新增设备产品系列不支持状态，颜色校准入口统一提示 `Current software does not support this device series.`，不创建校准遮罩。
+- 将设置实现拆为生命周期/依赖、数据快照、页面布局和校准流程四个翻译单元；公共 `ISettingsUI` 虚接口、API 版本 8 和校准 POD schema 6 均不变。
+- CMake、VS2015 手写工程、代码版本和 Windows 文件版本同步升级为 `0.9.0`。
+
 ## 2026-07-22 - 0.8.0 双扫描头颜色校准提示
 
 - SettingsUI API 升级为 8、校准上下文 schema 升级为 6，新增大小扫描头颜色校准状态副本。

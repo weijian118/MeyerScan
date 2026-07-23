@@ -22,6 +22,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\cmake\MeyerScanScanThirdParty.props" />
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
@@ -36,17 +37,17 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_UIResourcesTest";NDEBUG;QT_CORE_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(QtRoot)\include;$(QtRoot)\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>MeyerScan_UIResources.lib;Qt5Core.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)bin\$(Configuration);C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)bin\$(Configuration);$(QtRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /Y /D &quot;$(ProjectDir)bin\$(Configuration)\MeyerScan_UIResources.dll&quot; &quot;$(OutDir)&quot;
-xcopy /Y &quot;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;</Command>
+xcopy /Y &quot;$(QtRoot)\bin\Qt5Core.dll&quot; &quot;$(OutDir)&quot;</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

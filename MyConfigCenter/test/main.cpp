@@ -80,6 +80,20 @@ int main(int argc, char* argv[]) {
         return 8;
     }
 
+    // 语言只保存稳定 BCP 47 风格代码；MainExe 在下一次启动时映射登录 SDK 索引。
+    std::memset(buffer, 0, sizeof(buffer));
+    if (!Check(config->GetString("application.language",
+                                 "fallback",
+                                 buffer,
+                                 sizeof(buffer)),
+               "application.language 默认字符串可读取")) {
+        return 9;
+    }
+    if (!Check(std::strcmp(buffer, "zh-CN") == 0,
+               "application.language 默认值为 zh-CN")) {
+        return 10;
+    }
+
     // Shutdown 清理内部缓存状态，为后续同进程扩展测试预留干净环境。
     config->Shutdown();
     std::printf("ConfigCenterTest passed.\n");

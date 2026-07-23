@@ -2,7 +2,7 @@
 
 `MyDeviceCmd` 生成 `MeyerScan_DeviceCmd.dll`，是设备协议命令层。它把口扫设备 A 类命令帧、设备基础信息、状态快照、灯光控制、相机/标定参数、固件分包和采集启停封装成稳定的纯 C++/C ABI，底层通过运行时动态加载 `MeyerScan_DeviceTransport.dll` 完成 USB 收发。
 
-当前模块代码版本为 `0.8.0`，公共语义 API 版本为 `2.4.0`，公共结构 schema 和整数 ABI 版本均为 `6`。
+当前模块代码版本为 `0.9.0`，公共语义 API 版本为 `2.5.0`，公共结构 schema 为 `6`，整数 ABI 版本为 `7`。
 
 默认命令回包超时为 `200 ms`，图像流超时仍为 `1500 ms`。真实 DeviceTransport 后端只有在上一条命令没有收到普通合法帧或业务可识别终态回包时，才在下一条命令发送前等待 `20 ms`；D9/CE 的 `0xFFFF` 未初始化及已识别校验失败均表示设备已经响应，下一条命令立即发送。D4/D9、CD/CE 当前命令发送后仍等待 `50 ms` 再提交 Bulk IN。实机确认 MyScan 3 在主控板 `0x15` 返回后仍需机型特定板间切换时间才能可靠接收投图板 `0x12`，当前设置为 `20 ms`，该特例只保存在 MyScan 3 Profile，不扩大为全局命令间隔。模拟后端不人为等待。
 
@@ -10,12 +10,13 @@
 
 - 已按 `美亚无线口内扫描仪通讯协议-20250808.pdf` 实现 A 类帧编码、解码、长度检查、16 位求和校验和 0~3 字节零尾检查。
 - 已覆盖 52 个 A 类命令码：设备编号（API 历史名 MachineCode）、主控板/投图板版本、电池、设备信息/期限、灯光、相机参数、大小扫描头颜色矩阵、开窗位置、温度、帧率、固件擦除/分包烧写、两路相机标定、颜色标定和曝光参数。
-- 颜色校准预检在产品身份和版本读取后执行机型策略：`mOS MyScan` 只记录大扫描头共享策略；`mOS MyScan 5/6` 要求主控板 `1.3.x` 及以上，并通过 `A3/A4`、`B9/BA` 分别读取大小扫描头颜色参数状态。期望响应求和失败表示对应扫描头未校准；超时、坏帧或错误长度阻止进入校准。
+- 重构软件只支持 `mOS MyScan 5/6`。旧 `mOS MyScan` 的 D9/C7/CE、产品目录、投图板和颜色参数协议代码继续保留，但识别后立即返回 `ProductFamilyUnsupported=18`，不再执行固件、校准或采集命令。
+- 受支持的 `mOS MyScan 5/6` 要求主控板 `1.3.x` 及以上，并通过 `A3/A4`、`B9/BA` 分别读取大小扫描头颜色参数状态。期望响应求和失败表示对应扫描头未校准；超时、坏帧或错误长度阻止进入校准。
 - 固化类命令统一检查设备的 `0xFF` 成功/`0x00` 失败状态；大块数据使用固定 POD 结构和调用方缓冲区，不跨 DLL 传递 STL/Qt 容器。
 - 已实现 `MyScan 6 Wireless` 的已核对协议能力 Profile；`MyScan 3/5/5H/6` Profile 的能力和停止顺序仍是待实机核验的兼容配置。
 - 协议能力 Profile、产品系列和具体产品型号已分开建模。Profile 决定命令/采集差异；系列用于业务归类；具体产品型号用于国内、海外、贴牌、技工和医院版本识别。
 - 已提供显式 `SimulatorForTest` 后端，用于无硬件 smoke；它不代表真实设备成功。
-- 颜色校准入口使用 `MeyerDeviceCmd_PrepareColorCalibration`，按“打开 Cypress 设备 -> 检查 USB3 -> `0xD4/0xD9` 读取 13 位设备编号 -> 编号未写入时用 `0xC2/0xC7` 探测系列 -> `0xCD/0xCE` 读取型号代码 -> 综合识别 -> `0x14/0x15` 读取主控板版本 -> mOS MyScan 再用 `0x12/0x13` 读取投图板版本”执行。API 中 `MachineCode` 是历史协议命名，产品含义统一为设备编号。
+- 颜色校准入口使用 `MeyerDeviceCmd_PrepareColorCalibration`，按“打开 Cypress 设备 -> 检查 USB3 -> `0xD4/0xD9` 读取 13 位设备编号 -> 编号未写入时用 `0xC2/0xC7` 探测系列 -> `0xCD/0xCE` 读取型号代码 -> 综合识别 -> 产品系列支持门禁 -> `0x14/0x15` 读取主控板版本 -> MyScan 5/6 双扫描头状态”执行。API 中 `MachineCode` 是历史协议命名，产品含义统一为设备编号。
 - `MeyerDeviceDetectionRecord` 同时保存 D9/C7/CE 步骤状态、生产模式、真实 `reported*` 值、最终 `effective*` 值和值来源。兼容默认值只能写入 effective 字段，禁止覆盖或伪装成设备上报值。
 - DeviceCmd 不决定生产兼容身份能否进入业务流程：只有创建订单扫描流程由宿主要求真实设备编号，被拦截时使用稳定状态 `ProductionDeviceNumberRequired=14`；练习、颜色校准和后续三维校准可使用带来源的兼容身份。
 - D9 无回包或普通坏包返回回包异常；校验通过但编号不是 13 位/`620000` 前缀返回编号异常。D9 payload 长度为 `0xFFFF` 或求和校验失败时都进入“生产未写设备编号”分支，但分别记录 `UninitializedLength` 和 `ChecksumIndicatesUnprogrammed`。
@@ -27,6 +28,16 @@
 - `SeriesOnly` 可用于选择下一组识别命令，但不足以进入依赖具体产品参数的颜色校准；只有具体产品已识别时预检才返回 Ready。
 - 回包查找、长度/命令码校验、逐字节转换和机型映射全部集中在 DeviceCmd；内部可用 `std::string` 和字节容器，公共 DLL 边界只返回固定 POD、固定 UTF-8 数组和原始字节，不返回 `std::string` 或字符串数组。
 - 每组命令的命令码、响应码、公共接口和验证状态见 `docs/ProtocolCommandCoverage.md`。模拟后端已覆盖全部语义命令，真实设备、Flash 写入和长时间采集仍需实机联调。
+
+## 内部文件职责
+
+- `DeviceCommandService.cpp`：会话打开、关闭、错误状态和 Profile 切换。
+- `DeviceCommandServicePreflight.cpp`：颜色校准/工作台共用身份预检编排。
+- `DeviceCommandServiceCommands.cpp`：普通语义命令。
+- `DeviceCommandServiceCapture.cpp`：采集启停和帧读取。
+- `DeviceCommandServiceExchange.cpp`：所有 A 类命令共用的组帧、发送、接收和校验入口。
+- `DeviceCommandServiceDetection.cpp`：D9/C7/CE 和 reported/effective 身份检测。
+- `DeviceCommandServiceFirmware.cpp`：设备编号快照、固件版本和双扫描头颜色状态。
 - 当前实机已通过 Cypress 枚举和 USB3 检查，`0xD4/0xD9` 已成功返回设备编号 `6200002002566`，前缀为 `62000020`；随后 `0xCD` 发送成功但 1.5 秒内未收到 `0xCE`。新流程会记录 `FirmwareTooOld + CompatibilityInferred` 并使用 `62000020` 兼容有效值继续，但这不等于实机已经确认 P1，P1/P2/P3 仍需取得合法 CE 型号代码后才能精确确定。
 
 ## 当前产品目录

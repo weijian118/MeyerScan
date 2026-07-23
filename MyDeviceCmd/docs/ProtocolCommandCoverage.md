@@ -1,6 +1,6 @@
 # 设备协议命令覆盖表
 
-`MyDeviceCmd 0.8.0` 已为 48 个公共 A 类命令和项目扩展的 `0x12/0x13`、`0xB9/0xBA`
+`MyDeviceCmd 0.9.0` 已为 48 个公共 A 类命令和项目扩展的 `0x12/0x13`、`0xB9/0xBA`
 共 52 个命令码提供语义接口或对应的响应解析路径。完整帧结构、命令分组、机型适用范围、
 十六进制示例和 B 类图像包定义见 `F:\MeyerScan\Documents\设备相关\口扫设备协议文档.md`；
 本文只维护代码覆盖和验证状态。
@@ -63,8 +63,10 @@ DeviceCmd 只负责协议读写。
 不支持小扫描头颜色校准，必须升级后再进入；无法解析的版本同样保守拦截。
 版本满足后依次读取 A3/A4 和 B9/BA。收到期望响应码但求和校验失败表示对应
 扫描头参数未写入，记录为 `NotCalibrated`；无回包、错误帧头、错误响应码、
-截断或错误 payload 长度属于读取失败，不能误报为“未校准”。`mOS MyScan`
-只使用大扫描头参数，小扫描头共享该参数，不发送 B9/BA。
+截断或错误 payload 长度属于读取失败，不能误报为“未校准”。旧 `mOS MyScan`
+的协议诊断路径只使用大扫描头参数，小扫描头共享该参数，因此不会发送 B9/BA；
+但正式产品预检会更早返回 `ProductFamilyUnsupported=18`，不得据此把旧系列视为
+当前软件支持的设备。
 
 ## 设备授权信息
 
@@ -73,8 +75,9 @@ DeviceCmd 只负责协议读写。
 | `0xCD` 读取设备信息 | `0xCE` | `MeyerDeviceCmd_ReadDeviceInfo`；`MeyerDeviceCmd_PrepareColorCalibration` | 已实现、校准预检模拟通过、待实机 |
 | `0xC9` 固化设备信息 | `0xCB` | `MeyerDeviceCmd_StoreDeviceInfo` | 已实现、模拟通过、待实机 |
 
-颜色校准型号检测固定顺序为 D4/D9、必要时 C2/C7、CD/CE、身份确认后的 0x14/0x15，
-mOS MyScan 再执行 0x12/0x13。详细解析会区分
+颜色校准型号检测固定顺序为 D4/D9、必要时 C2/C7、CD/CE；产品系列支持门禁
+只放行 mOS MyScan 5/6，随后才执行 0x14/0x15。旧 mOS MyScan 的 0x12/0x13
+投图板版本代码仅保留给协议诊断，不进入正式颜色校准预检。详细解析会区分
 无回包、普通坏包、求和校验失败、`0xFFFF` 未初始化和业务值非法；兼容默认值
 只写入 `MeyerDeviceDetectionRecord.effective*`，真实 `reported*` 字段保持原样。
 

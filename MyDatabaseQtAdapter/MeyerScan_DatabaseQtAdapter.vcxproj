@@ -22,6 +22,7 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\cmake\MeyerScanScanThirdParty.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -39,7 +40,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYERSCAN_DATABASEQTADAPTER_EXPORTS;MEYER_MODULE_NAME="MeyerScan_DatabaseQtAdapter";NDEBUG;QT_CORE_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyLogger\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyLogger\include;$(QtRoot)\include;$(QtRoot)\include\QtCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -47,10 +48,10 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Qt5Core.lib;MeyerScan_Database.lib;MeyerScan_Logger.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;$(ProjectDir)..\MyDatabase\bin\$(Configuration);$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(QtRoot)\lib;$(ProjectDir)..\MyDatabase\bin\$(Configuration);$(ProjectDir)..\MyLogger\bin\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
+      <Command>xcopy /Y "$(QtRoot)\bin\Qt5Core.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyDatabase\bin\$(Configuration)\MeyerScan_Database.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyLogger\bin\$(Configuration)\MeyerScan_Logger.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\ThirdParty\SQLite\win-x64\sqlite3.dll" "$(OutDir)"</Command>

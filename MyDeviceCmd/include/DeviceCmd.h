@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.8.0
+// 版本: 0.9.0
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -43,7 +43,7 @@
 static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 6U;
 
 // MainExe 动态加载 DLL 前校验的整数 ABI 版本。
-static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 6;
+static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 7;
 
 // 协议当前最大命令数据为 416 字节；保留 1024 字节可覆盖后续常规扩展，
 // 同时避免把不受控的大块内存放入公共结构。
@@ -441,7 +441,10 @@ enum MeyerDeviceCalibrationPreflightStatus : std::int32_t
     // MyScan 5/6 主控板版本低于 1.3 或版本文本无法可靠解析。
     MeyerDeviceCalibrationPreflight_ColorCalibrationFirmwareUnsupported = 16,
     // A3/A4 或 B9/BA 没有收到可解释的完整回包。
-    MeyerDeviceCalibrationPreflight_ScanHeadColorCalibrationReadFailed = 17
+    MeyerDeviceCalibrationPreflight_ScanHeadColorCalibrationReadFailed = 17,
+    // 重构后的软件只支持 mOS MyScan 5/6。旧 mOS MyScan 的协议识别代码
+    // 继续保留用于输出准确诊断，但识别成功后必须通过该状态统一阻止进入业务。
+    MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported = 18
 };
 
 // 模拟后端专用标志，只允许测试程序使用。正式 DeviceTransport 后端忽略这些值，

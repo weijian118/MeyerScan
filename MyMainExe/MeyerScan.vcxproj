@@ -26,6 +26,7 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\cmake\MeyerScanScanThirdParty.props" />
+    <Import Project="..\cmake\MeyerScanExternalSdk.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -43,7 +44,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>MEYER_MODULE_NAME="MeyerScan_MainExe";NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_NETWORK_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MySendUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyScanSchemaService\include;$(ProjectDir)..\MyDeviceCmd\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;D:\wj\My-wj\MyLogin;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtCore;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtGui;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtWidgets;C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Common\include;$(ProjectDir)include;$(ProjectDir)..\MyHomeUI\include;$(ProjectDir)..\MyCaseUI\include;$(ProjectDir)..\MySettingsUI\include;$(ProjectDir)..\MyOrderCreateUI\include;$(ProjectDir)..\MyOrderScanWorkspaceShell\include;$(ProjectDir)..\MyScanWorkflowUI\include;$(ProjectDir)..\MyDataProcessUI\include;$(ProjectDir)..\MySendUI\include;$(ProjectDir)..\MyExternalLaunchAdapter\include;$(ProjectDir)..\MyConfigCenter\include;$(ProjectDir)..\MyPermission\include;$(ProjectDir)..\MyUIComponents\include;$(ProjectDir)..\MyRuntimeDataCenter\include;$(ProjectDir)..\MyDatabaseQtAdapter\include;$(ProjectDir)..\MyDatabase\include;$(ProjectDir)..\MyCaseOrderService\include;$(ProjectDir)..\MyScanSchemaService\include;$(ProjectDir)..\MyDeviceCmd\include;$(ProjectDir)..\MyCalibration3DUI\include;$(ProjectDir)..\MyCalibrationColorUI\include;$(ProjectDir)..\MyLogger\include;$(MeyerLoginIncludeDir);$(QtIncludeDirs);$(QtRoot)\include\QtNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -52,42 +53,18 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Network.lib;Version.lib;MeyerLoginWidget.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\lib;D:\wj\My-wj\MyLogin\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(QtLibDirs);$(MeyerLoginLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "D:\wj\My-wj\MyLogin\lib\MeyerLoginWidget.dll" "$(OutDir)"
-xcopy /Y /D "D:\wj\My-wj\MyLogin\*.qm" "$(OutDir)"
-xcopy /Y /D /I "D:\wj\My-wj\MyLogin\license.lic" "$(OutDir)Resources\"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\deviceAuthAndCrypto.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\MeyerScanNetworkHelper.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Core.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Gui.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Widgets.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Network.dll" "$(OutDir)"
-xcopy /Y "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\bin\Qt5Sql.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\Qt5Qmqtt.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\msvcp140.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\vcruntime140.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\vcruntime140_1.dll" "$(OutDir)"
-xcopy /Y /D "C:\Windows\System32\concrt140.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\msvcr120.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\MeyerDecrypt.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\libcurl.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\LIBEAY32.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\SSLEAY32.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\libcrypto-3.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\libssl-3.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-cpp-sdk-core.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-cpp-sdk-s3.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-cpp-sdk-sts.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-cpp-sdk-transfer.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-c-common.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-c-event-stream.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\aws-checksums.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\zlib.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\MeyerScan\zlibwapi.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\Windows Kits\10\Redist\ucrt\DLLs\x64\api-ms-win-crt-*.dll" "$(OutDir)"
-xcopy /Y /D "C:\Program Files (x86)\Windows Kits\10\Redist\ucrt\DLLs\x64\ucrtbase.dll" "$(OutDir)"
+      <Command>xcopy /Y /D "$(MeyerLoginRuntimeDir)\MeyerLoginWidget.dll" "$(OutDir)"
+xcopy /Y /D "$(MeyerLoginTranslationDir)\*.qm" "$(OutDir)"
+xcopy /Y /D /I "$(MeyerLoginRuntimeDir)\Resources\license.lic" "$(OutDir)Resources\"
+xcopy /Y /D "$(MeyerLoginDependencyDir)\*.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Core.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Gui.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Widgets.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Network.dll" "$(OutDir)"
+xcopy /Y "$(QtRoot)\bin\Qt5Sql.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyHomeUI\bin\$(Configuration)\MeyerScan_HomeUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MyCaseUI\bin\$(Configuration)\MeyerScan_CaseUI.dll" "$(OutDir)"
 xcopy /Y /D "$(ProjectDir)..\MySettingsUI\bin\$(Configuration)\MeyerScan_SettingsUI.dll" "$(OutDir)"
@@ -125,18 +102,26 @@ xcopy /Y /D /I "$(ProjectDir)..\MyConfigCenter\config\*.json" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)..\MyConfigCenter\config\*.md" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)..\MyPermission\config\*.json" "$(OutDir)config\"
 xcopy /Y /D /I "$(ProjectDir)..\MyPermission\config\*.md" "$(OutDir)config\"
-xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
-xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
-xcopy /Y /I "C:\Qt\Qt5.6.3\5.6.3\msvc2015_64\plugins\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
+xcopy /Y /I "$(QtRoot)\plugins\platforms\qwindows.dll" "$(OutDir)platforms\"
+xcopy /Y /I "$(QtRoot)\plugins\sqldrivers\qsqlmysql.dll" "$(OutDir)sqldrivers\"
+xcopy /Y /I "$(QtRoot)\plugins\sqldrivers\qsqlite.dll" "$(OutDir)sqldrivers\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\MainWindow.cpp" />
+    <ClCompile Include="src\MainWindowActions.cpp" />
+    <ClCompile Include="src\MainWindowData.cpp" />
+    <ClCompile Include="src\MainWindowDevice.cpp" />
+    <ClCompile Include="src\MainWindowLogging.cpp" />
+    <ClCompile Include="src\MainWindowModules.cpp" />
+    <ClCompile Include="src\MainWindowNavigation.cpp" />
+    <ClCompile Include="src\MainWindowVersion.cpp" />
     <ClCompile Include="src\device\DeviceSessionHost.cpp" />
     <ClCompile Include="test\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\MainWindow.h" />
+    <ClInclude Include="src\MainWindowInternal.h" />
     <ClInclude Include="src\device\DeviceSessionHost.h" />
   </ItemGroup>
   <ItemGroup>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="UserMacros">
+    <!-- 所有路径先允许命令行/环境覆盖，再回退到仓库相对位置。 -->
+    <MeyerScanWorkspaceRoot Condition="'$(MeyerScanWorkspaceRoot)'==''">$(MSBuildThisFileDirectory)..\</MeyerScanWorkspaceRoot>
+    <MeyerLoginSdkRoot Condition="'$(MeyerLoginSdkRoot)'=='' and '$(MEYER_LOGIN_ROOT)'!='' and Exists('$(MEYER_LOGIN_ROOT)\include\MeyerLoginWidget.h')">$(MEYER_LOGIN_ROOT)</MeyerLoginSdkRoot>
+    <MeyerLoginSdkRoot Condition="'$(MeyerLoginSdkRoot)'==''">$(MeyerScanWorkspaceRoot)External\MyLoginSDK</MeyerLoginSdkRoot>
+    <MeyerLoginIncludeDir>$(MeyerLoginSdkRoot)\include</MeyerLoginIncludeDir>
+    <MeyerLoginLibDir>$(MeyerLoginSdkRoot)\lib</MeyerLoginLibDir>
+    <MeyerLoginRuntimeDir>$(MeyerLoginSdkRoot)\runtime</MeyerLoginRuntimeDir>
+    <MeyerLoginTranslationDir>$(MeyerLoginRuntimeDir)\translations</MeyerLoginTranslationDir>
+    <MeyerLoginDependencyDir>$(MeyerLoginRuntimeDir)\dependencies</MeyerLoginDependencyDir>
+  </PropertyGroup>
+</Project>

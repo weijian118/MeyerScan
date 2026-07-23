@@ -663,7 +663,8 @@ namespace
             MeyerDeviceModel_Unknown,
             preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
-                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported &&
                     preflight.detectionRecord.deviceNumberStatus ==
                         MeyerDeviceNumberRead_UninitializedLength &&
                     preflight.detectionRecord.isProductionMode == 1 &&
@@ -674,7 +675,7 @@ namespace
                     std::strcmp(preflight.detectionRecord.reportedDeviceNumberUtf8, "") == 0 &&
                     std::strcmp(preflight.detectionRecord.effectiveDeviceNumberUtf8,
                                 "6200002001200") == 0,
-                    "0xD9 0xFFFF length records a distinct production-mode reason");
+                    "legacy-family production detection keeps the 0xD9 reason but blocks entry");
 
         result = RunSimulatedPreflight(
             handle, params, MeyerDeviceCmdSimulatedFlag_ModelCodeReadFailure,
@@ -741,7 +742,8 @@ namespace
             MeyerDeviceModel_Unknown,
             preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
-                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported &&
                     preflight.detectionRecord.isProductionMode == 1 &&
                     preflight.detectionRecord.seriesProbeStatus ==
                         MeyerDeviceSeriesProbe_MyScan &&
@@ -751,7 +753,7 @@ namespace
                                 "6200002001200") == 0 &&
                     std::strcmp(preflight.detectionRecord.effectiveModelCodeUtf8,
                                 "62000020") == 0,
-                    "production mode uses the legacy MyScan defaults when 0xC7 is unsupported");
+                    "legacy MyScan compatibility identity is retained but rejected by product policy");
 
         result = RunSimulatedPreflight(
             handle,
@@ -851,7 +853,8 @@ namespace
                     "successful color calibration preflight keeps one device session open");
         MeyerDeviceCmd_Close(handle);
 
-        // mOS MyScan 使用另一组协议 Profile，必须在识别完成后追加 0x12/0x13。
+        // 产品目录和旧协议代码继续识别 mOS MyScan，但重构软件不再适配该系列。
+        // 门禁发生在固件命令之前，既保留诊断身份，也避免继续占用设备会话。
         result = RunSimulatedPreflight(
             handle,
             params,
@@ -860,21 +863,18 @@ namespace
             MeyerDeviceModel_MyScan3,
             preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
-                    preflight.status == MeyerDeviceCalibrationPreflight_Ready &&
-                    preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
-                    preflight.firmwareVersions.projectionBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
-                    std::string(preflight.firmwareVersions.mainBoardVersionUtf8) == "1.3.1001" &&
-                    std::string(preflight.firmwareVersions.projectionBoardVersionUtf8) == "2.3.300",
-                    "mOS MyScan preflight reads and records both board firmware versions");
-        test.Expect(preflight.scanHeadColorCalibration.policy ==
-                        MeyerDeviceScanHeadColorCalibrationPolicy_LargeOnlyShared &&
-                    preflight.scanHeadColorCalibration.firmwareCompatibility ==
-                        MeyerDeviceColorCalibrationFirmware_NotRequired &&
-                    preflight.scanHeadColorCalibration.largeHeadStatus ==
-                        MeyerDeviceScanHeadColorCalibration_NotChecked &&
-                    preflight.scanHeadColorCalibration.smallHeadStatus ==
-                        MeyerDeviceScanHeadColorCalibration_NotRequired,
-                    "mOS MyScan records one shared large-head calibration policy without B9");
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported &&
+                    preflight.productIdentity.productFamily ==
+                        MeyerDeviceProductFamily_MyScan &&
+                    preflight.firmwareVersions.mainBoardStatus ==
+                        MeyerDeviceFirmwareVersion_NotRun &&
+                    preflight.firmwareVersions.projectionBoardStatus ==
+                        MeyerDeviceFirmwareVersion_NotRun &&
+                    std::string(preflight.detailUtf8) ==
+                        "Current software does not support this device series" &&
+                    MeyerDeviceCmd_IsOpen(handle) == 0,
+                    "mOS MyScan is identified for diagnostics and rejected before firmware queries");
         MeyerDeviceCmd_Close(handle);
 
         // MyScan 5/6 的 1.1.x 和 1.2.x 主控板不支持小扫描头颜色校准。
@@ -972,7 +972,8 @@ namespace
                         MeyerDeviceFirmwareVersion_ResponseMissing,
                     "main-board firmware timeout blocks calibration with a recorded version status");
 
-        // mOS MyScan 的主控板成功但投图板失败时，要保留主控板版本并准确标记失败板卡。
+        // 即使模拟后端被设置成“投图板版本读取失败”，旧系列也应先被产品范围
+        // 门禁拦截，证明正式流程不会再向该系列发送固件读取命令。
         result = RunSimulatedPreflight(
             handle,
             params,
@@ -981,11 +982,13 @@ namespace
             MeyerDeviceModel_MyScan3,
             preflight);
         test.Expect(result == MeyerDeviceCmdResult_Ok &&
-                    preflight.status == MeyerDeviceCalibrationPreflight_FirmwareVersionReadFailed &&
-                    preflight.firmwareVersions.mainBoardStatus == MeyerDeviceFirmwareVersion_Valid &&
+                    preflight.status ==
+                        MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported &&
+                    preflight.firmwareVersions.mainBoardStatus ==
+                        MeyerDeviceFirmwareVersion_NotRun &&
                     preflight.firmwareVersions.projectionBoardStatus ==
-                        MeyerDeviceFirmwareVersion_ResponseMissing,
-                    "mOS MyScan projection-board timeout preserves the valid main-board version");
+                        MeyerDeviceFirmwareVersion_NotRun,
+                    "legacy product policy runs before projection-board error simulation");
     }
 
     // 运行无硬件模拟全链路。
@@ -996,11 +999,11 @@ namespace
         // 三种版本各有不同用途：字符串 API 描述语义能力，整数 API 保护公共
         // POD/函数表兼容性，模块版本用于运行时版本清单。测试同时锁住三者，
         // 可及时发现只修改 Version.rc 或只修改代码常量造成的版本来源不一致。
-        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.4.0") == 0,
+        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.5.0") == 0,
                     "semantic API version matches the current command behavior");
         test.Expect(GetMeyerModuleApiVersion() == MEYER_DEVICE_CMD_API_VERSION,
                     "integer ABI version matches the public header contract");
-        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.8.0") != nullptr,
+        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.9.0") != nullptr,
                     "module code version matches the current release");
 
         MeyerDeviceCmdHandle handle = MeyerDeviceCmd_Create();

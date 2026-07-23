@@ -13,7 +13,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_ConfigCenter";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_ConfigCenter v0.2.0 (2026-07-21)";
+const char* Version = "MeyerScan_ConfigCenter v0.3.0 (2026-07-23)";
 }
 }
 
@@ -186,6 +186,11 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
 
     // 新架构当前默认走 SQLite，避免新电脑首次运行时误回到旧 MySQL 部署口径。
     QJsonObject root;
+    // 语言代码只在进程启动阶段读取。设置界面修改该值后必须重启软件，
+    // MainExe 和外部登录 SDK 才会在下一次启动时加载同一语言资源。
+    QJsonObject application;
+    application.insert("language", "zh-CN");
+
     QJsonObject database;
     // insert 会覆盖同名字段；这里是新对象，所以效果等同于写入一项。
     database.insert("type", "sqlite");
@@ -206,6 +211,7 @@ void ConfigCenterImpl::EnsureDefaultConfig(const QString& configPath) const {
     feature.insert("home", home);
     feature.insert("case", caseUi);
 
+    root.insert("application", application);
     root.insert("database", database);
     root.insert("device", device);
     root.insert("feature", feature);

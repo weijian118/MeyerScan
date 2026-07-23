@@ -1,13 +1,19 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(MeyerScan_OrderCreateUI VERSION 0.5.5 LANGUAGES CXX)
+project(MeyerScan_OrderCreateUI VERSION 0.6.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
 
 meyer_add_qt_widgets_library(MeyerScan_OrderCreateUI MEYERSCAN_ORDERCREATEUI_EXPORTS
+    src/OrderCreateUIContext.cpp
     src/OrderCreateUIImpl.cpp
+    src/OrderCreateUIIntegrations.cpp
+    src/OrderCreateUILayout.cpp
+    src/OrderCreateUIScanProcess.cpp
+    src/OrderCreateUITreatment.cpp
+    src/OrderCreateUIInternal.h
     src/TreatmentPlanResourceRules.h
     src/ToothTreatmentPlanWidget.cpp
     src/Version.rc

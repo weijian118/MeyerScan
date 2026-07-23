@@ -1,5 +1,15 @@
 # MeyerScan MyLogin 变更记录
 
+## 2026-07-23（总方案和根 CTest 接入）
+
+- `MeyerLoginTest.vcxproj` 已加入 `F:\MeyerScan\MeyerScan_AllModules.sln`，打开总方案即可与其他模块一起使用 VS2015 Release x64 构建。
+- 根 CMake 新增 `MeyerScan.LoginSDK` smoke，验证登录 SDK DLL、Qt 插件、qm、许可和运行依赖的复制与加载；正式版本清单仍只记录产品 DLL/EXE，不记录测试程序。
+
+## 2026-07-23
+
+- 登录测试宿主改用仓库 `External/MyLoginSDK` 和公共 `cmake/MeyerScanExternalSdk.props/.cmake`，移除 `D:\wj\My-wj\MyLogin` 编译与 PostBuild 路径。
+- SDK 头文件、导入库、DLL、qm、许可及登录所需运行依赖统一随仓库保存；Qt 继续通过 `QT_ROOT/QTDIR/QtRoot` 选择，不复制第三方 Qt 开发包。
+
 ## 2026-07-10
 
 - 测试宿主 `Version.rc` 补齐 `LegalCopyright` 文件详细信息字段；既有外部登录 DLL、qm、许可和登录参数链路保持不变。

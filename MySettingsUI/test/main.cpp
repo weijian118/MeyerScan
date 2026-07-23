@@ -203,6 +203,8 @@ QString ExpectedPreflightMessage(int status) {
         return "The device number is invalid.";
     case SettingsCalibrationPreflightDeviceModelCodeInvalid:
         return "The device model code is invalid.";
+    case SettingsCalibrationPreflightProductFamilyUnsupported:
+        return "Current software does not support this device series.";
     default:
         return "Unable to prepare the device for calibration.";
     }

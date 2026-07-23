@@ -7,11 +7,19 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\MainWindow.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowActions.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowData.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowDevice.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowLogging.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowModules.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowNavigation.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\MainWindowVersion.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\device\DeviceSessionHost.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="test\main.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\MainWindow.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\MainWindowInternal.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\device\DeviceSessionHost.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>

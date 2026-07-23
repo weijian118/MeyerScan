@@ -1,17 +1,23 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.7.0 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.8.0 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
+include(../cmake/MeyerScanExternalSdk.cmake)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
 set(MEYER_SCAN_THIRD_PARTY_RUNTIME_ONLY ON)
 include(../cmake/MeyerScanScanThirdParty.cmake)
 unset(MEYER_SCAN_THIRD_PARTY_RUNTIME_ONLY)
 
-set(MEYER_LOGIN_ROOT "D:/wj/My-wj/MyLogin" CACHE PATH
-    "External MeyerLoginWidget SDK root")
-
 add_executable(MeyerScan WIN32
     src/MainWindow.cpp
+    src/MainWindowActions.cpp
+    src/MainWindowData.cpp
+    src/MainWindowDevice.cpp
+    src/MainWindowLogging.cpp
+    src/MainWindowModules.cpp
+    src/MainWindowNavigation.cpp
+    src/MainWindowVersion.cpp
+    src/MainWindowInternal.h
     src/device/DeviceSessionHost.cpp
     src/device/DeviceSessionHost.h
     test/main.cpp
@@ -24,7 +30,6 @@ set_target_properties(MeyerScan PROPERTIES OUTPUT_NAME "MeyerScan")
 
 target_include_directories(MeyerScan PRIVATE
     include
-    "${MEYER_LOGIN_ROOT}"
     ../MyHomeUI/include
     ../MyCaseUI/include
     ../MySettingsUI/include
@@ -54,8 +59,8 @@ target_link_libraries(MeyerScan PRIVATE
     Qt5::Widgets
     Qt5::Network
     version
-    "${MEYER_LOGIN_ROOT}/lib/MeyerLoginWidget.lib"
 )
+meyer_use_login_sdk(MeyerScan)
 
 foreach(_meyer_runtime_target
         MeyerScan_HomeUI

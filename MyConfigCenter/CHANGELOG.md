@@ -1,5 +1,11 @@
 ﻿# MeyerScan ConfigCenter 变更记录
 
+## 2026-07-23 - 0.3.0 启动语言配置
+
+- 默认配置新增 `application.language: zh-CN`，使用稳定语言代码而不是登录 SDK 私有整数索引。
+- 该字段只在软件启动阶段读取；运行时修改必须重启后生效，不承担翻译器广播或页面刷新。
+- 默认配置生成和 ConfigCenterTest 同步覆盖该字段；代码/CMake/Windows 文件版本升级为 `0.3.0`。
+
 ## 2026-07-21 - 0.2.0
 
 - 新增 `device.practiceAllowProductionMode`，默认允许练习工作台使用生产调试设备的带来源兼容身份。

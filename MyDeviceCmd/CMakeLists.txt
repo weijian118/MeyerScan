@@ -10,7 +10,7 @@ if(POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
 endif()
 
-project(MeyerScan_DeviceCmd VERSION 0.8.0 LANGUAGES CXX)
+project(MeyerScan_DeviceCmd VERSION 0.9.0 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
@@ -46,7 +46,14 @@ set(MEYER_DEVICE_CMD_SOURCES
     include/DeviceCmd.h
     src/api/DeviceCmdApi.cpp
     src/core/DeviceCommandService.cpp
+    src/core/DeviceCommandServiceCapture.cpp
+    src/core/DeviceCommandServiceCommands.cpp
+    src/core/DeviceCommandServiceDetection.cpp
+    src/core/DeviceCommandServiceExchange.cpp
+    src/core/DeviceCommandServiceFirmware.cpp
+    src/core/DeviceCommandServicePreflight.cpp
     src/core/DeviceCommandService.h
+    src/core/DeviceCommandServiceInternal.h
     src/model/DeviceModelCatalog.cpp
     src/model/DeviceModelCatalog.h
     src/model/DeviceProductCatalog.cpp

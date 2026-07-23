@@ -16,6 +16,15 @@
 *.iobj
 *.ipdb
 
+# 外部登录 SDK 是可移植构建所需的受控二进制依赖，必须随仓库保存。
+!External/MyLoginSDK/lib/MeyerLoginWidget.lib
+!External/MyLoginSDK/runtime/MeyerLoginWidget.dll
+!External/MyLoginSDK/runtime/dependencies/*.dll
+
+# 该网络模块当前二进制内嵌云端访问凭据，GitHub Push Protection 会阻止提交。
+# 文件只保留在受控本地 SDK/安装包中，待移除硬编码凭据并重新构建后再评估入库。
+External/MyLoginSDK/runtime/dependencies/MeyerScanNetworkHelper.dll
+
 # ---- 测试日志 ---------------------------------------------------------------
 **/test/logs/
 **/logs/

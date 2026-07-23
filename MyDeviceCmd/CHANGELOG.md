@@ -1,5 +1,12 @@
 # MyDeviceCmd 变更记录
 
+## 2026-07-23 - 0.9.0 产品系列门禁与职责拆分
+
+- 重构软件的适配范围收敛为 `mOS MyScan 5` 和 `mOS MyScan 6`；旧 `mOS MyScan` 的编号、型号、产品目录和协议诊断代码继续保留，但识别后返回稳定状态 18，并在固件读取、校准或扫描前关闭会话。
+- 新增 `MeyerDeviceCalibrationPreflight_ProductFamilyUnsupported`，枚举值只追加不改旧值；语义 API 升级为 `2.5.0`，整数 ABI 升级为 `7`，POD schema 和结构尺寸保持 `6`/2552 字节。
+- 将原 `DeviceCommandService.cpp` 拆为核心会话、预检、普通命令、采集、统一交换、身份检测和固件/颜色状态七个翻译单元；公共 C ABI 和类声明不变。
+- 模拟测试改为验证旧系列保留完整身份证据但不再读取主控板/投图板版本；MyScan 5/6 Ready、固件门禁和双扫描头状态测试继续保留。
+
 ## 2026-07-23 - VS2015 构建清单修复
 
 - 自检发现 CMake 已编译 `DeviceProductCatalog.cpp`，但手写 VS2015 项目遗漏该源文件，导致根方案链接缺少产品识别符号。
