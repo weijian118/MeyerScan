@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceTransport.h
 // 模块: MeyerScan_DeviceTransport.dll
-// 版本: 1.0.0
+// 模块版本: 1.3.0；公共语义 API: 1.1.0；整数 ABI: 2
 //
 // 作用:
 //   定义设备传输模块唯一的公共 C ABI。上层通过不透明句柄完成设备连接、
@@ -25,7 +25,7 @@
 #endif
 
 // 公共结构的首个版本号。后续增加字段时应追加在 reserved 之前或发布新版本。
-static const std::uint32_t MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION = 1U;
+static const std::uint32_t MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION = 2U;
 
 // 公开参数上限既是调用约定，也是 DLL 的内存保护边界。调用方应在创建采集
 // 参数时遵守这些值；DLL 仍会再次校验，不能依赖调用方自行保证合法性。
@@ -58,7 +58,23 @@ enum MeyerDeviceTransportResult : std::int32_t
     MeyerDeviceTransportResult_AlreadyRunning = -9,
     MeyerDeviceTransportResult_NotRunning = -10,
     MeyerDeviceTransportResult_NotReady = -11,
-    MeyerDeviceTransportResult_InternalError = -12
+    MeyerDeviceTransportResult_InternalError = -12,
+    // 连续两次流接收超时，表示设备数据流已经停滞，不再是单次调度抖动。
+    MeyerDeviceTransportResult_StreamStalled = -13,
+    // 采集期间底层设备句柄已失效，通常对应 USB 拔出或驱动连接丢失。
+    MeyerDeviceTransportResult_DeviceDisconnected = -14
+};
+
+// 原始 B 包传输事件。该枚举只描述传输现象，不解释图像序号或扫描头等业务语义。
+enum MeyerDeviceTransportStreamEvent : std::int32_t
+{
+    MeyerDeviceTransportStreamEvent_None = 0,
+    MeyerDeviceTransportStreamEvent_PacketReceived = 1,
+    MeyerDeviceTransportStreamEvent_ReceiveTimeout = 2,
+    MeyerDeviceTransportStreamEvent_ConsecutiveTimeout = 3,
+    MeyerDeviceTransportStreamEvent_DeviceDisconnected = 4,
+    MeyerDeviceTransportStreamEvent_PartialPacket = 5,
+    MeyerDeviceTransportStreamEvent_IoFailure = 6
 };
 
 // 当前正式实现的传输方式。预留其他值时不能在没有实现的情况下返回成功。
@@ -156,6 +172,30 @@ struct MeyerDeviceFrameInfo
     std::uint32_t reserved[8];
 };
 
+// 原始流诊断快照。调用方可以低频轮询该结构，不需要解析日志文本。
+// 计数器在 StartStream/PrimeStream 开始新流时清零，StopStream 后保留末次统计供诊断。
+struct MeyerDeviceTransportStreamDiagnostics
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::uint64_t sequence;
+    std::uint64_t totalPackets;
+    std::uint64_t totalTimeouts;
+    std::uint64_t totalPartialPackets;
+    std::uint64_t totalIoFailures;
+    std::int32_t consecutiveTimeouts;
+    std::int32_t lastResult;
+    std::int32_t lastEvent;
+    std::int32_t streamActive;
+    std::uint32_t queueDepth;
+    std::uint32_t reserved32;
+    std::uint64_t transferSize;
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceTransportStreamDiagnostics) == 112U,
+              "MeyerDeviceTransportStreamDiagnostics ABI size changed");
+
 // 不透明句柄隐藏内部 C++ 对象和第三方 SDK 类型。
 typedef void* MeyerDeviceTransportHandle;
 
@@ -167,6 +207,8 @@ extern "C"
     MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_InitCaptureParams(MeyerDeviceCaptureStartParams* params);
     // 初始化帧元数据结构，供 GetFrame 校验版本并回填。
     MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_InitFrameInfo(MeyerDeviceFrameInfo* frameInfo);
+    // 初始化原始流诊断结构，设置结构大小、版本和空事件。
+    MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_InitStreamDiagnostics(MeyerDeviceTransportStreamDiagnostics* diagnostics);
 
     // 创建一个只管理单设备连接的不透明会话句柄。
     MEYERSCAN_DEVICE_TRANSPORT_API MeyerDeviceTransportHandle MeyerDeviceTransport_Create();
@@ -195,6 +237,8 @@ extern "C"
     MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_StopStream(MeyerDeviceTransportHandle handle);
     // 接收一包原始流数据并返回实际字节数。
     MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_ReceiveStreamPacket(MeyerDeviceTransportHandle handle, unsigned char* buffer, std::size_t capacity, std::size_t* receivedSize, std::uint32_t timeoutMs);
+    // 复制当前原始流诊断快照；本函数只读内存，不触发 USB I/O。
+    MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_GetStreamDiagnostics(MeyerDeviceTransportHandle handle, MeyerDeviceTransportStreamDiagnostics* diagnostics);
 
     // 返回 CyAPI 枚举到的设备数量。
     MEYERSCAN_DEVICE_TRANSPORT_API std::int32_t MeyerDeviceTransport_GetDeviceCount(MeyerDeviceTransportHandle handle, std::int32_t* deviceCount);

@@ -1,0 +1,116 @@
+QWidget#MeyerScanCaptureServiceTestRoot {
+    background: #eef1f4;
+    color: #152333;
+    font-family: "Microsoft YaHei UI";
+    font-size: 14px;
+}
+
+QLabel#CaptureServiceTitle {
+    color: #102a43;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+QLabel#CaptureServiceMode {
+    color: #52606d;
+    padding: 6px 12px;
+}
+
+QLabel#SectionLabel {
+    color: #243b53;
+    font-weight: 600;
+}
+
+QFrame#CaptureInfoPanel,
+QFrame#CaptureCenterPanel,
+QFrame#CaptureStatusPanel {
+    background: #ffffff;
+    border: 1px solid #d9e2ec;
+    border-radius: 6px;
+}
+
+QLabel#InfoValue {
+    color: #102a43;
+    font-weight: 600;
+}
+
+QPushButton {
+    min-width: 118px;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid #bcccdc;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #243b53;
+}
+
+QPushButton:hover {
+    background: #f0f4f8;
+    border-color: #829ab1;
+}
+
+QPushButton:pressed {
+    background: #d9e2ec;
+}
+
+QPushButton:disabled {
+    background: #e4e7eb;
+    color: #9aa5b1;
+    border-color: #cbd2d9;
+}
+
+QPushButton#ColorAdmissionButton,
+QPushButton#StartCaptureButton {
+    background: #007d68;
+    color: #ffffff;
+    border-color: #007d68;
+    font-weight: 600;
+}
+
+QPushButton#ColorAdmissionButton:hover,
+QPushButton#StartCaptureButton:hover {
+    background: #009176;
+    border-color: #009176;
+}
+
+QPushButton#ColorAdmissionButton:pressed,
+QPushButton#StartCaptureButton:pressed {
+    background: #006652;
+    border-color: #006652;
+}
+
+QPushButton#ReservedAdmissionButton {
+    color: #627d98;
+}
+
+QPushButton#StopCaptureButton {
+    color: #9b2c2c;
+}
+
+QComboBox {
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid #bcccdc;
+    border-radius: 5px;
+    background: #ffffff;
+}
+
+QComboBox:hover,
+QComboBox:focus {
+    border-color: #007d68;
+}
+
+QLabel#CaptureImageView {
+    background: #263238;
+    color: #d9e2ec;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+QTextEdit#CaptureEventLog {
+    background: #f7f9fb;
+    color: #334e68;
+    border: 1px solid #d9e2ec;
+    border-radius: 4px;
+    padding: 6px;
+}

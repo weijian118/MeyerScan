@@ -42,6 +42,6 @@ MainExe 启动后读取本清单，输出以下关键字段：
 
 ## 动态加载关系
 
-MainExe 对 HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter、ConfigCenter、Permission、UIComponents、RuntimeDataCenter、DatabaseQtAdapter、DeviceCmd、DeviceTransport、Logger 等自研模块采用运行时动态加载 DLL 的方式。`MeyerScan_UIResources.dll` 由公共资源加载器在第一个 UI 页面创建前校验资源 API、RCDATA 编号、清单 schema 和 qrc 前缀，验证通过后动态注册，并使用 `PreventUnloadHint` 保持到进程退出；扫描相关的 `ScanReconstructStudio.exe`、`MeyerScan_ScanReconstructStudio.dll`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 和 `MeyerScan_SendUI.dll` 也已纳入本清单。工程仍包含接口头文件，但不链接这些模块的 import lib。
+MainExe 对 HomeUI、CaseUI、SettingsUI、OrderCreateUI、OrderScanWorkspaceShell、ExternalLaunchAdapter、ConfigCenter、Permission、UIComponents、RuntimeDataCenter、DatabaseQtAdapter、DeviceCmd、DeviceTransport、CaptureProcessing、CaptureImagePipeline、AutoExposure、CaptureService、Logger 等自研模块采用运行时动态加载 DLL 的方式。`MeyerScan_UIResources.dll` 由公共资源加载器在第一个 UI 页面创建前校验资源 API、RCDATA 编号、清单 schema 和 qrc 前缀，验证通过后动态注册，并使用 `PreventUnloadHint` 保持到进程退出；扫描相关的 `ScanReconstructStudio.exe`、`MeyerScan_ScanReconstructStudio.dll`、`MeyerScan_ScanWorkflowUI.dll`、`MeyerScan_DataProcessUI.dll` 和 `MeyerScan_SendUI.dll` 也已纳入本清单。工程仍包含接口头文件，但不链接这些模块的 import lib。
 
 Qt、Windows `Version.lib`、既有外部登录模块 `MeyerLoginWidget.lib` 仍按当前阶段静态/导入库方式链接。后续若登录模块也整理出稳定适配层，再单独讨论是否改为动态加载。

@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "CMake: Configure AutoExposure VS2015 x64", "type": "shell", "command": "cmake", "args": ["--preset", "vs2015-x64"], "problemMatcher": []},
+    {"label": "CMake: Build AutoExposure Release", "type": "shell", "command": "cmake", "args": ["--build", "--preset", "vs2015-x64-release"], "dependsOn": "CMake: Configure AutoExposure VS2015 x64", "group": {"kind": "build", "isDefault": true}, "problemMatcher": "$msCompile"},
+    {"label": "CTest: AutoExposure Release", "type": "shell", "command": "ctest", "args": ["--preset", "vs2015-x64-release"], "dependsOn": "CMake: Build AutoExposure Release", "problemMatcher": []}
+  ]
+}

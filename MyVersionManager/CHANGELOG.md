@@ -1,5 +1,10 @@
 # MeyerScan VersionManager 变更记录
 
+## 2026-07-24 - v0.1.1
+
+- 默认版本清单补齐 DeviceTransport、DeviceCmd、CaptureProcessing、CaptureImagePipeline、AutoExposure、CaptureService、UIResources 和 ScanSchemaService。
+- CMake 版本、代码版本和 Windows 文件版本同步为 `0.1.1`。
+
 ## 2026-07-13
 
 - `VersionManagerTest` 初始化隔离目录时改用命名 UTF-8 路径缓冲区，继续保证测试不覆盖 MainExe 正式版本清单。

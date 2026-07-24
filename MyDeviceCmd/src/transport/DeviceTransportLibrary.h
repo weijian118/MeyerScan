@@ -51,6 +51,20 @@ namespace meyer
                                   std::size_t capacity,
                                   std::size_t& frameBytes,
                                   MeyerDeviceCmdFrameInfo& frameInfo) override;
+            // 启动不带组帧的原始 B 包流。
+            std::int32_t StartRawCapture(const MeyerDeviceCmdCaptureParams& params) override;
+            // 停止原始 B 包流。
+            std::int32_t StopRawCapture() override;
+            // 查询本适配器是否已启动原始流。
+            bool IsRawCaptureActive() const override;
+            // 转发一次原始包阻塞接收。
+            std::int32_t ReceiveRawCapturePacket(unsigned char* buffer,
+                                                 std::size_t capacity,
+                                                 std::size_t& receivedSize,
+                                                 std::uint32_t timeoutMs) override;
+            // 复制 Transport 原始流诊断快照。
+            std::int32_t GetStreamDiagnostics(
+                MeyerDeviceCmdStreamDiagnostics& diagnostics) override;
             // 返回动态加载和底层设备操作的最近错误文本。
             const std::string& LastError() const override;
 
@@ -68,6 +82,7 @@ namespace meyer
             void* m_handle;
             std::unique_ptr<Functions> m_functions;
             mutable std::string m_lastError;
+            bool m_rawCaptureActive;
         };
     }
 }

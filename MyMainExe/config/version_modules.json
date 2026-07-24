@@ -31,6 +31,22 @@
             "versionFunction": "GetMeyerModuleVersion"
         },
         {
+            "file": "MeyerScan_CaptureProcessing.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_CaptureImagePipeline.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_AutoExposure.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
+            "file": "MeyerScan_CaptureService.dll",
+            "versionFunction": "GetMeyerModuleVersion"
+        },
+        {
             "file": "MeyerScan_ConfigCenter.dll",
             "versionFunction": "GetMeyerModuleVersion"
         },

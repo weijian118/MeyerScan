@@ -1,0 +1,38 @@
+#include <windows.h>
+
+// Keep this RC file ASCII-only for the VS2015 resource compiler.
+#define MEYER_FILE_VERSION 0,1,0,0
+#define MEYER_FILE_VERSION_TEXT "0.1.0.0\0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MEYER_FILE_VERSION
+ PRODUCTVERSION MEYER_FILE_VERSION
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Hefei Meyer Optoelectronic Technology Co., Ltd."
+            VALUE "LegalCopyright", "Copyright (C) 2026 HEFEI MEYER"
+            VALUE "FileDescription", "MeyerScan Capture Image Pipeline Module"
+            VALUE "FileVersion", MEYER_FILE_VERSION_TEXT
+            VALUE "InternalName", "MeyerScan_CaptureImagePipeline"
+            VALUE "OriginalFilename", "MeyerScan_CaptureImagePipeline.dll"
+            VALUE "ProductName", "MeyerScan Digital Dental Scanner"
+            VALUE "ProductVersion", MEYER_FILE_VERSION_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

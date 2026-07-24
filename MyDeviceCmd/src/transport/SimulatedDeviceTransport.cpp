@@ -12,6 +12,18 @@
 
 namespace
 {
+    // 模拟 B 包使用与真设备相同的 8 字节图像头魔数。
+    const std::uint8_t kImageHeader[8] = {
+        0xA5U, 0xCCU, 0x00U, 0x00U, 0x01U, 0x02U, 0x03U, 0x04U
+    };
+
+    // 旧设备的“AES”图像数据实际只执行 S-Box 替换。下表数值分别是
+    // 期望解密得到 R=100/G=120/激光G=200/黑图=10/B=140/激光B=220
+    // 时对应的加密字节，顺序与下位机原始图序一致。
+    const std::uint8_t kEncryptedPlaneValues[6] = {
+        0x43U, 0xBCU, 0xE8U, 0x67U, 0x64U, 0x86U
+    };
+
     // 为模拟旧有线设备选择一个已登记的完整型号代码。一个协议 Profile 可能
     // 对应多个销售型号，模拟器只使用其中一个确定性标准型号验证主链路。
     const char* DefaultModelCodeForProfile(std::int32_t model)
@@ -36,13 +48,19 @@ namespace meyer
     {
         // 构造模拟后端时先准备所有固定长度响应，后续读命令只复制状态数据。
         SimulatedDeviceTransport::SimulatedDeviceTransport()
-            : m_open(false), m_captureActive(false), m_frameReady(false), m_lightOn(false),
+            : m_open(false), m_captureActive(false), m_rawCaptureActive(false),
+              m_frameReady(false), m_lightOn(false),
               m_isUsb2(false), m_omitModelMarker(false), m_failMachineCodeRead(false),
               m_simulatedFlags(0U),
               m_model(MeyerDeviceModel_MyScan6Wireless),
-              m_deviceId("6200005301203"), m_frameRate(0x14U)
+              m_deviceId("6200005301203"), m_frameRate(0x14U),
+              m_rawImageIndex(0U), m_rawPacketIndex(0U)
         {
             std::memset(&m_frameInfo, 0, sizeof(m_frameInfo));
+            std::memset(&m_rawCaptureParams, 0, sizeof(m_rawCaptureParams));
+            std::memset(&m_streamDiagnostics, 0, sizeof(m_streamDiagnostics));
+            m_streamDiagnostics.structSize = sizeof(m_streamDiagnostics);
+            m_streamDiagnostics.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
             BuildDefaultPayloads();
         }
 
@@ -80,6 +98,9 @@ namespace meyer
                 : params.modelHint;
             BuildDefaultPayloads();
             m_open = true;
+            m_rawCaptureActive = false;
+            m_rawImageIndex = 0U;
+            m_rawPacketIndex = 0U;
             m_lastError.clear();
             return MeyerDeviceCmdResult_Ok;
         }
@@ -88,9 +109,13 @@ namespace meyer
         {
             m_open = false;
             m_captureActive = false;
+            m_rawCaptureActive = false;
             m_frameReady = false;
             m_pendingResponse.clear();
             m_frame.clear();
+            std::memset(&m_streamDiagnostics, 0, sizeof(m_streamDiagnostics));
+            m_streamDiagnostics.structSize = sizeof(m_streamDiagnostics);
+            m_streamDiagnostics.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
         }
 
         // 模拟连接状态是本地布尔值，不需要访问硬件。
@@ -321,7 +346,7 @@ namespace meyer
         // 返回本地采集状态，测试可据此验证命令互斥逻辑。
         bool SimulatedDeviceTransport::IsCaptureActive() const
         {
-            return m_captureActive;
+            return m_captureActive || m_rawCaptureActive;
         }
 
         std::int32_t SimulatedDeviceTransport::GetFrame(unsigned char* buffer,
@@ -348,6 +373,168 @@ namespace meyer
             frameInfo = m_frameInfo;
             m_frameReady = false;
             return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 模拟原始流保存一份参数快照，后续每次 Receive 只生成当前 16 KiB 包。
+        std::int32_t SimulatedDeviceTransport::StartRawCapture(
+            const MeyerDeviceCmdCaptureParams& params)
+        {
+            if (!m_open)
+            {
+                return MeyerDeviceCmdResult_NotOpen;
+            }
+            if (m_captureActive || m_rawCaptureActive)
+            {
+                return MeyerDeviceCmdResult_Busy;
+            }
+            if (params.imageCount <= 0 || params.packetsPerImage <= 0 ||
+                params.transferSize == 0U || params.queueDepth == 0U)
+            {
+                m_lastError = "Simulated raw capture parameters are invalid";
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+
+            m_rawCaptureParams = params;
+            m_rawImageIndex = 0U;
+            m_rawPacketIndex = 0U;
+            m_rawCaptureActive = true;
+            std::memset(&m_streamDiagnostics, 0, sizeof(m_streamDiagnostics));
+            m_streamDiagnostics.structSize = sizeof(m_streamDiagnostics);
+            m_streamDiagnostics.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+            m_streamDiagnostics.streamActive = 1;
+            m_streamDiagnostics.queueDepth = params.queueDepth;
+            m_streamDiagnostics.transferSize = params.transferSize;
+            ++m_streamDiagnostics.sequence;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 停止后保留诊断计数，便于测试验证停止前共交付了多少包。
+        std::int32_t SimulatedDeviceTransport::StopRawCapture()
+        {
+            m_rawCaptureActive = false;
+            m_streamDiagnostics.streamActive = 0;
+            ++m_streamDiagnostics.sequence;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 返回独立原始流标志，不把旧完整帧模拟状态混入。
+        bool SimulatedDeviceTransport::IsRawCaptureActive() const
+        {
+            return m_rawCaptureActive;
+        }
+
+        // 这个函数同时支持正常包和可控超时/拔出/部分包，无设备时也能验证服务层恢复逻辑。
+        std::int32_t SimulatedDeviceTransport::ReceiveRawCapturePacket(
+            unsigned char* buffer,
+            std::size_t capacity,
+            std::size_t& receivedSize,
+            std::uint32_t)
+        {
+            receivedSize = 0U;
+            if (!m_open)
+            {
+                return MeyerDeviceCmdResult_DeviceDisconnected;
+            }
+            if (!m_rawCaptureActive)
+            {
+                return MeyerDeviceCmdResult_NotReady;
+            }
+
+            const bool timeoutAlways =
+                (m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_StreamTimeoutAlways) != 0U;
+            const bool timeoutOnce =
+                (m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_StreamTimeoutOnce) != 0U &&
+                m_streamDiagnostics.totalTimeouts == 0U;
+            if (timeoutAlways || timeoutOnce)
+            {
+                ++m_streamDiagnostics.totalTimeouts;
+                ++m_streamDiagnostics.consecutiveTimeouts;
+                ++m_streamDiagnostics.sequence;
+                m_streamDiagnostics.lastResult =
+                    m_streamDiagnostics.consecutiveTimeouts >= 2
+                        ? MeyerDeviceCmdResult_StreamStalled
+                        : MeyerDeviceCmdResult_Timeout;
+                m_streamDiagnostics.lastEvent =
+                    m_streamDiagnostics.consecutiveTimeouts >= 2 ? 3 : 2;
+                return m_streamDiagnostics.lastResult;
+            }
+
+            if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_DisconnectDuringCapture) != 0U &&
+                m_streamDiagnostics.totalPackets >=
+                    static_cast<std::uint64_t>(m_rawCaptureParams.packetsPerImage))
+            {
+                m_open = false;
+                m_rawCaptureActive = false;
+                m_streamDiagnostics.streamActive = 0;
+                m_streamDiagnostics.lastResult = MeyerDeviceCmdResult_DeviceDisconnected;
+                m_streamDiagnostics.lastEvent = 4;
+                ++m_streamDiagnostics.totalIoFailures;
+                ++m_streamDiagnostics.sequence;
+                return MeyerDeviceCmdResult_DeviceDisconnected;
+            }
+
+            const std::size_t packetBytes = static_cast<std::size_t>(m_rawCaptureParams.transferSize);
+            if (buffer == nullptr || capacity < packetBytes)
+            {
+                return MeyerDeviceCmdResult_BufferTooSmall;
+            }
+
+            BuildRawPacket(buffer, packetBytes);
+            receivedSize = packetBytes;
+            if ((m_simulatedFlags & MeyerDeviceCmdSimulatedFlag_PartialStreamPacket) != 0U &&
+                m_streamDiagnostics.totalPartialPackets == 0U)
+            {
+                receivedSize = packetBytes / 2U;
+                ++m_streamDiagnostics.totalPartialPackets;
+                m_streamDiagnostics.lastEvent = 5;
+            }
+            else
+            {
+                m_streamDiagnostics.lastEvent = 1;
+            }
+
+            ++m_streamDiagnostics.totalPackets;
+            m_streamDiagnostics.consecutiveTimeouts = 0;
+            m_streamDiagnostics.lastResult = MeyerDeviceCmdResult_Ok;
+            ++m_streamDiagnostics.sequence;
+
+            ++m_rawPacketIndex;
+            if (m_rawPacketIndex >= static_cast<std::size_t>(m_rawCaptureParams.packetsPerImage))
+            {
+                m_rawPacketIndex = 0U;
+                m_rawImageIndex = (m_rawImageIndex + 1U) %
+                    static_cast<std::size_t>(m_rawCaptureParams.imageCount);
+            }
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 调用方已通过 Init 填写结构头，这里仅覆盖当前快照值。
+        std::int32_t SimulatedDeviceTransport::GetStreamDiagnostics(
+            MeyerDeviceCmdStreamDiagnostics& diagnostics)
+        {
+            diagnostics = m_streamDiagnostics;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 除第一包的 40 字节头外，整包填充已经做过正向 S-Box 替换的灰度值。
+        void SimulatedDeviceTransport::BuildRawPacket(
+            unsigned char* buffer,
+            std::size_t packetBytes)
+        {
+            const std::size_t valueIndex = m_rawImageIndex % 6U;
+            std::memset(buffer, kEncryptedPlaneValues[valueIndex], packetBytes);
+            if (m_rawPacketIndex != 0U || packetBytes < 40U)
+            {
+                return;
+            }
+
+            std::memcpy(buffer, kImageHeader, sizeof(kImageHeader));
+            buffer[12] = static_cast<unsigned char>(m_rawImageIndex);
+            buffer[13] = m_lightOn ? 0xFFU : 0x00U;
+            buffer[14] = 0xFFU;
+            const std::int32_t configuredHead = m_rawCaptureParams.scanHeadType;
+            buffer[15] = static_cast<unsigned char>(
+                configuredHead >= 1 && configuredHead <= 3 ? configuredHead : 1);
         }
 
         // 返回模拟后端保存的诊断文本，不创建临时字符串。

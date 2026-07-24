@@ -55,6 +55,21 @@ namespace meyer
                                           std::size_t& frameBytes,
                                           MeyerDeviceCmdFrameInfo& frameInfo) = 0;
 
+            // 新采集链路只启动底层原始流和预提交队列，不调用 Transport 组帧。
+            virtual std::int32_t StartRawCapture(const MeyerDeviceCmdCaptureParams& params) = 0;
+            // 停止原始流并回收 CyAPI 异步槽位。
+            virtual std::int32_t StopRawCapture() = 0;
+            // 查询原始流是否已启动。
+            virtual bool IsRawCaptureActive() const = 0;
+            // 读取一个原始 B 包，调用方拥有缓冲区。
+            virtual std::int32_t ReceiveRawCapturePacket(unsigned char* buffer,
+                                                         std::size_t capacity,
+                                                         std::size_t& receivedSize,
+                                                         std::uint32_t timeoutMs) = 0;
+            // 复制底层原始流诊断统计。
+            virtual std::int32_t GetStreamDiagnostics(
+                MeyerDeviceCmdStreamDiagnostics& diagnostics) = 0;
+
             // 返回当前后端最近错误文本，供 DeviceCmd 组合诊断信息。
             virtual const std::string& LastError() const = 0;
         };

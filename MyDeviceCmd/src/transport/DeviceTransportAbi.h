@@ -1,12 +1,12 @@
 ﻿// =============================================================================
 // 文件: DeviceTransportAbi.h
-// 作用: 保存 DeviceTransport API v1 的最小私有 ABI 镜像。
+// 作用: 保存 DeviceTransport API v2 的最小私有 ABI 镜像。
 //
 // 说明:
 //   MyDeviceCmd 运行时只依赖 MeyerScan_DeviceTransport.dll，不链接 import lib。
 //   为保证整个 MyDeviceCmd 文件夹移动后仍可独立编译，这里不包含相邻项目头文件，
 //   而是镜像本模块实际调用的 POD 结构。加载时必须先校验
-//   GetMeyerModuleApiVersion()==1；DeviceTransport 升级 ABI 后应同步更新本文件。
+//   GetMeyerModuleApiVersion()==2；DeviceTransport 升级 ABI 后应同步更新本文件。
 // =============================================================================
 #pragma once
 
@@ -20,8 +20,8 @@ namespace meyer
         namespace transportabi
         {
             // 私有镜像的结构版本和整数 ABI 版本，必须与 DeviceTransport 一致。
-            static const std::uint32_t kSchemaVersion = 1U;
-            static const std::int32_t kApiVersion = 1;
+            static const std::uint32_t kSchemaVersion = 2U;
+            static const std::int32_t kApiVersion = 2;
 
             // Transport 结果码只在动态适配器内部使用，随后转换为 DeviceCmd 结果码。
             enum Result : std::int32_t
@@ -38,7 +38,9 @@ namespace meyer
                 AlreadyRunning = -9,
                 NotRunning = -10,
                 NotReady = -11,
-                InternalError = -12
+                InternalError = -12,
+                StreamStalled = -13,
+                DeviceDisconnected = -14
             };
 
             // 对应 DeviceTransport 的设备打开参数布局。
@@ -104,6 +106,29 @@ namespace meyer
                 std::uint64_t frameBytes;
                 std::uint32_t reserved[8];
             };
+
+            // DeviceTransportStreamDiagnostics 的私有镜像，只用于转成 DeviceCmd 公共快照。
+            struct StreamDiagnostics
+            {
+                std::uint32_t structSize;
+                std::uint32_t schemaVersion;
+                std::uint64_t sequence;
+                std::uint64_t totalPackets;
+                std::uint64_t totalTimeouts;
+                std::uint64_t totalPartialPackets;
+                std::uint64_t totalIoFailures;
+                std::int32_t consecutiveTimeouts;
+                std::int32_t lastResult;
+                std::int32_t lastEvent;
+                std::int32_t streamActive;
+                std::uint32_t queueDepth;
+                std::uint32_t reserved32;
+                std::uint64_t transferSize;
+                std::uint32_t reserved[8];
+            };
+
+            static_assert(sizeof(StreamDiagnostics) == 112U,
+                          "DeviceTransport stream diagnostics ABI mirror changed");
 
             // 底层句柄只在动态适配器内部传递，不能越过 DeviceCmd 公共 ABI。
             typedef void* Handle;

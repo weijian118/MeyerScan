@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MeyerScan_MainExe VERSION 0.8.0 LANGUAGES CXX)
+project(MeyerScan_MainExe VERSION 0.8.1 LANGUAGES CXX)
 
 include(../cmake/MeyerScanCommon.cmake)
 include(../cmake/MeyerScanExternalSdk.cmake)
@@ -78,6 +78,10 @@ foreach(_meyer_runtime_target
         MeyerScan_Database
         MeyerScan_DeviceTransport
         MeyerScan_DeviceCmd
+        MeyerScan_CaptureProcessing
+        MeyerScan_CaptureImagePipeline
+        MeyerScan_AutoExposure
+        MeyerScan_CaptureService
         MeyerScan_CaseOrderService
         MeyerScan_ScanSchemaService
         MeyerScan_Calibration3DUI

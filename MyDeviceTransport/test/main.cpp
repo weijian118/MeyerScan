@@ -209,12 +209,12 @@ namespace
         test.Expect(std::strcmp(MeyerDeviceTransport_GetModuleName(),
                                 "MeyerScan_DeviceTransport") == 0,
                     "module name is stable");
-        test.Expect(std::strcmp(MeyerDeviceTransport_GetApiVersion(), "1.0.0") == 0,
-                    "API version is 1.0.0");
-        test.Expect(GetMeyerModuleApiVersion() == 1,
-                    "generic module ABI gate reports version 1");
+        test.Expect(std::strcmp(MeyerDeviceTransport_GetApiVersion(), "1.1.0") == 0,
+                    "API version is 1.1.0");
+        test.Expect(GetMeyerModuleApiVersion() == 2,
+                    "generic module ABI gate reports version 2");
         test.Expect(std::strcmp(GetMeyerModuleVersion(),
-                                "MeyerScan_DeviceTransport v1.2.0 (2026-07-17)") == 0,
+                                "MeyerScan_DeviceTransport v1.3.0 (2026-07-24)") == 0,
                     "code version follows the repository module format");
 
         test.Expect(MeyerDeviceTransport_InitOpenParams(nullptr) ==

@@ -30,12 +30,35 @@ namespace
         std::string lastError;
         meyer::device::ImageFrame pendingFrame;
         bool hasPendingFrame;
+        MeyerDeviceTransportStreamDiagnostics streamDiagnostics;
 
         DeviceTransportContext()
             : hasPendingFrame(false)
         {
+            // 诊断快照与句柄共享生命周期，新建句柄时必须是可读的空状态。
+            std::memset(&streamDiagnostics, 0, sizeof(streamDiagnostics));
+            streamDiagnostics.structSize = sizeof(streamDiagnostics);
+            streamDiagnostics.schemaVersion = MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION;
+            streamDiagnostics.lastResult = MeyerDeviceTransportResult_Ok;
+            streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_None;
         }
     };
+
+    // 开始一次新原始流时清空历史计数，但保留 ABI 头部供调用方校验。
+    void ResetStreamDiagnostics(DeviceTransportContext& context)
+    {
+        std::memset(&context.streamDiagnostics, 0, sizeof(context.streamDiagnostics));
+        context.streamDiagnostics.structSize = sizeof(context.streamDiagnostics);
+        context.streamDiagnostics.schemaVersion = MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION;
+        context.streamDiagnostics.lastResult = MeyerDeviceTransportResult_Ok;
+        context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_None;
+    }
+
+    // 每次改变原始流状态都递增 sequence，UI 可以用它判断快照是否有更新。
+    void AdvanceStreamDiagnostics(DeviceTransportContext& context)
+    {
+        ++context.streamDiagnostics.sequence;
+    }
 
     // 把不透明 C 句柄恢复成 DLL 内部对象指针。
     DeviceTransportContext* ToContext(MeyerDeviceTransportHandle handle)
@@ -343,6 +366,23 @@ extern "C"
         return MeyerDeviceTransportResult_Ok;
     }
 
+    // 初始化诊断快照，调用方不应手工填写 schemaVersion。
+    std::int32_t MeyerDeviceTransport_InitStreamDiagnostics(
+        MeyerDeviceTransportStreamDiagnostics* diagnostics)
+    {
+        if (diagnostics == nullptr)
+        {
+            return MeyerDeviceTransportResult_InvalidArgument;
+        }
+
+        std::memset(diagnostics, 0, sizeof(*diagnostics));
+        diagnostics->structSize = sizeof(*diagnostics);
+        diagnostics->schemaVersion = MEYER_DEVICE_TRANSPORT_SCHEMA_VERSION;
+        diagnostics->lastResult = MeyerDeviceTransportResult_Ok;
+        diagnostics->lastEvent = MeyerDeviceTransportStreamEvent_None;
+        return MeyerDeviceTransportResult_Ok;
+    }
+
     // 创建内部上下文；nothrow 保证内存不足时返回空句柄而不是抛出异常。
     MeyerDeviceTransportHandle MeyerDeviceTransport_Create()
     {
@@ -506,6 +546,10 @@ extern "C"
                 return Fail(&context, MeyerDeviceTransportResult_IoFailed,
                             "Failed to start stream");
             }
+            // StartStream 标志一次新采集流，旧超时和包数不应污染新会话。
+            ResetStreamDiagnostics(context);
+            context.streamDiagnostics.streamActive = 1;
+            AdvanceStreamDiagnostics(context);
             meyer::device::logging::WriteInfo("StartStream", "Raw device stream started");
             return Succeed(&context);
         });
@@ -531,6 +575,11 @@ extern "C"
                 return Fail(&context, MeyerDeviceTransportResult_IoFailed,
                             "Failed to prime stream transfer queue");
             }
+            // 记录真实提交的包大小和队列深度，便于现场确认是否按 Profile 使用 64。
+            context.streamDiagnostics.transferSize = static_cast<std::uint64_t>(transferSize);
+            context.streamDiagnostics.queueDepth = static_cast<std::uint32_t>(queueDepth);
+            context.streamDiagnostics.streamActive = 1;
+            AdvanceStreamDiagnostics(context);
             return Succeed(&context);
         });
     }
@@ -540,6 +589,11 @@ extern "C"
     {
         return Invoke(handle, "StopStream", [](DeviceTransportContext& context) -> std::int32_t {
             context.facade.StopStream();
+            // 停流后保留累计值，仅把活动标志置零供停止日志读取。
+            context.streamDiagnostics.streamActive = 0;
+            context.streamDiagnostics.lastResult = MeyerDeviceTransportResult_Ok;
+            context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_None;
+            AdvanceStreamDiagnostics(context);
             meyer::device::logging::WriteInfo("StopStream", "Raw device stream stopped");
             return Succeed(&context);
         });
@@ -564,11 +618,81 @@ extern "C"
                 return Fail(&context, MeyerDeviceTransportResult_InvalidArgument,
                             "Stream receive buffer or timeout is outside the supported range");
             }
+            // IsOpen 只查看 CyAPI 句柄，不发送设备命令，适合采集热路径轻量检查。
+            if (!context.facade.IsOpen())
+            {
+                ++context.streamDiagnostics.totalIoFailures;
+                context.streamDiagnostics.consecutiveTimeouts = 0;
+                context.streamDiagnostics.lastResult = MeyerDeviceTransportResult_DeviceDisconnected;
+                context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_DeviceDisconnected;
+                context.streamDiagnostics.streamActive = 0;
+                AdvanceStreamDiagnostics(context);
+                return Fail(&context, MeyerDeviceTransportResult_DeviceDisconnected,
+                            "Device disconnected while receiving the raw stream");
+            }
             if (!context.facade.ReceiveStreamPacket(buffer, capacity, *receivedSize, timeoutMs))
             {
+                // 接收失败后再查句柄，把“真拔出”与“设备未及时发包”分开上报。
+                if (!context.facade.IsOpen())
+                {
+                    ++context.streamDiagnostics.totalIoFailures;
+                    context.streamDiagnostics.consecutiveTimeouts = 0;
+                    context.streamDiagnostics.lastResult = MeyerDeviceTransportResult_DeviceDisconnected;
+                    context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_DeviceDisconnected;
+                    context.streamDiagnostics.streamActive = 0;
+                    AdvanceStreamDiagnostics(context);
+                    return Fail(&context, MeyerDeviceTransportResult_DeviceDisconnected,
+                                "Device disconnected after a raw stream receive failure");
+                }
+
+                ++context.streamDiagnostics.totalTimeouts;
+                ++context.streamDiagnostics.consecutiveTimeouts;
+                context.streamDiagnostics.lastResult =
+                    context.streamDiagnostics.consecutiveTimeouts >= 2
+                        ? MeyerDeviceTransportResult_StreamStalled
+                        : MeyerDeviceTransportResult_Timeout;
+                context.streamDiagnostics.lastEvent =
+                    context.streamDiagnostics.consecutiveTimeouts >= 2
+                        ? MeyerDeviceTransportStreamEvent_ConsecutiveTimeout
+                        : MeyerDeviceTransportStreamEvent_ReceiveTimeout;
+                AdvanceStreamDiagnostics(context);
+
+                if (context.streamDiagnostics.consecutiveTimeouts >= 2)
+                {
+                    return Fail(&context, MeyerDeviceTransportResult_StreamStalled,
+                                "Two consecutive raw stream receives timed out");
+                }
                 return Fail(&context, MeyerDeviceTransportResult_Timeout,
-                            "Stream packet was not received before timeout");
+                            "Raw stream packet was not received before timeout");
             }
+
+            ++context.streamDiagnostics.totalPackets;
+            context.streamDiagnostics.consecutiveTimeouts = 0;
+            context.streamDiagnostics.lastResult = MeyerDeviceTransportResult_Ok;
+            context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_PacketReceived;
+            if (context.streamDiagnostics.transferSize > 0U &&
+                *receivedSize != static_cast<std::size_t>(context.streamDiagnostics.transferSize))
+            {
+                ++context.streamDiagnostics.totalPartialPackets;
+                context.streamDiagnostics.lastEvent = MeyerDeviceTransportStreamEvent_PartialPacket;
+            }
+            AdvanceStreamDiagnostics(context);
+            return Succeed(&context);
+        });
+    }
+
+    // 诊断读取只复制 POD，不轮询设备，因此可以由 CaptureService 低频记录。
+    std::int32_t MeyerDeviceTransport_GetStreamDiagnostics(
+        MeyerDeviceTransportHandle handle,
+        MeyerDeviceTransportStreamDiagnostics* diagnostics)
+    {
+        return Invoke(handle, "GetStreamDiagnostics", [diagnostics](DeviceTransportContext& context) -> std::int32_t {
+            if (!HasValidHeader(diagnostics))
+            {
+                return Fail(&context, MeyerDeviceTransportResult_InvalidArgument,
+                            "Stream diagnostics has an invalid size or schema version");
+            }
+            *diagnostics = context.streamDiagnostics;
             return Succeed(&context);
         });
     }

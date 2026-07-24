@@ -1,6 +1,6 @@
 ﻿# MyDeviceTransport
 
-`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。模块版本为 `1.2.0`。
+`MyDeviceTransport` 是 MeyerScan 的设备传输模块，正式产物为 `MeyerScan_DeviceTransport.dll`，测试产物为 `DeviceTransportTest.exe`。当前代码/文件版本为 `1.3.0`，公共语义 API 为 `1.1.0`，整数 ABI 为 `2`。
 
 ## 职责边界
 
@@ -9,7 +9,8 @@
 - Cypress CyAPI USB 设备枚举、打开、关闭和重连。
 - 原始命令字节发送与响应接收。
 - Bulk IN 异步流队列、超时中止和资源回收。
-- 图像包同步、平面组装、帧顺序和状态解析。
+- 兼容完整帧接口所需的图像包同步、平面组装和帧顺序处理。
+- 面向 CaptureService 的原始 B 包持续接收，以及包数、超时、部分包、I/O 失败和连续超时诊断。
 - 私有 IMU 解码与相对姿态兼容输出。
 
 本模块不负责：
@@ -52,7 +53,7 @@ std::vector<char> text(required, '\0');
 MeyerDeviceTransport_GetLastError(handle, &text[0], text.size(), &required);
 ```
 
-`GetFrame` 是非阻塞接口：当前无完整帧时立即返回 `NotReady`。缓冲区不足时返回所需字节数并保留同一帧，调用方扩容后可再次读取。完整帧队列默认最多保留 3 帧，消费者落后时丢弃最旧帧，避免持续占用内存。
+`GetFrame` 是兼容非阻塞接口：当前无完整帧时立即返回 `NotReady`。新的采集链路使用 `MeyerDeviceTransport_ReceiveRawCapturePacket` 获取严格对应一个 USB 异步传输的原始 B 包，并通过 `MeyerDeviceTransport_GetStreamDiagnostics` 读取结构化统计。首次超时返回 `Timeout`；同一流连续两次超时返回 `StreamStalled`；设备拔出和部分包分别保留独立计数和错误类型。
 
 采集参数除单项上限外还受 512 MiB 总内存预算限制。预算同时覆盖 CyAPI 在途队列和组帧/待交付帧的估算副本；所有尺寸乘法使用 64 位中间值。该限制用于拦截配置错误，不代替真实设备型号的协议参数校验。
 
@@ -94,19 +95,19 @@ bin\Release\DeviceTransportTest.exe --capture 1024 440 6 28 1
 
 模块按需从 `MeyerScan_DeviceTransport.dll` 自身目录的绝对路径加载 `MeyerScan_Logger.dll`，不依赖 current directory。连接、命令发送、流和采集启停会写关键日志；轮询未就绪不会刷屏。
 
-- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.2.0 (2026-07-17)`。
-- API 版本：`MeyerDeviceTransport_GetApiVersion()` 返回纯语义版本 `1.0.0`。
-- ABI 门禁：`GetMeyerModuleApiVersion()` 返回整数 `1`，供 DeviceCmd/MainExe 动态加载前检查。
-- 文件版本：`src/Version.rc` 为 `1.2.0.0`。
+- 代码版本：`ModuleInfo::Version` 和 `GetMeyerModuleVersion()` 返回 `MeyerScan_DeviceTransport v1.3.0 (2026-07-24)`。
+- API 版本：`MeyerDeviceTransport_GetApiVersion()` 返回纯语义版本 `1.1.0`。
+- ABI 门禁：`GetMeyerModuleApiVersion()` 返回整数 `2`，供 DeviceCmd/CaptureService 动态加载前检查。
+- 文件版本：`src/Version.rc` 为 `1.3.0.0`。
 - 修改版本时必须同时修改 CMake project 版本、代码常量、Version.rc、README 和 CHANGELOG。
 
 ## 当前未完成
 
 - 已在当前环境实测枚举到 1 个匹配 VID/PID 的 Cypress 设备并正确判定为 USB3；发送只读 `0xCD` 成功，但设备在 1.5 秒内未返回 `0xCE`。拔插重连、长时间流和真实组帧仍需硬件联调。
 - 温度字段沿用原始帧合同，当前协议解析未提供有效温度来源。
-- ScanWorkflow/扫描算法尚未调用本 DLL；接入时应通过公共 C ABI，不得包含 `src` 内部头文件。
+- `MyCaptureService` 已经通过 `MyDeviceCmd` 间接使用原始 B 包接口；颜色校准和扫描业务 UI 尚未接入真实采集结果。上层不得直接包含本模块 `src` 内部头文件。
 
-## 2026-07-23 采集方案和设备上下文合同
+## 2026-07-24 采集方案和设备上下文合同
 
 本模块在新采集链路中的定位是“持续原始传输层”。每个打开/采集会话必须记录：
 
@@ -126,9 +127,9 @@ captureMode
 - 一个 USB 异步传输严格对应一个 `16384` 字节 B 包。
 - 当前所有适配机型暂统一使用 `queueDepth=64`，即同时预提交 64 个 USB IN 接收任务；每个任务对应一个 `16384` 字节 B 包，允许请求环跨越组六图边界。该值必须由上层 Profile 显式传入，不能依赖本模块默认值。
 - 每个接收任务完成后及时重新提交，不能为了发送无回包命令停止所有 IN 接收任务。
-- 原始包持续放入有界队列；队列长度、高水位、接收失败和溢出必须可诊断。
+- DeviceTransport 内部维护 `queueDepth=64` 的 USB IN 异步请求环；完成槽复制给 CaptureService 后立即重新提交。第一版不增加第二个用户态原始包队列，超时、部分包、断连和 I/O 失败通过结构化诊断上报。
 - 图像序号、数据头、单图解密、自动曝光和 RGB 减黑图属于上层采集/处理模块，不新增到本层。
 
-本轮只同步方案文档，当前代码中的默认参数仍需后续改为 `64` 并通过各机型实机验证；在此之前不能把代码现状描述成已经落实。
+当前原始流接口、诊断结构和连续两次超时故障状态已经落地；`queueDepth=64` 由各机型采集 Profile 显式传入。CaptureService 快速线程直接消费完成 B 包，慢处理只使用独立后处理队列。真实设备长时间持续采集、拔插恢复和不同帧率仍需后续联调，模拟测试不能替代实机结论。
 
 当前 `StartCapture/GetFrame` 兼容接口仍保留旧组帧行为；后续 `MyCaptureService` 接入时应优先使用原始 B 包接收接口，避免在 Transport 内重复实现新的组帧和后处理流程。详细边界见 `F:\MeyerScan\Documents\设备相关\数据采集-原始图像预处理方案.md`。

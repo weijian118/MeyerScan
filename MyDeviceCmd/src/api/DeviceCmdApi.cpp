@@ -144,6 +144,21 @@ extern "C"
         return MeyerDeviceCmdResult_Ok;
     }
 
+    // 初始化原始流诊断快照，确保后续跨 DLL 复制时结构头可验证。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitStreamDiagnostics(
+        MeyerDeviceCmdStreamDiagnostics* diagnostics)
+    {
+        if (diagnostics == nullptr)
+        {
+            return MeyerDeviceCmdResult_InvalidArgument;
+        }
+        std::memset(diagnostics, 0, sizeof(*diagnostics));
+        diagnostics->structSize = sizeof(*diagnostics);
+        diagnostics->schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
+        diagnostics->lastResult = MeyerDeviceCmdResult_Ok;
+        return MeyerDeviceCmdResult_Ok;
+    }
+
     // 初始化状态快照并把所有值清为未知/无效。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitStateSnapshot(
         MeyerDeviceStateSnapshot* snapshot)
@@ -435,6 +450,15 @@ extern "C"
     {
         return Invoke(handle, [](DeviceCmdContext& context) {
             return context.service.Reconnect();
+        });
+    }
+
+    // 轻量连接检查只访问底层句柄；1=连接，0=未连接，负数=参数错误。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IsDeviceConnectedLightweight(
+        MeyerDeviceCmdHandle handle)
+    {
+        return Invoke(handle, [](DeviceCmdContext& context) {
+            return context.service.IsDeviceConnectedLightweight() ? 1 : 0;
         });
     }
 
@@ -876,6 +900,66 @@ extern "C"
                 return MeyerDeviceCmdResult_InvalidArgument;
             }
             return context.service.GetFrame(buffer, capacity, *frameBytes, *frameInfo);
+        });
+    }
+
+    // 启动不带组帧的原始 B 包流，参数结构必须由型号目录初始化。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_StartRawCapture(
+        MeyerDeviceCmdHandle handle,
+        const MeyerDeviceCmdCaptureParams* params)
+    {
+        return Invoke(handle, [params](DeviceCmdContext& context) -> std::int32_t {
+            if (!HasValidHeader(params))
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            return context.service.StartRawCapture(*params);
+        });
+    }
+
+    // 停止原始流与旧完整帧接口分开，避免两套本地资源状态互相覆盖。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_StopRawCapture(
+        MeyerDeviceCmdHandle handle,
+        std::int32_t turnLightOff)
+    {
+        return Invoke(handle, [turnLightOff](DeviceCmdContext& context) {
+            return context.service.StopRawCapture(turnLightOff != 0);
+        });
+    }
+
+    // 调用方分配包缓冲区，DeviceCmd 只填写实际长度并传递 Transport 错误码。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_ReceiveRawCapturePacket(
+        MeyerDeviceCmdHandle handle,
+        unsigned char* buffer,
+        std::size_t capacity,
+        std::size_t* receivedSize,
+        std::uint32_t timeoutMs)
+    {
+        if (receivedSize != nullptr)
+        {
+            *receivedSize = 0U;
+        }
+        return Invoke(handle, [buffer, capacity, receivedSize, timeoutMs](DeviceCmdContext& context) -> std::int32_t {
+            if (buffer == nullptr || capacity == 0U || receivedSize == nullptr)
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            return context.service.ReceiveRawCapturePacket(
+                buffer, capacity, *receivedSize, timeoutMs);
+        });
+    }
+
+    // 该函数只复制诊断 POD，不触发新的设备命令或图像接收。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_GetStreamDiagnostics(
+        MeyerDeviceCmdHandle handle,
+        MeyerDeviceCmdStreamDiagnostics* diagnostics)
+    {
+        return Invoke(handle, [diagnostics](DeviceCmdContext& context) -> std::int32_t {
+            if (!HasValidHeader(diagnostics))
+            {
+                return MeyerDeviceCmdResult_InvalidArgument;
+            }
+            return context.service.GetStreamDiagnostics(*diagnostics);
         });
     }
 

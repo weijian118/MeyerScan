@@ -1,7 +1,7 @@
 ﻿// =============================================================================
 // 文件: DeviceCmd.h
 // 模块: MeyerScan_DeviceCmd.dll
-// 版本: 0.9.0
+// 模块版本: 1.0.0；公共语义 API: 3.0.0；schema: 7；整数 ABI: 8
 //
 // 作用:
 //   定义设备命令模块唯一的公共 C ABI。调用方通过不透明句柄完成设备基础信息
@@ -40,10 +40,10 @@
 #endif
 
 // 当前公共结构版本。新增字段时只能在 reserved 前追加，不能改变已有字段含义。
-static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 6U;
+static const std::uint32_t MEYER_DEVICE_CMD_SCHEMA_VERSION = 7U;
 
 // MainExe 动态加载 DLL 前校验的整数 ABI 版本。
-static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 7;
+static const std::int32_t MEYER_DEVICE_CMD_API_VERSION = 8;
 
 // 协议当前最大命令数据为 416 字节；保留 1024 字节可覆盖后续常规扩展，
 // 同时避免把不受控的大块内存放入公共结构。
@@ -85,7 +85,11 @@ enum MeyerDeviceCmdResult : std::int32_t
     MeyerDeviceCmdResult_BufferTooSmall = -12,
     MeyerDeviceCmdResult_NotReady = -13,
     MeyerDeviceCmdResult_InternalError = -14,
-    MeyerDeviceCmdResult_DeviceRejected = -15
+    MeyerDeviceCmdResult_DeviceRejected = -15,
+    // 底层原始 B 包连续两次超时，采集服务应进入 Faulted 并通知 UI。
+    MeyerDeviceCmdResult_StreamStalled = -16,
+    // 采集期间检测到设备句柄已失效，不能继续使用旧设备快照发命令。
+    MeyerDeviceCmdResult_DeviceDisconnected = -17
 };
 
 // 2025-08-08 协议中定义的 A 类命令码。公共层公开这些值，便于协议调试工具
@@ -477,7 +481,12 @@ enum MeyerDeviceCmdSimulatedFlag : std::uint32_t
     MeyerDeviceCmdSimulatedFlag_LargeHeadColorChecksumFailure = 1U << 18,
     MeyerDeviceCmdSimulatedFlag_SmallHeadColorChecksumFailure = 1U << 19,
     MeyerDeviceCmdSimulatedFlag_LargeHeadColorReadFailure = 1U << 20,
-    MeyerDeviceCmdSimulatedFlag_SmallHeadColorReadFailure = 1U << 21
+    MeyerDeviceCmdSimulatedFlag_SmallHeadColorReadFailure = 1U << 21,
+    // 以下标志只用于 CaptureService 无硬件异常回归。
+    MeyerDeviceCmdSimulatedFlag_StreamTimeoutOnce = 1U << 22,
+    MeyerDeviceCmdSimulatedFlag_StreamTimeoutAlways = 1U << 23,
+    MeyerDeviceCmdSimulatedFlag_DisconnectDuringCapture = 1U << 24,
+    MeyerDeviceCmdSimulatedFlag_PartialStreamPacket = 1U << 25
 };
 
 // 打开设备会话所需参数。正式后端必须提供 DeviceTransport DLL 的绝对路径，
@@ -585,6 +594,30 @@ struct MeyerDeviceCmdCaptureParams
     std::int32_t ahrsEnabled;
     std::uint32_t reserved[8];
 };
+
+// DeviceCmd 向上层复制的原始流诊断快照。它与 Transport 数值语义一致，
+// 但使用 DeviceCmd 自身的 schema，上层不需要同时包含 DeviceTransport 头文件。
+struct MeyerDeviceCmdStreamDiagnostics
+{
+    std::uint32_t structSize;
+    std::uint32_t schemaVersion;
+    std::uint64_t sequence;
+    std::uint64_t totalPackets;
+    std::uint64_t totalTimeouts;
+    std::uint64_t totalPartialPackets;
+    std::uint64_t totalIoFailures;
+    std::int32_t consecutiveTimeouts;
+    std::int32_t lastResult;
+    std::int32_t lastEvent;
+    std::int32_t streamActive;
+    std::uint32_t queueDepth;
+    std::uint32_t reserved32;
+    std::uint64_t transferSize;
+    std::uint32_t reserved[8];
+};
+
+static_assert(sizeof(MeyerDeviceCmdStreamDiagnostics) == 112U,
+              "MeyerDeviceCmdStreamDiagnostics ABI size changed");
 
 // 状态快照是只读副本。调用方先检查 validFields，再解释对应字段。
 struct MeyerDeviceStateSnapshot
@@ -890,6 +923,8 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitOpenParams(MeyerDeviceCmdOpenParams* params);
     // 查询型号目录并生成默认采集参数。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitCaptureParamsForModel(std::int32_t model, MeyerDeviceCmdCaptureParams* params);
+    // 初始化原始流诊断快照结构。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitStreamDiagnostics(MeyerDeviceCmdStreamDiagnostics* diagnostics);
     // 初始化状态快照结构，供 GetStateSnapshot 校验和回填。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_InitStateSnapshot(MeyerDeviceStateSnapshot* snapshot);
     // 初始化帧信息结构，供 GetFrame 校验和回填。
@@ -953,6 +988,8 @@ extern "C"
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IsOpen(MeyerDeviceCmdHandle handle);
     // 使用最近一次打开参数恢复连接。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_Reconnect(MeyerDeviceCmdHandle handle);
+    // 只查看底层句柄和 CyAPI 连接状态，不发送设备命令，供每组图开始前轻量检查。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_IsDeviceConnectedLightweight(MeyerDeviceCmdHandle handle);
 
     // 打开唯一设备会话、检查 USB 速率、读取 0xCD/0xCE 设备信息并识别型号。
     // Ready 时保持会话打开供颜色校准继续使用；其它状态会主动关闭会话。
@@ -1036,14 +1073,39 @@ extern "C"
                                                                   std::size_t* frameBytes,
                                                                   MeyerDeviceCmdFrameInfo* frameInfo);
 
+    // 新采集架构使用的原始 B 包接口。StartRawCapture 只建立 queueDepth 异步请求环
+    // 并发送 0x0A，不在 DeviceTransport 内部组帧或后处理。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_StartRawCapture(
+        MeyerDeviceCmdHandle handle,
+        const MeyerDeviceCmdCaptureParams* params);
+    // 发送 0x0B、可选关灯并回收原始流请求环；重复调用保持幂等。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_StopRawCapture(
+        MeyerDeviceCmdHandle handle,
+        std::int32_t turnLightOff);
+    // 阻塞等待一个原始 B 包，只传递字节和实际长度，不解析图像头。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_ReceiveRawCapturePacket(
+        MeyerDeviceCmdHandle handle,
+        unsigned char* buffer,
+        std::size_t capacity,
+        std::size_t* receivedSize,
+        std::uint32_t timeoutMs);
+    // 读取 Transport 累计的包数、超时、部分包和连接丢失诊断。
+    MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_GetStreamDiagnostics(
+        MeyerDeviceCmdHandle handle,
+        MeyerDeviceCmdStreamDiagnostics* diagnostics);
+
     // 读取当前句柄最近错误；支持空缓冲区的长度探测调用。
     MEYERSCAN_DEVICE_CMD_API std::int32_t MeyerDeviceCmd_GetLastError(MeyerDeviceCmdHandle handle, char* buffer, std::size_t capacity, std::size_t* requiredSize);
     // 返回稳定模块名。
     MEYERSCAN_DEVICE_CMD_API const char* MeyerDeviceCmd_GetModuleName();
     // 返回语义化公共 API 版本字符串。
     MEYERSCAN_DEVICE_CMD_API const char* MeyerDeviceCmd_GetApiVersion();
+    // 动态加载器只需要通过 GetProcAddress 解析通用版本导出；隐藏声明可以
+    // 避免一个编译单元同时包含多个模块头时发生同名 C 导出声明冲突。
+#if !defined(MEYER_DEVICE_CMD_HIDE_GENERIC_EXPORTS)
     // 返回所有自研 DLL 统一使用的整数 ABI 版本。
     MEYERSCAN_DEVICE_CMD_API std::int32_t GetMeyerModuleApiVersion();
     // 返回版本清单读取的代码版本。
     MEYERSCAN_DEVICE_CMD_API const char* GetMeyerModuleVersion();
+#endif
 }

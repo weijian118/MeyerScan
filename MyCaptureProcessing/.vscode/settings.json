@@ -1,0 +1,5 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configurePreset": "vs2015-x64",
+  "cmake.buildPreset": "vs2015-x64-release"
+}

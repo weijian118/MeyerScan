@@ -45,8 +45,12 @@ flowchart TD
     ScanShell --> ProcessUI["DataProcessUI"]
     Main --> DeviceHost["DeviceSessionHost 单会话/工作线程"]
     ScanShell --> DeviceHost
-    DeviceHost --> DeviceCmd["DeviceCmd 命令/状态/采集编排"]
-    DeviceCmd --> DeviceTransport["DeviceTransport 原始字节/流/组帧"]
+    DeviceHost --> CaptureService["CaptureService 线程/队列/命令窗口"]
+    CaptureService --> DeviceCmd["DeviceCmd 命令/状态"]
+    DeviceCmd --> DeviceTransport["DeviceTransport USB原始字节/B包"]
+    CaptureService --> CaptureProcessing["CaptureProcessing 协议级标准化"]
+    CaptureService --> CapturePipeline["CaptureImagePipeline 场景级多输出"]
+    CaptureService --> AutoExposure["AutoExposure 会话级计算"]
     ScanUI --> ScanDataIO["ScanDataIO"]
     ScanUI --> Algorithm["采集与重建算法"]
     ProcessUI --> Tools["编辑 / 配准 / 测量 / 分析 DLL"]
@@ -64,7 +68,7 @@ flowchart TD
 | 运行时读模型 | RuntimeDataCenter | 常用数据和云端信息的只读快照 |
 | 适配层 | DatabaseQtAdapter、ExternalLaunchAdapter；规划中的 Login/HIS Adapter | 类型、协议和来源差异转换 |
 | 基础设施 | Logger、Database、ConfigCenter、Permission、UIResources | 通用能力，不理解页面流程 |
-| 设备与算法 | 已落地 DeviceTransport、DeviceCmd；规划中的 ScanDataIO、PreProcess 和处理工具 DLL | 硬件通信、设备语义、数据 IO、算法和纯数据处理 |
+| 设备与算法 | 已落地 DeviceTransport、DeviceCmd、CaptureService、CaptureProcessing、CaptureImagePipeline 和 AutoExposure 接口；规划中的 ScanDataIO、重建和处理工具 DLL | 硬件通信、设备语义、采集编排、协议标准化、场景级图像处理、数据 IO 和算法 |
 | 独立进程 | ScanReconstructStudio.exe、MyUpdate.exe、安装器 | 隔离高资源/更新/交付边界 |
 
 ### 2.2 依赖方向
@@ -495,18 +499,22 @@ flowchart TD
     Cmd --> Transport["DeviceTransport\nUSB和原始B包"]
     Service --> Processing["CaptureProcessing.dll\n组帧、解密、后处理"]
     Service --> Exposure["AutoExposure.dll\n自动曝光计算"]
+    Service --> Pipeline["CaptureImagePipeline.dll\nRGB和场景级多路输出"]
     Host["MainExe DeviceSessionHost"] --> Service
     Host --> Cmd
 ```
 
 ### 16.1 采集职责边界
 
-- `MyDeviceTransport` 持续取走 16384 字节 B 包，所有当前适配机型暂按 `queueDepth=64` 预提交 USB IN 请求，维护有界原始包队列和 USB 传输错误；不解析图像业务和 UI。
+- `MyDeviceTransport` 持续取走 16384 字节 B 包，所有当前适配机型暂按 `queueDepth=64` 预提交 USB IN 请求，维护异步请求环和 USB 传输诊断；完成槽直接复制给 CaptureService，第一版不建立第二个用户态原始包队列，不解析图像业务和 UI。
 - `MyDeviceCmd` 负责 `0x0A/0x0B`、曝光、灯光等命令编码和串行发送，保存设备会话与设备身份快照。
-- `MyCaptureService` 负责快速采集线程、单图解密时序、整组状态汇总、条件式自动曝光、最多两条无回包命令和慢速后处理队列。
-- `MeyerScan_CaptureProcessing.dll` 负责数据头、组帧、解密接口、图像排序、镜像和减黑图，不连接 USB、不使用 Qt。
-- `MeyerScan_AutoExposure.dll` 只负责计算，不发送设备命令；算法对象按采集会话持有，保存历史曝光参数。
+- `MyCaptureService` 负责快速采集线程、慢处理线程、整组状态、条件式自动曝光、最多两条无回包命令、后处理队列、options 快照和结果发布，不实现具体图像算法。
+- `MeyerScan_CaptureProcessing.dll` 负责数据头、组帧、单图解密、状态汇总、图像排序、镜像和饱和减黑图，输出标准化六图；不生成 RGB888，不连接 USB、不使用 Qt。
+- `MeyerScan_CaptureImagePipeline.dll` 负责标准化六图之后的 RGB888 和显示/重建/校准等场景级多路输出。颜色校准、AI 软组织、除色和粗条纹算法尚未接入时必须显式返回不可用。
+- `MeyerScan_AutoExposure.dll` 只负责计算，不发送设备命令；算法对象按采集会话持有，保存历史曝光参数。当前只有接口占位，`Calculate` 明确返回未实现。
 - UI 模块只发起采集动作、接收最终结果和显示状态，不创建第二个 USB 会话。整组关灯只跳过自动曝光，仍须经过慢速后处理并正常发布结果。
+
+当前实现使用 DeviceTransport 内部 `queueDepth=64` 异步请求环持续取包，CaptureService 快速线程直接消费完成 B 包，不额外创建用户态 RawPacketQueue；慢处理通过独立有界队列与快速链路隔离。真实设备连续采集和 25 帧最短组间隔仍需联调验证。
 
 ### 16.2 设备上下文合同
 
@@ -516,7 +524,7 @@ flowchart TD
 
 单图完成后立即解密；六图完成后只有在整组开灯时才调用自动曝光。第一条无回包命令以 USB OUT 完成为发送成功，第二条命令前至少等待 5 ms。一组间隔内最多两条无回包命令。无论整组开灯还是关灯，完整且解密成功的六图都要复制给慢速后处理；排序、相机 1 Y 轴镜像和白图 RGB 减黑图使用已解密数据副本异步执行，减法使用 `clamp(int(white) - int(black), 0, 255)`。后处理队列满时丢弃新的后处理副本，不阻塞接收和自动曝光。
 
-当前所有适配机型的 `queueDepth` 暂统一为 `64`。它是 USB 在途接收任务数量，不是组六图数量；请求环可以跨越组六图边界。`RawPacketQueue` 另行设置容量和高水位统计，不能与 `queueDepth` 混为一个队列。
+当前所有适配机型的 `queueDepth` 暂统一为 `64`。它是 USB 在途接收任务数量，不是组六图数量；请求环可以跨越组六图边界。当前没有第二个用户态原始包队列，CaptureService 只为慢处理副本维护有界队列。
 
 颜色校准准入不检查标定器连接；标定器连接检查只属于三维校准且后续接入。当前三维校准准入也不检查“三维校准完成状态”，该状态后续作为结果记录或业务查询接入，不能阻止进入三维校准。
 
@@ -524,4 +532,4 @@ flowchart TD
 
 ---
 
-> **文档版本**：v3.4（2026-07-23，补充关灯后处理、饱和减法、校准准入和 queueDepth=64）
+> **文档版本**：v3.5（2026-07-24，同步采集四模块落地、场景级 Pipeline 和无用户态原始包队列）

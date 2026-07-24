@@ -999,11 +999,11 @@ namespace
         // 三种版本各有不同用途：字符串 API 描述语义能力，整数 API 保护公共
         // POD/函数表兼容性，模块版本用于运行时版本清单。测试同时锁住三者，
         // 可及时发现只修改 Version.rc 或只修改代码常量造成的版本来源不一致。
-        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "2.5.0") == 0,
+        test.Expect(std::strcmp(MeyerDeviceCmd_GetApiVersion(), "3.0.0") == 0,
                     "semantic API version matches the current command behavior");
         test.Expect(GetMeyerModuleApiVersion() == MEYER_DEVICE_CMD_API_VERSION,
                     "integer ABI version matches the public header contract");
-        test.Expect(std::strstr(GetMeyerModuleVersion(), "v0.9.0") != nullptr,
+        test.Expect(std::strstr(GetMeyerModuleVersion(), "v1.0.0") != nullptr,
                     "module code version matches the current release");
 
         MeyerDeviceCmdHandle handle = MeyerDeviceCmd_Create();

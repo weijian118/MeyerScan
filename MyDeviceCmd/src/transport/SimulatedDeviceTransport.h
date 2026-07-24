@@ -49,6 +49,20 @@ namespace meyer
                                   std::size_t capacity,
                                   std::size_t& frameBytes,
                                   MeyerDeviceCmdFrameInfo& frameInfo) override;
+            // 启动可重复生成六图 B 包的模拟原始流。
+            std::int32_t StartRawCapture(const MeyerDeviceCmdCaptureParams& params) override;
+            // 停止模拟原始流并清空序号。
+            std::int32_t StopRawCapture() override;
+            // 返回模拟原始流状态。
+            bool IsRawCaptureActive() const override;
+            // 按当前图像/分包序号生成一个确定性 B 包。
+            std::int32_t ReceiveRawCapturePacket(unsigned char* buffer,
+                                                 std::size_t capacity,
+                                                 std::size_t& receivedSize,
+                                                 std::uint32_t timeoutMs) override;
+            // 返回模拟包数和超时计数，供服务层 smoke 使用。
+            std::int32_t GetStreamDiagnostics(
+                MeyerDeviceCmdStreamDiagnostics& diagnostics) override;
             // 返回模拟后端最近错误文本。
             const std::string& LastError() const override;
 
@@ -63,9 +77,12 @@ namespace meyer
             // 读取协议 payload 中的大端 16 位字段。
             static std::uint16_t ReadBigEndian16(const std::vector<std::uint8_t>& payload,
                                                   std::size_t offset);
+            // 使用确定性图像值构造当前 B 包，第一包包含 40 字节图像头。
+            void BuildRawPacket(unsigned char* buffer, std::size_t packetBytes);
 
             bool m_open;
             bool m_captureActive;
+            bool m_rawCaptureActive;
             bool m_frameReady;
             bool m_lightOn;
             bool m_isUsb2;
@@ -88,6 +105,10 @@ namespace meyer
             std::vector<std::uint8_t> m_exposureParameters;
             std::uint8_t m_frameRate;
             MeyerDeviceCmdFrameInfo m_frameInfo;
+            MeyerDeviceCmdCaptureParams m_rawCaptureParams;
+            MeyerDeviceCmdStreamDiagnostics m_streamDiagnostics;
+            std::size_t m_rawImageIndex;
+            std::size_t m_rawPacketIndex;
         };
     }
 }

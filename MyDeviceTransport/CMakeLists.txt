@@ -11,7 +11,7 @@ if(POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
 endif()
 
-project(MeyerScan_DeviceTransport VERSION 1.2.0 LANGUAGES CXX)
+project(MeyerScan_DeviceTransport VERSION 1.3.0 LANGUAGES CXX)
 
 # 独立打开模块时自行启用 CTest；作为根工程子目录时由根 CMake 统一启用和注册。
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

@@ -1,0 +1,6 @@
+build/
+obj/
+.vs/
+*.sdf
+*.opensdf
+*.VC.db

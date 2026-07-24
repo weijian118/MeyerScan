@@ -45,7 +45,8 @@ namespace meyer
             static bool CopyDescriptor(std::int32_t model, MeyerDeviceModelDescriptor& descriptor);
 
         private:
-            // 创建所有相似协议机型共用的 1024x910 六平面默认采集配置。
+            // 创建一份 MyScan 5/5H/6 当前共值的 1024x455 六图采集配置。
+            // 每个 Profile 按值保存自己的副本，后续修改 MyScan 6 不会改动 MyScan 5。
             static MeyerDeviceCmdCaptureParams BuildDefaultCapture(std::int32_t workMode);
         };
     }

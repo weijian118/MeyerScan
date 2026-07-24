@@ -18,7 +18,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_VersionManager";
 
 // 模块版本用于 GetModuleVersion()，必须与 Version.rc 文件版本同步维护。
-const char* Version = "MeyerScan_VersionManager v0.1.0 (2026-06-23)";
+const char* Version = "MeyerScan_VersionManager v0.1.1 (2026-07-24)";
 }
 
 struct VersionModuleEntry {
@@ -32,13 +32,21 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_Logger.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Database.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DatabaseQtAdapter.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DeviceTransport.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_DeviceCmd.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureProcessing.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureImagePipeline.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_AutoExposure.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureService.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_ConfigCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Permission.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_UIComponents.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_UIResources.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_HomeUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CaseUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_SettingsUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_CaseOrderService.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_ScanSchemaService.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_RuntimeDataCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_OrderCreateUI.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_OrderScanWorkspaceShell.dll", "GetMeyerModuleVersion"},

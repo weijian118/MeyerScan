@@ -168,7 +168,8 @@ namespace meyer
             return true;
         }
 
-        // 根据协议 B 类包定义生成 1024x910、6 平面、每平面 57 个 16 KiB 包的默认值。
+        // 根据已确认的 MyScan 5 B 类包定义生成默认值。
+        // MyScan 6 当前只是参数值相同，profiles[] 中仍按值保存独立对象。
         MeyerDeviceCmdCaptureParams DeviceModelCatalog::BuildDefaultCapture(std::int32_t workMode)
         {
             MeyerDeviceCmdCaptureParams params = {};
@@ -176,17 +177,19 @@ namespace meyer
             params.schemaVersion = MEYER_DEVICE_CMD_SCHEMA_VERSION;
             params.workMode = workMode;
             params.width = 1024;
-            params.height = 910;
+            params.height = 455;
             params.imageCount = 6;
-            params.packetsPerImage = 57;
+            params.packetsPerImage = 29;
             params.transferSize = 16384U;
-            params.queueDepth = 16U;
+            // 64 表示同时预提交 64 个 16 KiB USB IN，不是图像队列长度。
+            params.queueDepth = 64U;
             params.packetPayloadSize = 16384;
-            // 1024*910 - 56*16384 = 14336，是最后一包的有效图像字节数。
-            params.lastPacketValidSize = 14336;
+            // 1024*455 - 28*16384 = 7168，最后一包其余 9216 字节不进入逻辑图像。
+            params.lastPacketValidSize = 7168;
             params.timeoutMs = 1500U;
             params.maxReadyFrames = 3U;
-            params.pictureOrderMode = 1;
+            // 3 只是记录该 Profile 使用历史 S-Box 图像加密；解密由 CaptureProcessing 执行。
+            params.pictureOrderMode = 3;
             params.scanHeadType = 1;
             params.ahrsEnabled = 1;
             return params;

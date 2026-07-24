@@ -149,6 +149,19 @@ namespace meyer
                                   std::size_t capacity,
                                   std::size_t& frameBytes,
                                   MeyerDeviceCmdFrameInfo& frameInfo);
+            // 只建立原始 B 包流并发送 0x0A，不使用 Transport 的旧组帧器。
+            std::int32_t StartRawCapture(const MeyerDeviceCmdCaptureParams& params);
+            // 发送停图/关灯并回收原始流。
+            std::int32_t StopRawCapture(bool turnLightOff);
+            // 阻塞读取一个原始 B 包。
+            std::int32_t ReceiveRawCapturePacket(unsigned char* buffer,
+                                                 std::size_t capacity,
+                                                 std::size_t& receivedSize,
+                                                 std::uint32_t timeoutMs);
+            // 复制底层原始流诊断快照。
+            std::int32_t GetStreamDiagnostics(MeyerDeviceCmdStreamDiagnostics& diagnostics);
+            // 仅查看底层句柄，不使用 A 类命令。
+            bool IsDeviceConnectedLightweight() const;
 
             // 返回最近一次失败操作的诊断文本，不执行新的设备操作。
             const std::string& LastError() const;

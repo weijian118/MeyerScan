@@ -6,15 +6,18 @@
 
 ## 1. 最新验证基线
 
-验证日期：2026-07-23。
+验证日期：2026-07-24。
 
 | 检查 | 结果 |
 |---|---|
-| CMake Release 全量构建 | 2026-07-23 重新配置并串行构建通过；避免多个工程争用同一输出文件 |
-| 根 CTest | 2026-07-23 CMake Release 后 28/28 通过；包含 25 个模块测试、2 个 MainExe 集成 smoke 和 1 个登录 SDK smoke |
+| CMake Release 全量构建 | 2026-07-24 重新配置并串行构建通过；新增 CaptureProcessing、CaptureImagePipeline、AutoExposure 和 CaptureService 均进入根构建图 |
+| 根 CTest | 2026-07-24 CMake Release 后 36/36 通过；包含采集正常、单次超时恢复、连续超时、断连和部分包故障合同，以及 MainExe 集成和登录 SDK smoke |
 | MainExe smoke | `MeyerScan.exe --smoke-main` 重新执行并以退出码 0 通过；根 CTest 中的 `--smoke`、`--smoke-external-order` 同样通过 |
-| VS2015 根方案 | 2026-07-23 `MSBuild 14.0` Release x64 `/t:Rebuild` 通过；所有项目 0 错误，`MeyerLoginTest.vcxproj` 已纳入手写总方案 |
-| 版本清单 | 已生成 `bin/Release/logs/versionList/versionList_20260723_102929_976.json`；共 27 个正式模块条目，缺失 0、代码版本错误 0、文件/代码版本不一致 0；测试程序不进入产品清单 |
+| VS2015 根方案 | 2026-07-24 `MSBuild 14.0` Release x64 `/t:Rebuild` 通过；60 个 DLL/EXE 与测试项目 0 错误，方案项目路径缺失 0、GUID 重复 0 |
+| 版本清单 | 已生成 `bin/Release/logs/versionList/versionList_20260724_124427_098.json`；共 31 个正式模块条目，缺失 0、代码版本错误 0、文件/代码版本不一致 0；测试程序不进入产品清单 |
+| CaptureService 测试界面 | `CaptureServiceTest.exe --simulate` 启动后窗口标题、句柄和响应状态正常；本轮未连接真实设备，未执行硬件连续采集 |
+| 新增模块独立 CMake | 四个模块分别通过 `cmake --fresh --preset vs2015-x64` 和 Release 构建；独立 CTest 为 1/1、1/1、1/1、5/5，通过 VSCode/CMake 入口可复现 |
+| 采集方案 Word | DOCX 与 Word 97 DOC 已同步；Word 导出 28 页 PDF 后逐页检查，架构图、模块职责表和页脚无裁切、重叠或旧 RawPacketQueue 口径 |
 | UIResources VS2015 | `MeyerScan_UIResources.sln` Release x64 Rebuild 通过，0 个警告、0 个错误；`UIResourcesTest.exe` 合同和资源生命周期检查通过 |
 | 设备实机预检 | 2026-07-22 使用当前 MyScan 5 设备确认 Cypress、USB3、设备编号 `6200005301305`、主控板 `1.3.2141`；A3/A4 大扫描头和 B9/BA 小扫描头均收到合法回包并判定已校准；完整预检 Ready，未写入设备 |
 | 注释安全 | 0 错误、0 警告 |
@@ -36,12 +39,16 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 
 | 模块 | 版本 | 当前成熟度 |
 |---|---:|---|
-| MainExe | 0.8.0 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；转发 DeviceCmd ABI 7/schema 6 的版本和大小扫描头快照；主窗口实现已按动作、导航、数据、设备、版本、模块和日志拆分 |
+| MainExe | 0.8.1 | 启动、登录、API 门禁、数据快照、建单导航和设备单会话宿主已接通；发布和版本清单纳入采集四 DLL；真实采集尚未接入业务 UI |
 | Logger | 1.1.1 | 基础能力可用；已提供 API 版本导出 |
 | Database | 1.3.0 | SQLite 主链路可用；MySQL 原生 SDK 接入待完成 |
 | DatabaseQtAdapter | 0.1.1 | 转换链路可用；已提供 API 版本导出 |
-| DeviceTransport | 1.2.0 | 默认自动遍历 CyAPI 设备，严格区分 USB2/USB3；32 项无硬件 smoke 通过，实机枚举和 USB3 判断已确认；长时间采集和拔插恢复待联调 |
-| DeviceCmd | 0.9.0 | 52 个 A 类命令码可用；正式产品仅支持 mOS MyScan 5/6，旧 mOS MyScan 保留协议诊断但预检返回状态 18；实现已按命令、交换、采集、检测、固件和预检拆分；语义 API 2.5.0、整数 ABI 7、schema 6 |
+| DeviceTransport | 1.3.0 | 原始 B 包异步流 API 和 64 深度请求环已接入；32 项无硬件 smoke 通过；真实设备连续采集、拔插恢复和最短组间时序待联调 |
+| DeviceCmd | 1.0.0 | 设备识别/准入和原始采集命令 API 可用；模拟后端支持完整六图及超时、断连、部分包故障注入；语义 API 3.0.0、整数 ABI 8、schema 7 |
+| CaptureProcessing | 0.1.0 | B 包、单图、组六图、解密、状态汇总、排序、镜像和饱和减黑图 smoke 通过；真实设备图像对照待联调 |
+| CaptureImagePipeline | 0.1.0 | RGB888 和重建六图深副本可用；颜色校准、AI、除色和粗条纹未接入，必需功能会明确失败 |
+| AutoExposure | 0.1.0 | 会话级 C ABI 和 16 字节命令输出合同可用；算法明确未实现，不会生成伪造参数 |
+| CaptureService | 0.2.0 | 双线程编排、命令窗口、后处理队列、结构化事件、Pipeline 多输出和 Qt 测试界面可用；五种模拟 smoke 通过，真实设备采集待联调 |
 | ConfigCenter | 0.3.0 | 读取骨架可用；新增练习/创建生产模式独立策略及启动语言 `application.language`；迁移、通知、加密待完成 |
 | Permission | 0.1.1 | visible/enabled 生效；六维权限和多层复核待完成 |
 | RuntimeDataCenter | 0.1.1 | 本地/云端 JSON 快照骨架可用；由 MainExe 统一读取并注入 UI |
@@ -61,7 +68,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | DataProcessUI | 0.2.4 | QVTK 页面、稳定 code 处理入口和资源释放骨架可用 |
 | SendUI | 0.1.3 | 页面和动作上报可用；导出/上传未实现 |
 | ScanReconstructStudio | 0.1.4 | DLL/EXE 双形态壳、API 门禁和 Scan/Process 切换可用 |
-| VersionManager | 0.1.0 | 历史骨架；当前能力内置 MainExe |
+| VersionManager | 0.1.1 | 历史骨架；默认清单同步采集模块，当前运行能力仍内置 MainExe |
 
 既有登录、网络和加解密 DLL 由外部项目提供，不以上表版本代表其实际版本。
 
@@ -90,7 +97,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 - Qt/VTK/OpenCV 路径已统一由公共 props/cmake 解析；仓库内路径和环境变量优先，固定安装位置仅作本机兼容回退。登录 SDK 已完整收口到 `External/MyLoginSDK`，MainExe 和登录测试不再依赖 `D:\wj`。
 - 本轮完成静态 UI 检查和 smoke，没有重新执行 1366x768、1920x1080、2560x1440 三档截图，也没有干净机器安装/升级验证；这两项不能由 CTest 代替。
 - CTest 使用隔离运行目录，但其输入仍来自模块既有 `bin\Release`。安装器和发布依赖清单未落地前，仍需增加“清空输出后重建并组装全新运行目录”的发布验收，避免历史外部 DLL 掩盖漏复制。
-- 采集方案已确定所有当前适配机型使用 `queueDepth=64`；当前重构代码中的传输默认值仍为 `16`，本轮只更新文档，后续必须修改为由各 Profile 显式传入 `64` 并完成实机验证，不能把方案值误写成代码已完成。
+- 采集 Profile 已显式使用 `queueDepth=64`，DeviceTransport 原始流请求环和模拟测试已覆盖该值；真实设备长时间连续采集和跨组六图运行仍需验证。
 
 ## 4. 当前优先任务
 
@@ -152,7 +159,7 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 ### 跨模块修改
 
 - 根 CMake 或 `MeyerScan_AllModules.sln` 构建。
-- 28 项 CTest（含登录 SDK smoke）。
+- 根 CTest 全量通过（当前登记 36 项，含登录 SDK、MainExe 和采集故障 smoke）。
 - MainExe `--smoke` 及受影响集成 smoke。
 - 运行时 versionList：无缺失、无代码/文件版本不一致。
 - 正式配置、数据库和 manifest 测试前后哈希不变。
@@ -195,9 +202,10 @@ VS2015 与 CMake 会写入相同模块 `bin\Release`，不得并行构建。
 | 2026-07-23 | 确认设备命令和数据处理模块必须记录机型系列，设备编号和设备型号有则记录，并保留 reported/effective 来源 |
 | 2026-07-23 | 完成《数据采集-原始图像预处理方案》图文汇报版（DOCX）和 Word 兼容版（DOC）；技术事实仍以设备相关 Markdown 为准 |
 | 2026-07-23 | 方案补充：关灯组六图仍正常后处理和发布；减黑图使用 0 到 255 饱和规则；颜色校准不检查标定器；三维校准标定器检查和完成状态后续接入；所有适配机型暂用 queueDepth=64 |
+| 2026-07-24 | 采集基础链路落地：DeviceTransport 原始 B 包、DeviceCmd 原始流、CaptureProcessing、CaptureImagePipeline、AutoExposure 占位和 CaptureService 双线程编排完成模拟验证 |
 
 更细的代码变更查询模块 CHANGELOG 和 Git 历史，不再在本文件累积逐次对话记录。
 
 ---
 
-> **文档版本**：v3.6（2026-07-23，登记采集准入、饱和减法和 queueDepth=64 修订）
+> **文档版本**：v3.7（2026-07-24，登记采集四模块实现、Pipeline 分层和离线故障测试）

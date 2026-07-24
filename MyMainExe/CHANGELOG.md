@@ -1,5 +1,11 @@
 # MeyerScan MainExe 变更记录
 
+## 2026-07-24 - v0.8.1 采集基础模块发布接入
+
+- 将 CaptureProcessing、CaptureImagePipeline、AutoExposure 和 CaptureService 纳入 CMake/VS2015 运行依赖复制。
+- 启动版本清单同时记录四个采集 DLL 的 Windows 文件版本和代码版本。
+- 保持 MainExe 仅负责发布和版本登记，尚未把真实采集会话接入颜色校准业务 UI。
+
 ## 2026-07-23 - 设备采集会话方案同步（未修改代码）
 
 - 明确 `DeviceSessionHost` 是进程内唯一设备会话所有者，颜色校准、三维校准、练习扫描和创建扫描不得各自创建 USB 会话。

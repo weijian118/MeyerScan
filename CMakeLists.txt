@@ -24,6 +24,10 @@ add_subdirectory(MyDatabase)
 add_subdirectory(MyDatabaseQtAdapter)
 add_subdirectory(MyDeviceTransport)
 add_subdirectory(MyDeviceCmd)
+add_subdirectory(MyCaptureProcessing)
+add_subdirectory(MyCaptureImagePipeline)
+add_subdirectory(MyAutoExposure)
+add_subdirectory(MyCaptureService)
 add_subdirectory(MyConfigCenter)
 add_subdirectory(MyPermission)
 add_subdirectory(MyUIResources)
@@ -80,6 +84,14 @@ if(BUILD_TESTING)
         DeviceTransportTest
         MeyerScan_DeviceCmd
         DeviceCmdTest
+        MeyerScan_CaptureProcessing
+        CaptureProcessingTest
+        MeyerScan_CaptureImagePipeline
+        CaptureImagePipelineTest
+        MeyerScan_AutoExposure
+        AutoExposureTest
+        MeyerScan_CaptureService
+        CaptureServiceTest
         ConfigCenterTest
         PermissionTest
         UIResourcesTest
@@ -164,6 +176,14 @@ if(BUILD_TESTING)
     meyer_register_aggregate_test(MeyerScan.DatabaseQtAdapter DatabaseQtAdapterTest)
     meyer_register_aggregate_test(MeyerScan.DeviceTransport DeviceTransportTest --smoke)
     meyer_register_aggregate_test(MeyerScan.DeviceCmd DeviceCmdTest --smoke)
+    meyer_register_aggregate_test(MeyerScan.CaptureProcessing CaptureProcessingTest --smoke)
+    meyer_register_aggregate_test(MeyerScan.CaptureImagePipeline CaptureImagePipelineTest --smoke)
+    meyer_register_aggregate_test(MeyerScan.AutoExposure AutoExposureTest --smoke)
+    meyer_register_aggregate_test(MeyerScan.CaptureService CaptureServiceTest --smoke)
+    meyer_register_aggregate_test(MeyerScan.CaptureService.TimeoutOnce CaptureServiceTest --smoke-timeout-once)
+    meyer_register_aggregate_test(MeyerScan.CaptureService.TimeoutAlways CaptureServiceTest --smoke-timeout-always)
+    meyer_register_aggregate_test(MeyerScan.CaptureService.Disconnect CaptureServiceTest --smoke-disconnect)
+    meyer_register_aggregate_test(MeyerScan.CaptureService.PartialPacket CaptureServiceTest --smoke-partial)
     meyer_register_aggregate_test(MeyerScan.ConfigCenter ConfigCenterTest)
     meyer_register_aggregate_test(MeyerScan.Permission PermissionTest)
     meyer_register_aggregate_test(MeyerScan.UIResources UIResourcesTest)

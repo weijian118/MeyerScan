@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: Configure CaptureProcessing VS2015 x64",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--preset", "vs2015-x64"],
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: Build CaptureProcessing Release",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "--preset", "vs2015-x64-release"],
+      "dependsOn": "CMake: Configure CaptureProcessing VS2015 x64",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "CTest: CaptureProcessing Release",
+      "type": "shell",
+      "command": "ctest",
+      "args": ["--preset", "vs2015-x64-release"],
+      "dependsOn": "CMake: Build CaptureProcessing Release",
+      "problemMatcher": []
+    }
+  ]
+}

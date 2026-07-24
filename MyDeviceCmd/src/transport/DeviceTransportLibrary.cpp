@@ -73,6 +73,7 @@ namespace meyer
             typedef std::int32_t (*InitOpenParamsFunction)(OpenParams*);
             typedef std::int32_t (*InitCaptureParamsFunction)(CaptureParams*);
             typedef std::int32_t (*InitFrameInfoFunction)(FrameInfo*);
+            typedef std::int32_t (*InitStreamDiagnosticsFunction)(StreamDiagnostics*);
             typedef Handle (*CreateFunction)();
             typedef void (*DestroyFunction)(Handle);
             typedef std::int32_t (*OpenFunction)(Handle, const OpenParams*);
@@ -83,12 +84,16 @@ namespace meyer
             typedef std::int32_t (*SetIntegerFunction)(Handle, std::int32_t);
             typedef std::int32_t (*StartCaptureFunction)(Handle, const CaptureParams*);
             typedef std::int32_t (*GetFrameFunction)(Handle, unsigned char*, std::size_t, std::size_t*, FrameInfo*);
+            typedef std::int32_t (*PrimeStreamFunction)(Handle, std::size_t, std::size_t);
+            typedef std::int32_t (*ReceiveStreamPacketFunction)(Handle, unsigned char*, std::size_t, std::size_t*, std::uint32_t);
+            typedef std::int32_t (*GetStreamDiagnosticsFunction)(Handle, StreamDiagnostics*);
             typedef std::int32_t (*GetLastErrorFunction)(Handle, char*, std::size_t, std::size_t*);
 
             GetApiVersionFunction getApiVersion;
             InitOpenParamsFunction initOpenParams;
             InitCaptureParamsFunction initCaptureParams;
             InitFrameInfoFunction initFrameInfo;
+            InitStreamDiagnosticsFunction initStreamDiagnostics;
             CreateFunction create;
             DestroyFunction destroy;
             OpenFunction open;
@@ -108,17 +113,24 @@ namespace meyer
             SimpleHandleFunction stopCapture;
             SimpleHandleFunction isCaptureActive;
             GetFrameFunction getFrame;
+            SimpleHandleFunction startStream;
+            PrimeStreamFunction primeStream;
+            SimpleHandleFunction stopStream;
+            ReceiveStreamPacketFunction receiveStreamPacket;
+            GetStreamDiagnosticsFunction getStreamDiagnostics;
             GetLastErrorFunction getLastError;
 
             // 值初始化把全部函数指针清零，便于统一检查缺失导出。
             Functions()
                 : getApiVersion(nullptr), initOpenParams(nullptr), initCaptureParams(nullptr),
-                  initFrameInfo(nullptr), create(nullptr), destroy(nullptr), open(nullptr),
+                  initFrameInfo(nullptr), initStreamDiagnostics(nullptr), create(nullptr), destroy(nullptr), open(nullptr),
                   close(nullptr), isOpen(nullptr), reconnect(nullptr), sendCommand(nullptr),
                   receiveCommand(nullptr), getDeviceCount(nullptr), getIsUsb2(nullptr),
                   setDeviceType(nullptr), setPictureOrderMode(nullptr), setCaptureScanMode(nullptr),
                   setAhrsEnabled(nullptr), setScanHeadType(nullptr), startCapture(nullptr),
                   stopCapture(nullptr), isCaptureActive(nullptr), getFrame(nullptr),
+                  startStream(nullptr), primeStream(nullptr), stopStream(nullptr),
+                  receiveStreamPacket(nullptr), getStreamDiagnostics(nullptr),
                   getLastError(nullptr)
             {
             }
@@ -126,7 +138,10 @@ namespace meyer
 
         // 只创建空函数表，实际 LoadLibrary 延迟到宿主调用 Open 时执行。
         DeviceTransportLibrary::DeviceTransportLibrary()
-            : m_module(nullptr), m_handle(nullptr), m_functions(new Functions())
+            : m_module(nullptr)
+            , m_handle(nullptr)
+            , m_functions(new Functions())
+            , m_rawCaptureActive(false)
         {
         }
 
@@ -173,6 +188,7 @@ namespace meyer
             {
                 m_functions->close(m_handle);
             }
+            m_rawCaptureActive = false;
         }
 
         // 通过动态函数表读取真实连接状态，而不是依赖本地布尔缓存。
@@ -295,7 +311,8 @@ namespace meyer
         // 返回底层异步流状态，用于保护命令响应和采集释放顺序。
         bool DeviceTransportLibrary::IsCaptureActive() const
         {
-            return m_handle != nullptr && m_functions->isCaptureActive(m_handle) == 1;
+            return m_rawCaptureActive ||
+                   (m_handle != nullptr && m_functions->isCaptureActive(m_handle) == 1);
         }
 
         // 将 DeviceTransport 帧元数据复制成 DeviceCmd 自己的稳定公共结构。
@@ -333,6 +350,105 @@ namespace meyer
             frameInfo.temperature2 = transportInfo.temperature2;
             frameInfo.temperature3 = transportInfo.temperature3;
             frameInfo.frameBytes = transportInfo.frameBytes;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 原始采集只建立 CyAPI 异步请求环；图像头、序号和解密由 CaptureProcessing 完成。
+        std::int32_t DeviceTransportLibrary::StartRawCapture(
+            const MeyerDeviceCmdCaptureParams& params)
+        {
+            if (m_rawCaptureActive)
+            {
+                m_lastError = "Raw capture stream is already active";
+                return MeyerDeviceCmdResult_Busy;
+            }
+
+            std::int32_t result = m_functions->startStream(m_handle);
+            if (result == Ok)
+            {
+                result = m_functions->primeStream(
+                    m_handle,
+                    static_cast<std::size_t>(params.transferSize),
+                    static_cast<std::size_t>(params.queueDepth));
+            }
+            if (result != Ok)
+            {
+                // Prime 失败时也要回收 StartStream 已创建的临时状态。
+                m_functions->stopStream(m_handle);
+                return MapResult(result, "StartRawCapture");
+            }
+
+            m_rawCaptureActive = true;
+            return MeyerDeviceCmdResult_Ok;
+        }
+
+        // 停流操作幂等，便于异常路径和正常退出共用同一清理函数。
+        std::int32_t DeviceTransportLibrary::StopRawCapture()
+        {
+            if (!m_rawCaptureActive)
+            {
+                return MeyerDeviceCmdResult_Ok;
+            }
+
+            const std::int32_t result = m_functions->stopStream(m_handle);
+            m_rawCaptureActive = false;
+            return MapResult(result, "StopRawCapture");
+        }
+
+        // 该值只描述本适配器启动的原始流，不读取旧组帧引擎状态。
+        bool DeviceTransportLibrary::IsRawCaptureActive() const
+        {
+            return m_rawCaptureActive;
+        }
+
+        // 直接把调用方缓冲区交给 Transport，避免在 DeviceCmd 内部再复制一次 16 KiB。
+        std::int32_t DeviceTransportLibrary::ReceiveRawCapturePacket(
+            unsigned char* buffer,
+            std::size_t capacity,
+            std::size_t& receivedSize,
+            std::uint32_t timeoutMs)
+        {
+            receivedSize = 0U;
+            if (!m_rawCaptureActive)
+            {
+                m_lastError = "Raw capture stream is not active";
+                return MeyerDeviceCmdResult_NotReady;
+            }
+
+            const std::int32_t result = m_functions->receiveStreamPacket(
+                m_handle, buffer, capacity, &receivedSize, timeoutMs);
+            return result == Ok ? MeyerDeviceCmdResult_Ok : MapResult(result, "ReceiveRawCapturePacket");
+        }
+
+        // 把 Transport schema 转换为 DeviceCmd schema，不向上层暴露私有 ABI 镜像。
+        std::int32_t DeviceTransportLibrary::GetStreamDiagnostics(
+            MeyerDeviceCmdStreamDiagnostics& diagnostics)
+        {
+            StreamDiagnostics transportDiagnostics = {};
+            if (m_functions->initStreamDiagnostics(&transportDiagnostics) != Ok)
+            {
+                m_lastError = "DeviceTransport failed to initialize stream diagnostics";
+                return MeyerDeviceCmdResult_TransportApiMismatch;
+            }
+
+            const std::int32_t result =
+                m_functions->getStreamDiagnostics(m_handle, &transportDiagnostics);
+            if (result != Ok)
+            {
+                return MapResult(result, "GetStreamDiagnostics");
+            }
+
+            diagnostics.sequence = transportDiagnostics.sequence;
+            diagnostics.totalPackets = transportDiagnostics.totalPackets;
+            diagnostics.totalTimeouts = transportDiagnostics.totalTimeouts;
+            diagnostics.totalPartialPackets = transportDiagnostics.totalPartialPackets;
+            diagnostics.totalIoFailures = transportDiagnostics.totalIoFailures;
+            diagnostics.consecutiveTimeouts = transportDiagnostics.consecutiveTimeouts;
+            diagnostics.lastResult = transportDiagnostics.lastResult;
+            diagnostics.lastEvent = transportDiagnostics.lastEvent;
+            diagnostics.streamActive = transportDiagnostics.streamActive;
+            diagnostics.queueDepth = transportDiagnostics.queueDepth;
+            diagnostics.transferSize = transportDiagnostics.transferSize;
             return MeyerDeviceCmdResult_Ok;
         }
 
@@ -384,6 +500,7 @@ namespace meyer
             f.initOpenParams = Resolve<Functions::InitOpenParamsFunction>(m_module, "MeyerDeviceTransport_InitOpenParams");
             f.initCaptureParams = Resolve<Functions::InitCaptureParamsFunction>(m_module, "MeyerDeviceTransport_InitCaptureParams");
             f.initFrameInfo = Resolve<Functions::InitFrameInfoFunction>(m_module, "MeyerDeviceTransport_InitFrameInfo");
+            f.initStreamDiagnostics = Resolve<Functions::InitStreamDiagnosticsFunction>(m_module, "MeyerDeviceTransport_InitStreamDiagnostics");
             f.create = Resolve<Functions::CreateFunction>(m_module, "MeyerDeviceTransport_Create");
             f.destroy = Resolve<Functions::DestroyFunction>(m_module, "MeyerDeviceTransport_Destroy");
             f.open = Resolve<Functions::OpenFunction>(m_module, "MeyerDeviceTransport_Open");
@@ -403,17 +520,25 @@ namespace meyer
             f.stopCapture = Resolve<Functions::SimpleHandleFunction>(m_module, "MeyerDeviceTransport_StopCapture");
             f.isCaptureActive = Resolve<Functions::SimpleHandleFunction>(m_module, "MeyerDeviceTransport_IsCaptureActive");
             f.getFrame = Resolve<Functions::GetFrameFunction>(m_module, "MeyerDeviceTransport_GetFrame");
+            f.startStream = Resolve<Functions::SimpleHandleFunction>(m_module, "MeyerDeviceTransport_StartStream");
+            f.primeStream = Resolve<Functions::PrimeStreamFunction>(m_module, "MeyerDeviceTransport_PrimeStream");
+            f.stopStream = Resolve<Functions::SimpleHandleFunction>(m_module, "MeyerDeviceTransport_StopStream");
+            f.receiveStreamPacket = Resolve<Functions::ReceiveStreamPacketFunction>(m_module, "MeyerDeviceTransport_ReceiveStreamPacket");
+            f.getStreamDiagnostics = Resolve<Functions::GetStreamDiagnosticsFunction>(m_module, "MeyerDeviceTransport_GetStreamDiagnostics");
             f.getLastError = Resolve<Functions::GetLastErrorFunction>(m_module, "MeyerDeviceTransport_GetLastError");
 
             // 任一必需导出缺失都拒绝继续，不能在后续业务路径中调用空函数指针。
-            if (!f.initOpenParams || !f.initCaptureParams || !f.initFrameInfo || !f.create ||
+            if (!f.initOpenParams || !f.initCaptureParams || !f.initFrameInfo ||
+                !f.initStreamDiagnostics || !f.create ||
                 !f.destroy || !f.open || !f.close || !f.isOpen || !f.reconnect ||
                 !f.sendCommand || !f.receiveCommand || !f.getDeviceCount || !f.getIsUsb2 ||
                 !f.setDeviceType || !f.setPictureOrderMode || !f.setCaptureScanMode ||
                 !f.setAhrsEnabled || !f.setScanHeadType || !f.startCapture || !f.stopCapture ||
-                !f.isCaptureActive || !f.getFrame || !f.getLastError)
+                !f.isCaptureActive || !f.getFrame || !f.startStream || !f.primeStream ||
+                !f.stopStream || !f.receiveStreamPacket || !f.getStreamDiagnostics ||
+                !f.getLastError)
             {
-                m_lastError = "DeviceTransport is missing one or more required API v1 exports";
+                m_lastError = "DeviceTransport is missing one or more required API v2 exports";
                 Unload();
                 return MeyerDeviceCmdResult_TransportApiMismatch;
             }
@@ -466,6 +591,8 @@ namespace meyer
             case NotReady: return MeyerDeviceCmdResult_NotReady;
             case InvalidArgument: return MeyerDeviceCmdResult_InvalidArgument;
             case IoFailed: return MeyerDeviceCmdResult_IoFailed;
+            case StreamStalled: return MeyerDeviceCmdResult_StreamStalled;
+            case DeviceDisconnected: return MeyerDeviceCmdResult_DeviceDisconnected;
             default: return MeyerDeviceCmdResult_InternalError;
             }
         }
@@ -479,6 +606,7 @@ namespace meyer
                 m_functions->destroy(m_handle);
                 m_handle = nullptr;
             }
+            m_rawCaptureActive = false;
             if (m_module != nullptr)
             {
                 ::FreeLibrary(static_cast<HMODULE>(m_module));

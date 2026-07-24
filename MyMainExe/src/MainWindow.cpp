@@ -60,7 +60,7 @@ namespace ModuleInfo {
 const char* Name = "MeyerScan_MainExe";
 
 // 模块版本用于运行时版本清单；版本号必须与 Version.rc 中的文件版本保持一致。
-const char* Version = "MeyerScan_MainExe v0.8.0 (2026-07-23)";
+const char* Version = "MeyerScan_MainExe v0.8.1 (2026-07-24)";
 }
 
 // 从患者/订单读模型行中取稳定 ID。
@@ -129,6 +129,10 @@ const VersionModuleEntry kDefaultVersionModules[] = {
     {"MeyerScan_DatabaseQtAdapter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DeviceTransport.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_DeviceCmd.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureProcessing.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureImagePipeline.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_AutoExposure.dll", "GetMeyerModuleVersion"},
+    {"MeyerScan_CaptureService.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_ConfigCenter.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_Permission.dll", "GetMeyerModuleVersion"},
     {"MeyerScan_UIComponents.dll", "GetMeyerModuleVersion"},
